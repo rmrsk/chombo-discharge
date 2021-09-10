@@ -38,6 +38,7 @@
 #include <CD_ParticleContainer.H>
 #include <CD_EbGhostCloud.H>
 #include <CD_EBMultigridInterpolator.H>
+#include <CD_EBGradient.H>
 #include <CD_NonConservativeDivergenceStencil.H>
 #include <CD_EbCentroidInterpolationStencil.H>
 #include <CD_CentroidInterpolationStencil.H>
