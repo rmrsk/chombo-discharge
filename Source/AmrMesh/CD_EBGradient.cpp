@@ -298,7 +298,6 @@ void EBGradient::defineStencilsEBCF(){
 	}
 
 	if(needSpecialStencil){
-	  std::cout << iv << std::endl;
 	  ebcfIVS |= iv;
 	}
       }
