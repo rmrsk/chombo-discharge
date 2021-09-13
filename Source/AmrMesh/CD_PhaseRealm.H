@@ -250,9 +250,9 @@ public:
   const IrregAmrStencil<NonConservativeDivergenceStencil>& getNonConservativeDivergenceStencils() const;
 
   /*!
-    @brief Get stencils for computing gradients of cell-centered data
+    @brief Get gradient object
   */
-  const Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil> > > >& getGradientStencils() const;
+  const Vector<RefCountedPtr<EBGradient> >& getGradientOp() const;
 
   /*!
     @brief Get coarsening operators
@@ -527,6 +527,11 @@ protected:
   mutable Vector<RefCountedPtr<EBFineToCoarRedist> > m_fineToCoarRedist;
 
   /*!
+    @brief Gradient operator
+  */
+  mutable Vector<RefCountedPtr<EBGradient> > m_gradientOp;  
+
+  /*!
     @brief Data recentering utility (center to centroid)
   */
   RefCountedPtr<IrregAmrStencil<CentroidInterpolationStencil> > m_centroidInterpolationStencil;
@@ -540,11 +545,6 @@ protected:
     @brief Stencils for non-conservative divergences
   */
   RefCountedPtr<IrregAmrStencil<NonConservativeDivergenceStencil> > m_NonConservativeDivergenceStencil;
-
-  /*!
-    @brief Gradient stencils
-  */
-  Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil> > > > m_gradientStencils;
 
   /*!
     @brief Define EBLevelGrids

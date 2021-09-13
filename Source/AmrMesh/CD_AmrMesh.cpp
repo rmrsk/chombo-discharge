@@ -993,66 +993,10 @@ void AmrMesh::computeGradient(LevelData<EBCellFAB>&       a_gradient,
   if(m_verbosity > 5){
     pout() << "AmrMesh::computeGradient(LD<EBCellFAB>, LD<EBCellFAB>, string, phase::which_phase,int)" << endl;
   }
-
-  CH_assert(a_phi.     nComp() == 1       );
-  CH_assert(a_gradient.nComp() == SpaceDim);
-  CH_assert(a_lvl              >= 0       );
-
-  if(!this->queryRealm(a_realm)) {
-    std::string str = "AmrMesh::computeGradient(LD<EBCellFAB>, LD<EBCellFAB>, string, phase::which_phase,int) - could not find realm '" + a_realm + "'";
-    MayDay::Abort(str.c_str());
-  }
-    
-  constexpr int comp  = 0;
-    
-  const Real&              dx     = m_realms[a_realm]->getDx()     [a_lvl];
-  const DisjointBoxLayout& dbl    = m_realms[a_realm]->getGrids()  [a_lvl];
-  const ProblemDomain&     domain = m_realms[a_realm]->getDomains()[a_lvl];
-
-  for (DataIterator dit(dbl); dit.ok(); ++dit){
-    EBCellFAB&       grad    = a_gradient[dit()];
-    const EBCellFAB& phi     = a_phi     [dit()];
-    const Box&       cellBox = dbl       [dit()];
-    
-    const EBISBox&   ebisbox = phi.getEBISBox();
-    const EBGraph&   ebgraph = ebisbox.getEBGraph();
-
-    // For interior cells we do our old friend centered differences. God I hate Chombo Fortran.
-    BaseFab<Real>&       gradReg = grad.getSingleValuedFAB();    
-    const BaseFab<Real>& phiReg  = phi. getSingleValuedFAB();
-    FORT_GRADIENT(CHF_FRA(gradReg),
-		  CHF_CONST_FRA1(phiReg, comp),
-		  CHF_CONST_REAL(dx),
-		  CHF_BOX(cellBox));
-
-    // In the irregular cells the EB cuts out some cells and we need explicit stencils for
-    // the gradient here. 
-    const BaseIVFAB<VoFStencil>& gradStencils = (*m_realms[a_realm]->getGradientStencils(a_phase)[a_lvl])[dit()];
-
-    VoFIterator& vofit = (*this->getVofIterator(a_realm, a_phase)[a_lvl])[dit()];
-    for (vofit.reset(); vofit.ok(); ++vofit){
-      const VolIndex&   vof  = vofit();
-      const VoFStencil& sten = gradStencils(vof, comp);
-
-      // Reset gradient. 
-      for (int dir = 0; dir < SpaceDim; dir++){
-	grad(vof, dir) = 0.0;
-      }
-
-      for (int i = 0; i < sten.size(); i++){
-	const VolIndex& ivof    = sten.vof(i);
-	const Real&     iweight = sten.weight(i);
-	const int&      ivar    = sten.variable(i); // Note: For the gradient stencil the component is the direction. 
-
-	grad(vof, ivar) += phi(ivof, comp)*iweight;
-      }
-    }
-
-    // Set covered to zero
-    for (int dir= 0; dir < SpaceDim; dir++){
-      grad.setCoveredCellVal(0.0, dir);
-    }
-  }
+  
+  const RefCountedPtr<EBGradient>& gradientOp = m_realms[a_realm]->getGradientOp(a_phase)[a_lvl];
+  
+  gradientOp->computeGradient(a_gradient, a_phi);
 }
 
 void AmrMesh::computeGradient(EBAMRCellData&           a_gradient,

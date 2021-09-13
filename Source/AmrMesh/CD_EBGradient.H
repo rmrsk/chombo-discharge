@@ -61,10 +61,11 @@ public:
   EBGradient(const EBGradient& a_other) = delete;
 
   /*!
-    @brief Full constructor. 
+    @brief Full constructor, assumes that there is a finer level. 
     @param[in] a_eblg         Grids
     @param[in] a_eblgFine     Fine grids
     @param[in] a_dataLocation Interpration of data centering. Either on the cell center or the cell centroid. 
+    @param[in] a_dx           Resolution
     @param[in] a_refRat       Refinement ratio
     @param[in] a_order        Interpolation order for modified gradients. 
     @param[in] a_weighting    Weighting factor least squares. 
@@ -72,18 +73,43 @@ public:
   EBGradient(const EBLevelGrid& a_eblg,
 	     const EBLevelGrid& a_eblgFine,
 	     const CellLocation a_dataLocation,
+	     const Real         a_dx,
 	     const int          a_refRat,
 	     const int          a_order,
 	     const int          a_weighting = 0);
-			  
+
+  /*!
+    @brief Compute gradient. 
+    @param[out] a_gradient Gradient of input scalar
+    @param[in]  a_phi      Input scalar
+  */
+  void computeLevelGradient(LevelData<EBCellFAB>&       a_gradient,
+			    const LevelData<EBCellFAB>& a_phi) const;  
+
+  /*!
+    @brief Compute gradient. 
+    @param[out] a_gradient Gradient of input scalar
+    @param[in]  a_phi      Input scalar
+  */
+  void computeGradient(LevelData<EBCellFAB>&       a_gradient,
+		       const LevelData<EBCellFAB>& a_phi) const;
 
   /*!
     @brief Destructor (does nothing)
   */
   virtual ~EBGradient();
-
   
 protected:
+
+  /*!
+    @brief Scalar component to reach into
+  */  
+  static constexpr int m_comp = 0;
+
+  /*!
+    @brief Number of components that are supported
+  */
+  static constexpr int m_nComp = 1;
 
   /*!
     @brief How to interpret data locations. 
@@ -101,9 +127,29 @@ protected:
   EBLevelGrid m_eblgFine;
 
   /*!
-    @brief Refined coarse grids
+    @brief True if we have a finer level (m_eblgFine is defined)
   */
-  EBLevelGrid m_eblgCoFi;
+  bool m_hasFine;
+
+  /*!
+    @brief Resolution
+  */
+  Real m_dx;
+
+  /*!
+    @brief Fine resolution
+  */
+  Real m_dxFine;  
+
+  /*!
+    @brief Order
+  */
+  int m_order;
+
+  /*!
+    @brief Weight (for least squares)
+  */
+  int m_weighting;
 
   /*!
     @brief Refinement factor between fine and coarse level. 
@@ -111,59 +157,41 @@ protected:
   int m_refRat;
 
   /*!
-    @brief Interpolation order. 
+    @brief Stencils for boundaries and cut-cells
   */
-  int m_order;
+  LayoutData<BaseIVFAB<VoFStencil> > m_bndryStencils;
 
   /*!
-    @brief Least squares weighting factor
+    @brief Iterator for boundary cells (either domain or EB)
   */
-  int m_weighting;
+  mutable LayoutData<VoFIterator> m_bndryIterator;
 
   /*!
-    @brief Ghost cells that will be interpolated near the cut-cells. 
-    @note This does not include the ghost cells on the refinement boundary away from the cut-cells. 
+    @brief EBCF stencils
   */
-  LayoutData<IntVectSet> m_ghostCells;
+  LayoutData<BaseIVFAB<VoFStencil> > m_ebcfStencils;
 
   /*!
-    @brief Fine-grid interpolation stencils.
+    @brief EBCF iterators. 
   */
-  LayoutData<BaseIVFAB<VoFStencil> > m_fineStencils;
+  mutable LayoutData<VoFIterator> m_ebcfIterator;
 
   /*!
-    @brief Coarse-grid interpolation stencils.
+    @brief Map of cells that lie on the coarse-fine interface
+    @details This is built in defineMasks(). If true, the cell abuts the fine grid. 
   */
-  LayoutData<BaseIVFAB<VoFStencil> > m_coarStencils;
+  LayoutData<DenseIntVectSet> m_coarseFineRegion;
 
   /*!
-    @brief Regular coarse-fine interface boxes. 
-    @note This is a map to the "regular" ghost cells that will be interpolated using a standard
-    multigrid interpolation stencil (away from the EB). 
+    @brief Map of cells that are covered by the finer level.
+    @details This is built in defineMasks(). If true, the cell is covered by a finer level. 
   */
-  LayoutData<std::map<std::pair<int, Side::LoHiSide>, Box> > m_cfivs;
+  LayoutData<DenseIntVectSet> m_invalidRegion;
 
   /*!
-    @brief Defines the CFIVS. 
+    @brief Define level stencils. 
   */
-  void defineCFIVS();
-
-  /*!
-    @brief Define ghost cells to be filled in range m_ghostCF from each cut-cell. 
-  */
-  void defineGhostRegions();
-
-  /*!
-    @brief Define grids
-    @param[in] a_eblgFine Fine grid
-    @param[in] a_eblgCoar Coarse grid
-  */
-  void defineGrids(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoar);
-
-  /*!
-    @brief Define data holders. 
-  */
-  void defineBuffers();
+  void defineLevelStencils();
 
   /*!
     @brief Define stencils for interpolation across the EBCF refinement boundary. 
@@ -171,40 +199,9 @@ protected:
   void defineStencilsEBCF();
 
   /*!
-    @brief Build the AggStencil objects for faster stencil aggregation
+    @brief Make masks
   */
-  void makeAggStencils();
-
-  /*!
-    @brief Build an interpolation stencil
-    @param[out] a_stencilFine    Fine-grid stencil
-    @param[out] a_stencilCoar    Coarse-grid stencil
-    @param[in]  a_dataLocation   Data location
-    @param[in]  a_ghostVofFine   Ghost cell which is to be filled on the coarse grid. 
-    @param[in]  a_ghostVofCoar   Vof corresponding to a_ghostVofFine on the coarse grid
-    @param[in]  a_ebisBoxFine    Fine grid EBISBox
-    @param[in]  a_ebisBxoCoar    Coarse grid EBISBox
-    @param[in]  a_validFineCells Fine-grid region which we are allowed to use in the interpolation. 
-    @param[in]  a_validCoarCells Coarse-grid region which we are allowed to use in the interpolation. 
-    @param[in]  a_dxFine         Grid resolution on the fine level
-    @param[in]  a_dxCoar         Grid resolution on the coarse level
-    @param[in]  a_order          Interpolation order
-    @param[in]  a_weight         Equation weighting for least squares reconstruction. 
-    @return Returns true if a stencil was found, in which case it is defined in a_stencilFine and a_stencilCoar. 
-  */
-  bool getStencil(VoFStencil&            a_stencilFine,
-		  VoFStencil&            a_stencilCoar,
-		  const CellLocation&    a_dataLocation,
-		  const VolIndex&        a_ghostVofFine,
-		  const VolIndex&        a_ghostVofCoar,
-		  const EBISBox&         a_ebisboxFine,
-		  const EBISBox&         a_ebisboxCoar,
-		  const DenseIntVectSet& a_validFineCells,
-		  const DenseIntVectSet& a_validCoarCells,
-		  const Real&            a_dxFine,
-		  const Real&            a_dxCoar,
-		  const int&             a_order,
-		  const int&             a_weight);
+  void defineMasks();
 };
 
 #include <CD_NamespaceFooter.H>
