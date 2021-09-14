@@ -996,7 +996,7 @@ void AmrMesh::computeGradient(LevelData<EBCellFAB>&       a_gradient,
   
   const RefCountedPtr<EBGradient>& gradientOp = m_realms[a_realm]->getGradientOp(a_phase)[a_lvl];
   
-  gradientOp->computeGradient(a_gradient, a_phi);
+  gradientOp->computeLevelGradient(a_gradient, a_phi);
 }
 
 void AmrMesh::computeGradient(EBAMRCellData&           a_gradient,
@@ -1012,7 +1012,17 @@ void AmrMesh::computeGradient(EBAMRCellData&           a_gradient,
   CH_assert(a_phi     [0]->nComp() == 1       );
 
   for (int lvl = 0; lvl <= m_finestLevel; lvl++){
-    this->computeGradient(*a_gradient[lvl], *a_phi[lvl], a_realm, a_phase, lvl);
+
+    const RefCountedPtr<EBGradient>& gradientOp = m_realms[a_realm]->getGradientOp(a_phase)[lvl];
+
+    const bool hasFine = lvl < m_finestLevel;
+
+    if(hasFine){
+      gradientOp->computeAMRGradient(*a_gradient[lvl], *a_phi[lvl], *a_phi[lvl+1]);
+    }
+    else{
+      gradientOp->computeLevelGradient(*a_gradient[lvl], *a_phi[lvl]);
+    }
   }
 }
 
@@ -1290,6 +1300,36 @@ void AmrMesh::interpGhost(MFAMRCellData& a_data, const std::string a_realm) cons
   if(!ebisSol.isNull()) this->interpGhost(aliasSol, a_realm, phase::solid);
 }
 
+void AmrMesh::interpGhostPwl(MFAMRCellData& a_data, const std::string a_realm) const {
+  CH_TIME("AmrMesh::interpGhostPwl(MFAMRCellData, string)");
+  if(m_verbosity > 3){
+    pout() << "AmrMesh::interpGhostPwl(MFAMRCellData, string)" << endl;
+  }
+
+  if(!this->queryRealm(a_realm)) {
+    std::string str = "AmrMesh::interpGhostPwl(MFAMRCellData, string) - could not find realm '" + a_realm + "'";
+    MayDay::Abort(str.c_str());
+  }
+
+  // Do aliasing
+  EBAMRCellData aliasGas(1 + m_finestLevel);
+  EBAMRCellData aliasSol(1 + m_finestLevel);
+
+  const RefCountedPtr<EBIndexSpace>& ebisGas = m_realms[a_realm]->getEBIndexSpace(phase::gas);
+  const RefCountedPtr<EBIndexSpace>& ebisSol = m_realms[a_realm]->getEBIndexSpace(phase::solid);
+  
+  for (int lvl = 0; lvl <= m_finestLevel; lvl++){
+    aliasGas[lvl] = RefCountedPtr<LevelData<EBCellFAB> > (new LevelData<EBCellFAB>());
+    aliasSol[lvl] = RefCountedPtr<LevelData<EBCellFAB> > (new LevelData<EBCellFAB>());
+      
+    if(!ebisGas.isNull()) MultifluidAlias::aliasMF(*aliasGas[lvl], phase::gas,   *a_data[lvl]);
+    if(!ebisSol.isNull()) MultifluidAlias::aliasMF(*aliasSol[lvl], phase::solid, *a_data[lvl]);
+  }
+
+  if(!ebisGas.isNull()) this->interpGhostPwl(aliasGas, a_realm, phase::gas);
+  if(!ebisSol.isNull()) this->interpGhostPwl(aliasSol, a_realm, phase::solid);
+}
+
 void AmrMesh::interpGhostPwl(EBAMRCellData& a_data, const std::string a_realm, const phase::which_phase a_phase) const {
   CH_TIME("AmrMesh::interpGhostPwl(EBAMRCellData, string, phase::which_phase)");
   if(m_verbosity > 3){
@@ -1312,6 +1352,57 @@ void AmrMesh::interpGhostPwl(EBAMRCellData& a_data, const std::string a_realm, c
 
   for (int lvl = 0; lvl <= m_finestLevel; lvl++){
     a_data[lvl]->exchange();
+  }
+}
+
+void AmrMesh::interpGhostMG(MFAMRCellData& a_data, const std::string a_realm) const {
+  CH_TIME("AmrMesh::interpGhostMG(MFAMRCellData, string)");
+  if(m_verbosity > 3){
+    pout() << "AmrMesh::interpGhostMG(MFAMRCellData, string)" << endl;
+  }
+
+  if(!this->queryRealm(a_realm)) {
+    std::string str = "AmrMesh::interpGhostMG(MFAMRCellData, string) - could not find realm '" + a_realm + "'";
+    MayDay::Abort(str.c_str());
+  }
+
+  // Do aliasing
+  EBAMRCellData aliasGas(1 + m_finestLevel);
+  EBAMRCellData aliasSol(1 + m_finestLevel);
+
+  const RefCountedPtr<EBIndexSpace>& ebisGas = m_realms[a_realm]->getEBIndexSpace(phase::gas);
+  const RefCountedPtr<EBIndexSpace>& ebisSol = m_realms[a_realm]->getEBIndexSpace(phase::solid);
+  
+  for (int lvl = 0; lvl <= m_finestLevel; lvl++){
+    aliasGas[lvl] = RefCountedPtr<LevelData<EBCellFAB> > (new LevelData<EBCellFAB>());
+    aliasSol[lvl] = RefCountedPtr<LevelData<EBCellFAB> > (new LevelData<EBCellFAB>());
+      
+    if(!ebisGas.isNull()) MultifluidAlias::aliasMF(*aliasGas[lvl], phase::gas,   *a_data[lvl]);
+    if(!ebisSol.isNull()) MultifluidAlias::aliasMF(*aliasSol[lvl], phase::solid, *a_data[lvl]);
+  }
+
+  if(!ebisGas.isNull()) this->interpGhostMG(aliasGas, a_realm, phase::gas);
+  if(!ebisSol.isNull()) this->interpGhostMG(aliasSol, a_realm, phase::solid);
+}
+
+void AmrMesh::interpGhostMG(EBAMRCellData& a_data, const std::string a_realm, const phase::which_phase a_phase) const {
+  CH_TIME("AmrMesh::interpGhostPwl(EBAMRCellData, string, phase::which_phase)");
+  if(m_verbosity > 3){
+    pout() << "AmrMesh::interpGhostPwl(EBAMRCellData, string, phase::which_phase)" << endl;
+  }
+
+  if(!this->queryRealm(a_realm)) {
+    std::string str = "AmrMesh::interpGhostPwl(ebamrcell, Realm, phase) - could not find realm '" + a_realm + "'";
+    MayDay::Abort(str.c_str());
+  }
+
+
+  for (int lvl = 1; lvl <= m_finestLevel; lvl++){
+    const int nComps = a_data[lvl]->nComp();
+
+    RefCountedPtr<EBMultigridInterpolator>& interpolator = m_realms[a_realm]->getMultigridInterpolator(a_phase)[lvl];
+
+    interpolator->coarseFineInterp(*a_data[lvl], *a_data[lvl-1], Interval(0, nComps-1));
   }
 }
 
