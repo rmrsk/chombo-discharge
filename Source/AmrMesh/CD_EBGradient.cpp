@@ -510,6 +510,32 @@ void EBGradient::defineStencilsEBCF(){
     BaseIVFAB<VoFStencil>& fineStencils  = m_ebcfStencilsFine[dit()];
     
     const DenseIntVectSet& invalidRegion = m_invalidRegion   [dit()];
+    
+    const Box stencilBoxCoar = invalidRegion.box();
+    const Box stencilBoxFine = refine(cellBox, m_refRat); 
+
+    // Make a map of all the valid cells on the coarse level and the fine level. Here, if a cell in m_invalidRegion
+    // is "true", then it means that the cell is covered by a finer grid cell. 
+    DenseIntVectSet validCellsCoar = DenseIntVectSet(stencilBoxCoar, false);
+    DenseIntVectSet validCellsFine = DenseIntVectSet(stencilBoxFine, false);
+
+    for (DenseIntVectSetIterator divs(invalidRegion); divs.ok(); ++divs){
+      const IntVect iv = divs();
+
+      // NOTE: This assumes that we have data in the ghost cells in m_bufferFiCo!!! 
+      if(!invalidRegion[iv]){
+	validCellsCoar |= iv;
+      }
+    }
+
+    for (BoxIterator bit(stencilBoxFine); bit.ok(); ++bit){
+      const IntVect fineIV = bit();
+      const IntVect coarIV = coarsen(fineIV, m_refRat);
+
+      if(invalidRegion[coarIV]){
+	validCellsFine |= fineIV;
+      }
+    }
 
     for (vofitEBCF.reset(); vofitEBCF.ok(); ++vofitEBCF){
       const VolIndex& vof = vofitEBCF();
@@ -530,8 +556,8 @@ void EBGradient::defineStencilsEBCF(){
 						    m_dataLocation,
 						    ebisBox,
 						    ebisBoxFine,
-						    DenseIntVectSet(),
-						    DenseIntVectSet(),
+						    validCellsCoar,
+						    validCellsFine,
 						    m_dx,
 						    m_dxFine,
 						    order,
@@ -647,9 +673,14 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
     
   // Get all coarse cells within radius 1.
   constexpr int radius = 1;
-  
+
+  // Get coar vofs in range. 
   Vector<VolIndex> coarVoFs = VofUtils::getVofsInRadius(a_vofCoar, a_ebisBoxCoar, radius, VofUtils::Connectivity::MonotonePath, false);
-  
+
+  // Get the fine vofs corresponding to a refinment of a_vofCoar.   
+  Vector<VolIndex> refinedCoarVof = a_ebisBoxCoar.refine(a_vofCoar);
+  Vector<VolIndex> fineVoFs;
+
 
   const int numEquations = coarVoFs.size();
   const int numUnknowns  = LeastSquares::getTaylorExpansionSize(a_order) - 1; // The "-1" is because we know the value at the coarse vof.
