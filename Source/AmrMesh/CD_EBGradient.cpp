@@ -24,6 +24,8 @@
 #include <CD_LoadBalancing.H>
 #include <CD_NamespaceHeader.H>
 
+#define USE_SINGLE_STENCIL 0
+
 constexpr int EBGradient::m_comp;
 constexpr int EBGradient::m_nComp;
 
@@ -169,7 +171,6 @@ void EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
 
     // Have required data. 
     a_phiFine.copyTo(m_bufferFiCo);
-    m_bufferFiCo.exchange();
 
     for (DataIterator dit(dbl); dit.ok(); ++dit){
       EBCellFAB&       grad    = a_gradient  [dit()];
@@ -390,8 +391,16 @@ void EBGradient::defineBuffers(){
   // Define data for holding fine-grid data on the coarse layout. We assume that we only need valid fine-level data so we
   // don't care about having ghost cells here.
   const DisjointBoxLayout& dblFiCo   = m_eblgFiCo.getDBL();
-  const EBISLayout&        ebislFiCo = m_eblgFiCo.getEBISL();  
-  m_bufferFiCo.define(dblFiCo, m_nComp, IntVect::Zero, EBCellFactory(ebislFiCo));
+  const EBISLayout&        ebislFiCo = m_eblgFiCo.getEBISL();
+
+
+  Vector<Box> grownBoxes = dblFiCo.boxArray();
+  for (int i = 0; i < grownBoxes.size(); i++){
+    grownBoxes[i].grow(m_refRat);
+  }
+
+  m_layoutFiCo.define(grownBoxes, dblFiCo.procIDs());
+  m_bufferFiCo.define(m_layoutFiCo, m_nComp, EBCellFactory(ebislFiCo));
 
   for (DataIterator dit(dblFiCo); dit.ok(); ++dit){
     m_bufferFiCo[dit()].setVal(0.0);
@@ -512,7 +521,7 @@ void EBGradient::defineStencilsEBCF(){
     const DenseIntVectSet& invalidRegion = m_invalidRegion   [dit()];
     
     const Box stencilBoxCoar = invalidRegion.box();
-    const Box stencilBoxFine = refine(cellBox, m_refRat); 
+    const Box stencilBoxFine = refine(stencilBoxCoar, m_refRat); 
 
     // Make a map of all the valid cells on the coarse level and the fine level. Here, if a cell in m_invalidRegion
     // is "true", then it means that the cell is covered by a finer grid cell. 
@@ -522,18 +531,13 @@ void EBGradient::defineStencilsEBCF(){
     for (DenseIntVectSetIterator divs(invalidRegion); divs.ok(); ++divs){
       const IntVect iv = divs();
 
-      // NOTE: This assumes that we have data in the ghost cells in m_bufferFiCo!!! 
-      if(!invalidRegion[iv]){
-	validCellsCoar |= iv;
+      if(invalidRegion[iv]){
+	Box bx(iv, iv);
+	bx.refine(m_refRat);
+	validCellsFine |= bx;
       }
-    }
-
-    for (BoxIterator bit(stencilBoxFine); bit.ok(); ++bit){
-      const IntVect fineIV = bit();
-      const IntVect coarIV = coarsen(fineIV, m_refRat);
-
-      if(invalidRegion[coarIV]){
-	validCellsFine |= fineIV;
+      else{
+	validCellsCoar |= iv;
       }
     }
 
@@ -554,8 +558,9 @@ void EBGradient::defineStencilsEBCF(){
 						    fineStencil,
 						    vof,
 						    m_dataLocation,
-						    ebisBox,
-						    ebisBoxFine,
+						    ebisl,
+						    ebislFine,
+						    dit(),
 						    validCellsCoar,
 						    validCellsFine,
 						    m_dx,
@@ -566,9 +571,10 @@ void EBGradient::defineStencilsEBCF(){
       }
 
       // As a last-ditch effort, get a finite difference stencil. 
-      if(!foundStencil){
-	this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
-      }
+      // if(!foundStencil){
+      // 	std::cout << "shit, all stencils dropped order" << std::endl;
+      // 	this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
+      // }
     }
   }  
 }
@@ -656,8 +662,9 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
 					VoFStencil&            a_stencilFine,
 					const VolIndex&        a_vofCoar,
 					const CellLocation&    a_dataLocation,
-					const EBISBox&         a_ebisBoxCoar,
-					const EBISBox&         a_ebisBoxFine,					
+					const EBISLayout&      a_ebislCoar,
+					const EBISLayout&      a_ebislFine,
+					const DataIndex&       a_dit,					
 					const DenseIntVectSet& a_validCellsCoar,
 					const DenseIntVectSet& a_validCellsFine,					
 					const Real&            a_dxCoar,
@@ -670,36 +677,91 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
 
   a_stencilCoar.clear();
   a_stencilFine.clear();
+
+  const EBISBox& ebisBoxCoar = a_ebislCoar[a_dit];
+  const EBISBox& ebisBoxFine = a_ebislFine[a_dit];  
     
   // Get all coarse cells within radius 1.
-  constexpr int radius = 1;
+  const int coarRadius = 1;
+  const int fineRadius = m_refRat;
 
-  // Get coar vofs in range. 
-  Vector<VolIndex> coarVoFs = VofUtils::getVofsInRadius(a_vofCoar, a_ebisBoxCoar, radius, VofUtils::Connectivity::MonotonePath, false);
-
-  // Get the fine vofs corresponding to a refinment of a_vofCoar.   
-  Vector<VolIndex> refinedCoarVof = a_ebisBoxCoar.refine(a_vofCoar);
+  // Get coar vofs in range. The fine VoFs are defined as the VoFs that are available through refinement of the coarse vofs. 
+  Vector<VolIndex> coarVoFs = VofUtils::getVofsInRadius(a_vofCoar, ebisBoxCoar, coarRadius, VofUtils::Connectivity::MonotonePath, false);
   Vector<VolIndex> fineVoFs;
+  for (int i = 0; i < coarVoFs.size(); i++){
+    fineVoFs.append(a_ebislCoar.refine(coarVoFs[i], m_refRat, a_dit));
+  }
 
+  // Only unique, in case something went wrong. 
+  VofUtils::onlyUnique(coarVoFs);
+  VofUtils::onlyUnique(fineVoFs);  
 
-  const int numEquations = coarVoFs.size();
-  const int numUnknowns  = LeastSquares::getTaylorExpansionSize(a_order) - 1; // The "-1" is because we know the value at the coarse vof.
+  // Only include fine VoFs that lie with a_validCellsFine.
+  VofUtils::includeCells(coarVoFs, a_validCellsCoar);  
+  VofUtils::includeCells(fineVoFs, a_validCellsFine);  
+
+  // See if we have enough cells to solve the system of equations.
+  const int numEquations = fineVoFs.size() + coarVoFs.size();
+  const int numUnknowns  = LeastSquares::getTaylorExpansionSize(a_order) - 1;
 
   if(numEquations > numUnknowns){
 
     // Build the displacement vectors
+    Vector<RealVect> fineDisplacements;
     Vector<RealVect> coarDisplacements;
+    
     for (const auto& coarVoF : coarVoFs.stdVector()){
-      coarDisplacements.push_back(LeastSquares::displacement(a_dataLocation, a_dataLocation, a_vofCoar, coarVoF, a_ebisBoxCoar, a_dxCoar));
+      coarDisplacements.push_back(LeastSquares::displacement(a_dataLocation, a_dataLocation, a_vofCoar, coarVoF, ebisBoxCoar, a_dxCoar));
     }
 
-    // These are the unknown terms that we want stencils for. 
-    IntVectSet knownTerms;
-    knownTerms |= IntVect::Zero;
+    for (const auto& fineVoF : fineVoFs.stdVector()){
+      fineDisplacements.push_back(LeastSquares::displacement(a_dataLocation, a_dataLocation, a_vofCoar, fineVoF, ebisBoxCoar, ebisBoxFine, a_dxCoar, a_dxFine));
+    }    
 
     // Now solve the least squares system for the gradient at the input VoF. After this we have found an expression which minimizes the
-    // truncation error in the neighborhood of the VoF.    
-    const VoFStencil lsqStencil = LeastSquares::computeGradSten(coarVoFs, coarDisplacements, a_weight, a_order, knownTerms);
+    // truncation error in the neighborhood of the VoF. The result is is a two-level stencil consisting of cells on both the fine and
+    // the coarse levels.
+    // These are the unknown terms that we want stencils for.
+    IntVectSet derivTerms;
+    IntVectSet knownTerms;
+
+    for (int dir = 0; dir < SpaceDim; dir++){
+      derivTerms |= BASISV(dir);
+    }
+    knownTerms |= IntVect::Zero;
+    
+    const std::map<IntVect, std::pair<VoFStencil, VoFStencil> > stencils = LeastSquares::computeDualLevelStencils<float>(derivTerms,
+															 knownTerms,
+															 fineVoFs,
+															 coarVoFs,
+															 fineDisplacements,
+															 coarDisplacements,
+															 a_weight,
+															 a_order);
+    // LeastSquares returns a map over all derivatives (unknowns) in the Taylor series. These are stored
+    // as IntVects so that IntVect(1,1) = d^2/(dxdy) and so on. We are after IntVect(1,0) = d/dx, IntVect(0,1) = d/dy. We fetch
+    // those and place them in a_stencilFine and a_stencilCoar. We encode the direction in the stencil variable (in a_stencilFine) and
+    // a_stencilCoar. 
+    for (int dir = 0; dir < SpaceDim; dir++){
+      const IntVect deriv = BASISV(dir);
+
+      const VoFStencil& fineDerivStencil = stencils.at(deriv).first;
+      const VoFStencil& coarDerivStencil = stencils.at(deriv).second;
+
+      for (int i = 0; i < fineDerivStencil.size(); i++){
+	const VolIndex& vof    = fineDerivStencil.vof   (i);
+	const Real&     weight = fineDerivStencil.weight(i);
+
+	a_stencilFine.add(vof, weight, dir);
+      }
+
+      for (int i = 0; i < coarDerivStencil.size(); i++){
+	const VolIndex& vof    = coarDerivStencil.vof   (i);
+	const Real&     weight = coarDerivStencil.weight(i);
+
+	a_stencilCoar.add(vof, weight, dir);
+      }
+    }
 
 
     // We have modified the right-hand side of the least squares system by pruning a_vofCoar from the system of equations (it's value is known). So,
@@ -711,30 +773,36 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
     // 
     // where f(x) = phi(a_vofCoar). LeastSquares::computeGradSten does not case about the modified right-hand side and the stencils it returns
     // only account for f(x0), f(x1) etc. We need to add in the contribution from a_vofCoar, which is fortunately just the sum of the weights for 
-    // each derivative. 
-
+    // each derivative.     
     for (int dir = 0; dir < SpaceDim; dir++){
-      Real coarVofWeight = 0.0;
-
-      for (int i = 0; i < lsqStencil.size(); i++){
-	const int  curVar    = lsqStencil.variable(i);
-	const Real curWeight = lsqStencil.weight(i);
-
-	if(curVar == dir){
-	  coarVofWeight += curWeight;
+	Real coarVofWeight = 0.0;
+	
+	for (int i = 0; i < a_stencilFine.size(); i++){
+	  const int  curVar    = a_stencilFine.variable(i);
+	  const Real curWeight = a_stencilFine.weight(i);
+	  
+	  if(curVar == dir){
+	    coarVofWeight += curWeight;
+	  }
 	}
-      }
 
-      a_stencilCoar.add(a_vofCoar, -1.0*coarVofWeight, dir);
-    }
+	for (int i = 0; i < a_stencilCoar.size(); i++){
+	  const int  curVar    = a_stencilCoar.variable(i);
+	  const Real curWeight = a_stencilCoar.weight(i);
+	  
+	  if(curVar == dir){
+	    coarVofWeight += curWeight;
+	  }
+	}	
+	
+	a_stencilCoar.add(a_vofCoar, -1.0*coarVofWeight, dir);
+      }          
 
-    // Found the stencil. 
-    a_stencilCoar += lsqStencil;
-
-    foundStencil = true;
+    foundStencil = true;    
   }
   else{
-    //    MayDay::Warning("Not enough equations!");
+    std::cout  << coarVoFs.size() << "\t" << fineVoFs.size() << std::endl;
+    //    std::cout << numEquations << "\t" << numUnknowns << std::endl;
     foundStencil = false;
   }
 

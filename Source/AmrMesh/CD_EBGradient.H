@@ -133,9 +133,14 @@ protected:
   EBLevelGrid m_eblgFiCo;
 
   /*!
+    @brief FiCo layout
+  */
+  BoxLayout m_layoutFiCo;
+
+  /*!
     @brief Buffer for putting fine-grid data on the coarse-grid layout
   */
-  mutable LevelData<EBCellFAB> m_bufferFiCo;
+  mutable BoxLayoutData<EBCellFAB> m_bufferFiCo;
 
   /*!
     @brief True if we have a finer level (m_eblgFine is defined)
@@ -269,8 +274,9 @@ protected:
 			      VoFStencil&            a_stencilFine,
 			      const VolIndex&        a_vofCoar,
 			      const CellLocation&    a_dataLocation,
-			      const EBISBox&         a_ebisBoxCoar,
-			      const EBISBox&         a_ebisBoxFine,			      
+			      const EBISLayout&      a_ebislCoar,
+			      const EBISLayout&      a_ebislFine,
+			      const DataIndex&       a_dit,
 			      const DenseIntVectSet& a_validCellsCoar,
 			      const DenseIntVectSet& a_validCellsFine,
 			      const Real&            a_dxCoar,
