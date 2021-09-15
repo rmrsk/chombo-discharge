@@ -508,7 +508,8 @@ void EBGradient::defineStencilsEBCF(){
     VoFIterator&           vofitEBCF     = m_ebcfIterator    [dit()];
     BaseIVFAB<VoFStencil>& coarStencils  = m_ebcfStencilsCoar[dit()];
     BaseIVFAB<VoFStencil>& fineStencils  = m_ebcfStencilsFine[dit()];
-    const DenseIntVectSet& invalidRegion = m_invalidRegion   [dit()];            
+    
+    const DenseIntVectSet& invalidRegion = m_invalidRegion   [dit()];
 
     for (vofitEBCF.reset(); vofitEBCF.ok(); ++vofitEBCF){
       const VolIndex& vof = vofitEBCF();
@@ -519,22 +520,29 @@ void EBGradient::defineStencilsEBCF(){
       coarStencil.clear();
       fineStencil.clear();
 
-#if 0
-      this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
-#else
-      this->getLeastSquaresStencil(coarStencil,
-				   fineStencil,
-				   vof,
-				   m_dataLocation,
-				   ebisBox,
-				   ebisBoxFine,
-				   DenseIntVectSet(),
-				   DenseIntVectSet(),
-				   m_dx,
-				   m_dxFine,
-				   1,
-				   m_weighting);
-#endif
+      int  order        = m_order;
+      bool foundStencil = false;
+
+      while(order > 0 && !foundStencil){
+	foundStencil = this->getLeastSquaresStencil(coarStencil,
+						    fineStencil,
+						    vof,
+						    m_dataLocation,
+						    ebisBox,
+						    ebisBoxFine,
+						    DenseIntVectSet(),
+						    DenseIntVectSet(),
+						    m_dx,
+						    m_dxFine,
+						    order,
+						    m_weighting);
+	order--;
+      }
+
+      // As a last-ditch effort, get a finite difference stencil. 
+      if(!foundStencil){
+	this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
+      }
     }
   }  
 }
@@ -545,6 +553,8 @@ bool EBGradient::getFiniteDifferenceStencil(VoFStencil&            a_stencil,
 					    const DenseIntVectSet& a_invalidRegion,
 					    const Real             a_dx){
   CH_TIME("EBGradient::getFiniteDifferenceStencil");
+
+  a_stencil.clear();
 
   bool foundStencil = false;
 
@@ -693,9 +703,11 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
     foundStencil = true;
   }
   else{
-    MayDay::Warning("Not enough equations!");
+    //    MayDay::Warning("Not enough equations!");
     foundStencil = false;
   }
+
+  return foundStencil;
 }
 
 #include <CD_NamespaceFooter.H>
