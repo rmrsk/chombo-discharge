@@ -595,13 +595,12 @@ void EBGradient::defineStencilsEBCF(){
 
       if(!foundStencil){
 	coarStencil.clear();
-	fineStencil.clear();	
+	fineStencil.clear();
+
+	this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
+
+	MayDay::Warning("CD_EBGradient::defineStencilsEBCF -- could not find stencil!");
       }
-      // As a last-ditch effort, get a finite difference stencil. 
-      // if(!foundStencil){
-      // 	std::cout << "shit, all stencils dropped order" << std::endl;
-      // 	this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
-      // }
     }
   }  
 }
@@ -830,7 +829,6 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
   }
   else{
     std::cout  << coarVoFs.size() << "\t" << fineVoFs.size() << std::endl;
-    //    std::cout << numEquations << "\t" << numUnknowns << std::endl;
     foundStencil = false;
   }
 
