@@ -11,6 +11,7 @@
 
 // Chombo includes
 #include <ParmParse.H>
+#include <EBCellFactory.H>
 #include <EBArith.H>
 #include <CH_Timer.H>
 
@@ -18,6 +19,8 @@
 #include <CD_Timer.H>
 #include <CD_EBGradient.H>
 #include <CD_gradientF_F.H>
+#include <CD_LeastSquares.H>
+#include <CD_VofUtils.H>
 #include <CD_LoadBalancing.H>
 #include <CD_NamespaceHeader.H>
 
@@ -61,12 +64,21 @@ EBGradient::EBGradient(const EBLevelGrid& a_eblg,
   timer.stopEvent("Define level stencils");
 
   if(m_hasFine){
-    timer.startEvent("Define masks");
+    timer.startEvent("EBCF buffers");
+    this->defineBuffers();
+    timer.stopEvent("EBCF buffers");
+    
+    timer.startEvent("EBCF masks");
     this->defineMasks();
-    timer.stopEvent("Define masks");        
-    timer.startEvent("Define EBCF stencils");    
+    timer.stopEvent("EBCF masks");
+
+    timer.startEvent("EBCF Iterators");
+    this->defineIteratorsEBCF();
+    timer.stopEvent("EBCF Iterators");
+    
+    timer.startEvent("EBCF stencils");    
     this->defineStencilsEBCF();
-    timer.stopEvent("Define EBCF stencils");    
+    timer.stopEvent("EBCF stencils");    
   }
 
   ParmParse pp("EBGradient");
@@ -138,10 +150,10 @@ void EBGradient::computeLevelGradient(LevelData<EBCellFAB>&       a_gradient,
   }
 }
 
-
-void EBGradient::computeGradient(LevelData<EBCellFAB>&       a_gradient,
-				 const LevelData<EBCellFAB>& a_phi) const {
-  CH_TIME("EBGradient::computeGradient(no finer)");
+void EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
+				    const LevelData<EBCellFAB>& a_phi,
+				    const LevelData<EBCellFAB>& a_phiFine) const {
+  CH_TIME("EBGradient::computeAMRGradient(no finer)");
 
   this->computeLevelGradient(a_gradient, a_phi);
 
@@ -150,27 +162,48 @@ void EBGradient::computeGradient(LevelData<EBCellFAB>&       a_gradient,
 
     const DisjointBoxLayout& dbl = m_eblg.getDBL();
 
+    // Copy fine data to buffer data. 
     for (DataIterator dit(dbl); dit.ok(); ++dit){
-      EBCellFAB&       grad = a_gradient[dit()];
-      const EBCellFAB& phi  = a_phi[dit()];
+      m_bufferFiCo[dit()].setVal(std::numeric_limits<Real>::max());
+    }
+
+    // Have required data. 
+    a_phiFine.copyTo(m_bufferFiCo);
+    m_bufferFiCo.exchange();
+
+    for (DataIterator dit(dbl); dit.ok(); ++dit){
+      EBCellFAB&       grad    = a_gradient  [dit()];
+      const EBCellFAB& phi     = a_phi       [dit()];
+      const EBCellFAB& phiFine = m_bufferFiCo[dit()];      
 
       // Do corrections near the EBCF. 
       VoFIterator& vofit = m_ebcfIterator[dit()];
       for (vofit.reset(); vofit.ok(); ++vofit){
 	const VolIndex&   vof  = vofit();
-	const VoFStencil& sten = m_ebcfStencils[dit()](vof, m_comp);
+	const VoFStencil& stencilCoar = m_ebcfStencilsCoar[dit()](vof, m_comp);
+	const VoFStencil& stencilFine = m_ebcfStencilsFine[dit()](vof, m_comp);	
 
 	for (int dir = 0; dir < SpaceDim; dir++){
 	  grad(vof, dir) = 0.0;
 	}
 
-	for (int i = 0; i < sten.size(); i++){
-	  const VolIndex& ivof    = sten.vof(i);
-	  const Real&     iweight = sten.weight(i);
-	  const int&      ivar    = sten.variable(i); // Note: For the gradient stencil the component is the direction. 
+	// Apply coarse stencil
+	for (int i = 0; i < stencilCoar.size(); i++){
+	  const VolIndex& ivof    = stencilCoar.vof(i);
+	  const Real&     iweight = stencilCoar.weight(i);
+	  const int&      ivar    = stencilCoar.variable(i); // Note: For the gradient stencil the component is the direction. 
 
 	  grad(vof, ivar) += phi(ivof, m_comp)*iweight;
-	}	
+	}
+
+	// Apply the fine stencil.
+	for (int i = 0; i < stencilFine.size(); i++){
+	  const VolIndex& ivof    = stencilFine.vof(i);
+	  const Real&     iweight = stencilFine.weight(i);
+	  const int&      ivar    = stencilFine.variable(i);
+
+	  grad(vof, ivar) += phiFine(ivof, m_comp)*iweight;	  
+	}
       }
     }
   }
@@ -226,151 +259,6 @@ void EBGradient::defineLevelStencils(){
 	VoFStencil derivDirStencil;
 	EBArith::getFirstDerivStencilWidthOne(derivDirStencil, vof, ebisbox, dir, m_dx, nullptr, dir);
 	stencil += derivDirStencil;	
-      }
-    }
-  }
-}
-
-void EBGradient::defineStencilsEBCF(){
-  CH_TIME("EBGradient::defineLevelStencils");
-
-  const DisjointBoxLayout& dbl        = m_eblg.    getDBL();
-  const DisjointBoxLayout& dblFine    = m_eblgFine.getDBL();
-  
-  const EBISLayout&        ebisl      = m_eblg.    getEBISL();
-  const EBISLayout&        ebislFine  = m_eblgFine.getEBISL();
-  
-  const ProblemDomain&     domain     = m_eblg.    getDomain();
-  const ProblemDomain&     domainFine = m_eblgFine.getDomain();
-
-  // Define iterators and stencils for EBCF
-  m_ebcfStencils.define(dbl);
-  m_ebcfIterator.define(dbl);  
-
-  for (DataIterator dit(dbl); dit.ok(); ++dit){
-    const Box      cellBox = dbl  [dit()];
-    const EBISBox& ebisBox = ebisl[dit()];
-    const EBGraph& ebgraph = ebisBox.getEBGraph();
-
-    const bool isAllRegular = ebisBox.isAllRegular();
-    const bool isAllCovered = ebisBox.isAllCovered();
-    const bool isIrregular  = !isAllRegular && !isAllCovered;
-
-    const DenseIntVectSet& coarseFineRegion = m_coarseFineRegion[dit()];
-    const DenseIntVectSet& invalidRegion    = m_invalidRegion   [dit()];    
-
-    // Determine cells where we need to drop order. 
-    IntVectSet ebcfIVS;
-    if(isIrregular){
-
-      // Iterate through the coarse-fine region and check if the finite difference stencil reaches into a cut-cell.
-      for (DenseIntVectSetIterator divsIt(coarseFineRegion); divsIt.ok(); ++divsIt){
-	const IntVect iv = divsIt();
-
-	// Get all the vofs in this cell and check if we can use centered differencing in them. We can do this
-	bool needSpecialStencil = false;
-	
-	const Vector<VolIndex> vofs = ebisBox.getVoFs(iv);
-	for (int i = 0; i < vofs.size(); i++){
-	  const VolIndex& vof = vofs[i];
-
-	  // Get a regular finite-difference stencil for cell-centered data. 
-	  VoFStencil gradSten;
-	  for (int dir = 0; dir < SpaceDim; dir++){
-	    
-	    VoFStencil derivSten;
-	    EBArith::getFirstDerivStencilWidthOne(derivSten, vof, ebisBox, dir, m_dx, nullptr, dir);
-	    gradSten += derivSten;
-	  }
-
-	  // Check if we reach into stuff we shouldn't.
-	  for (int j = 0; j < gradSten.size(); j++){
-	    const VolIndex& ivof = gradSten.vof(j);
-	    const IntVect   gid  = ivof.gridIndex();
-	      
-	    const bool isCoveredByFinerCell = invalidRegion[gid];
-	    const bool isIrregularCell      = ebisBox.isIrregular(gid);
-
-	    if(isCoveredByFinerCell && isIrregularCell){
-	      needSpecialStencil = true;
-	    }
-	  }
-	}
-
-	if(needSpecialStencil){
-	  ebcfIVS |= iv;
-	}
-      }
-    }
-
-    // Define the iterator and stencils for places where we need to drop order. 
-    VoFIterator&           vofitEBCF    = m_ebcfIterator[dit()];
-    BaseIVFAB<VoFStencil>& stencilsEBCF = m_ebcfStencils[dit()];
-
-    vofitEBCF.   define(ebcfIVS, ebgraph);
-    stencilsEBCF.define(ebcfIVS, ebgraph, m_nComp);
-
-    for (vofitEBCF.reset(); vofitEBCF.ok(); ++vofitEBCF){
-      const VolIndex& vof = vofitEBCF();
-      const IntVect   iv  = vof.gridIndex();
-      
-      VoFStencil& stencil = stencilsEBCF(vof, m_comp);
-      stencil.clear();
-
-      for (int dir = 0; dir < SpaceDim; dir++){
-	VoFStencil derivStencil;
-	
-	// Check for cells to the low/high side of this one.
-	const IntVect ivLo = iv - BASISV(dir);
-	const IntVect ivHi = iv + BASISV(dir);
-
-	const bool isLoCellCovered    = invalidRegion[ivLo];
-	const bool isHiCellCovered    = invalidRegion[ivHi];
-
-	const bool isLoCellIrregular  = ebisBox.isIrregular(ivLo);
-	const bool isHiCellIrregular  = ebisBox.isIrregular(ivHi);
-
-	const Vector<VolIndex> loVoFs = ebisBox.getVoFs(vof, dir, Side::Lo, 1);
-	const Vector<VolIndex> hiVoFs = ebisBox.getVoFs(vof, dir, Side::Hi, 1);
-
-	const int numLoVoFs = loVoFs.size();
-	const int numHiVoFs = hiVoFs.size();
-
-	const bool useLoCell = (numLoVoFs > 0) && !(isLoCellIrregular && isLoCellCovered);
-	const bool useHiCell = (numHiVoFs > 0) && !(isHiCellIrregular && isHiCellCovered);			
-
-	// Use centered differencing in dir-direction if we can. Otherwise, drop order to forward/backward differences. 
-	if(useLoCell && useHiCell){
-	  for (int i = 0; i < numHiVoFs; i++){
-	    derivStencil.add(hiVoFs[i], 1./numHiVoFs, dir);
-	  }
-
-	  for (int i = 0; i < numLoVoFs; i++){
-	    derivStencil.add(loVoFs[i], -1./numLoVoFs, dir);
-	  }
-
-	  derivStencil *= 1./(2.0*m_dx);
-	}
-	else if(useLoCell){ 
-	  derivStencil.add(vof, 1.0, dir);
-
-	  for (int i = 0; i < numLoVoFs; i++){
-	    derivStencil.add(loVoFs[i], -1./numLoVoFs, dir);
-	  }
-
-	  derivStencil *= 1./m_dx;
-	}
-	else if(useHiCell){ 
-	  derivStencil.add(vof, -1.0, dir);
-
-	  for (int i = 0; i < numHiVoFs; i++){
-	    derivStencil.add(hiVoFs[i], 1./numHiVoFs, dir);
-	  }
-
-	  derivStencil *= 1./m_dx;
-	}
-	
-	stencil += derivStencil;	
       }
     }
   }
@@ -490,22 +378,324 @@ void EBGradient::defineMasks(){
 	invalidRegion |= iv;
       }
     }
-
-#if 1 // Bogus check
-    for (BoxIterator bit(cellBox); bit.ok(); ++bit){
-      const IntVect iv = bit();
-      
-      const DenseIntVectSet& coarseFineRegion = m_coarseFineRegion[dit()];
-      const DenseIntVectSet& invalidRegion    = m_invalidRegion   [dit()];
-
-      
-      if(coarseFineRegion[iv] && invalidRegion[iv]){
-	std::cout << "Logic bust in cell = " << iv << " on domain = " << domain << std::endl;
-      }
-    }
-#endif
   }
 }
 
+void EBGradient::defineBuffers(){
+  CH_TIME("EBGradient::defineBuffers");
+
+  // Refine the coarse grid. 
+  refine(m_eblgFiCo, m_eblg, m_refRat);
+
+  // Define data for holding fine-grid data on the coarse layout. We assume that we only need valid fine-level data so we
+  // don't care about having ghost cells here.
+  const DisjointBoxLayout& dblFiCo   = m_eblgFiCo.getDBL();
+  const EBISLayout&        ebislFiCo = m_eblgFiCo.getEBISL();  
+  m_bufferFiCo.define(dblFiCo, m_nComp, IntVect::Zero, EBCellFactory(ebislFiCo));
+
+  for (DataIterator dit(dblFiCo); dit.ok(); ++dit){
+    m_bufferFiCo[dit()].setVal(0.0);
+  }
+}
+
+void EBGradient::defineIteratorsEBCF(){
+  CH_TIME("EBGradient::defineIteratorsEBCF");
+
+  const DisjointBoxLayout& dbl        = m_eblg.    getDBL();
+  const DisjointBoxLayout& dblFine    = m_eblgFine.getDBL();
+  
+  const EBISLayout&        ebisl      = m_eblg.    getEBISL();
+  const EBISLayout&        ebislFine  = m_eblgFine.getEBISL();
+  
+  const ProblemDomain&     domain     = m_eblg.    getDomain();
+  const ProblemDomain&     domainFine = m_eblgFine.getDomain();
+
+  // Define iterators and stencils for EBCF
+  m_ebcfStencilsCoar.define(dbl);
+  m_ebcfStencilsFine.define(dbl) ; 
+  m_ebcfIterator.    define(dbl);  
+
+  for (DataIterator dit(dbl); dit.ok(); ++dit){
+    const Box      cellBox = dbl  [dit()];
+    const EBISBox& ebisBox = ebisl[dit()];
+    const EBGraph& ebgraph = ebisBox.getEBGraph();
+
+    const bool isAllRegular = ebisBox.isAllRegular();
+    const bool isAllCovered = ebisBox.isAllCovered();
+    const bool isIrregular  = !isAllRegular && !isAllCovered;
+
+    const DenseIntVectSet& coarseFineRegion = m_coarseFineRegion[dit()];
+    const DenseIntVectSet& invalidRegion    = m_invalidRegion   [dit()];    
+
+    // Determine cells where we need to drop order. 
+    IntVectSet ebcfIVS;
+    if(isIrregular){
+
+      // Iterate through the coarse-fine region and check if the finite difference stencil reaches into a cut-cell.
+      for (DenseIntVectSetIterator divsIt(coarseFineRegion); divsIt.ok(); ++divsIt){
+	const IntVect iv = divsIt();
+
+	// Get all the vofs in this cell and check if we can use centered differencing in them. We can do this
+	bool needSpecialStencil = false;
+	
+	const Vector<VolIndex> vofs = ebisBox.getVoFs(iv);
+	for (int i = 0; i < vofs.size(); i++){
+	  const VolIndex& vof = vofs[i];
+
+	  // Get a regular finite-difference stencil for cell-centered data. 
+	  VoFStencil gradSten;
+	  for (int dir = 0; dir < SpaceDim; dir++){
+	    
+	    VoFStencil derivSten;
+	    EBArith::getFirstDerivStencilWidthOne(derivSten, vof, ebisBox, dir, m_dx, nullptr, dir);
+	    gradSten += derivSten;
+	  }
+
+	  // Check if we reach into stuff we shouldn't.
+	  for (int j = 0; j < gradSten.size(); j++){
+	    const VolIndex& ivof = gradSten.vof(j);
+	    const IntVect   gid  = ivof.gridIndex();
+	      
+	    const bool isCoveredByFinerCell = invalidRegion[gid];
+	    const bool isIrregularCell      = ebisBox.isIrregular(gid);
+
+	    if(isCoveredByFinerCell && isIrregularCell){
+	      needSpecialStencil = true;
+	    }
+	  }
+	}
+
+	if(needSpecialStencil){
+	  ebcfIVS |= iv;
+	}
+      }
+    }
+
+    // Define the iterator and stencils for places where we need to drop order. 
+    VoFIterator&           vofitEBCF    = m_ebcfIterator    [dit()];
+    BaseIVFAB<VoFStencil>& stencilsCoar = m_ebcfStencilsCoar[dit()];
+    BaseIVFAB<VoFStencil>& stencilsFine = m_ebcfStencilsFine[dit()];    
+
+    vofitEBCF.   define(ebcfIVS, ebgraph);
+    stencilsCoar.define(ebcfIVS, ebgraph, m_nComp);
+    stencilsFine.define(ebcfIVS, ebgraph, m_nComp);    
+  }
+}
+
+void EBGradient::defineStencilsEBCF(){
+  CH_TIME("EBGradient::defineStencilsEBCF");
+
+  const DisjointBoxLayout& dbl        = m_eblg.    getDBL();
+  const DisjointBoxLayout& dblFine    = m_eblgFiCo.getDBL();
+  
+  const EBISLayout&        ebisl      = m_eblg.    getEBISL();
+  const EBISLayout&        ebislFine  = m_eblgFiCo.getEBISL();
+  
+  const ProblemDomain&     domain     = m_eblg.    getDomain();
+  const ProblemDomain&     domainFine = m_eblgFiCo.getDomain();
+
+  for (DataIterator dit(dbl); dit.ok(); ++dit){
+    const Box      cellBox     = dbl      [dit()];
+    const Box      cellBoxFine = dblFine  [dit()];
+    
+    const EBISBox& ebisBox     = ebisl    [dit()];
+    const EBISBox& ebisBoxFine = ebislFine[dit()];
+    
+    const EBGraph& ebgraph     = ebisBox.    getEBGraph();
+    const EBGraph& ebgraphFine = ebisBoxFine.getEBGraph();    
+
+    // Define the iterator and stencils for places where we need to drop order.
+    VoFIterator&           vofitEBCF     = m_ebcfIterator    [dit()];
+    BaseIVFAB<VoFStencil>& coarStencils  = m_ebcfStencilsCoar[dit()];
+    BaseIVFAB<VoFStencil>& fineStencils  = m_ebcfStencilsFine[dit()];
+    const DenseIntVectSet& invalidRegion = m_invalidRegion   [dit()];            
+
+    for (vofitEBCF.reset(); vofitEBCF.ok(); ++vofitEBCF){
+      const VolIndex& vof = vofitEBCF();
+
+      VoFStencil& coarStencil = coarStencils(vof, m_comp);
+      VoFStencil& fineStencil = fineStencils(vof, m_comp);
+      
+      coarStencil.clear();
+      fineStencil.clear();
+
+#if 0
+      this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
+#else
+      this->getLeastSquaresStencil(coarStencil,
+				   fineStencil,
+				   vof,
+				   m_dataLocation,
+				   ebisBox,
+				   ebisBoxFine,
+				   DenseIntVectSet(),
+				   DenseIntVectSet(),
+				   m_dx,
+				   m_dxFine,
+				   1,
+				   m_weighting);
+#endif
+    }
+  }  
+}
+
+bool EBGradient::getFiniteDifferenceStencil(VoFStencil&            a_stencil,
+					    const VolIndex&        a_vof,
+					    const EBISBox&         a_ebisBox,
+					    const DenseIntVectSet& a_invalidRegion,
+					    const Real             a_dx){
+  CH_TIME("EBGradient::getFiniteDifferenceStencil");
+
+  bool foundStencil = false;
+
+  const IntVect iv = a_vof.gridIndex();
+  
+  for (int dir = 0; dir < SpaceDim; dir++){
+    VoFStencil derivStencil;
+	
+    // Check for cells to the low/high side of this one.
+    const IntVect ivLo = iv - BASISV(dir);
+    const IntVect ivHi = iv + BASISV(dir);
+
+    const bool isLoCellCovered    = a_invalidRegion[ivLo];
+    const bool isHiCellCovered    = a_invalidRegion[ivHi];
+
+    const bool isLoCellIrregular  = a_ebisBox.isIrregular(ivLo);
+    const bool isHiCellIrregular  = a_ebisBox.isIrregular(ivHi);
+
+    const Vector<VolIndex> loVoFs = a_ebisBox.getVoFs(a_vof, dir, Side::Lo, 1);
+    const Vector<VolIndex> hiVoFs = a_ebisBox.getVoFs(a_vof, dir, Side::Hi, 1);
+
+    const int numLoVoFs = loVoFs.size();
+    const int numHiVoFs = hiVoFs.size();
+
+    const bool useLoCell = (numLoVoFs > 0) && !(isLoCellIrregular && isLoCellCovered);
+    const bool useHiCell = (numHiVoFs > 0) && !(isHiCellIrregular && isHiCellCovered);			
+
+    // Use centered differencing in dir-direction if we can. Otherwise, drop order to forward/backward differences. 
+    if(useLoCell && useHiCell){
+      for (int i = 0; i < numHiVoFs; i++){
+	derivStencil.add(hiVoFs[i], 1./numHiVoFs, dir);
+      }
+
+      for (int i = 0; i < numLoVoFs; i++){
+	derivStencil.add(loVoFs[i], -1./numLoVoFs, dir);
+      }
+
+      derivStencil *= 1./(2.0*a_dx);
+    }
+    else if(useLoCell){ 
+      derivStencil.add(a_vof, 1.0, dir);
+
+      for (int i = 0; i < numLoVoFs; i++){
+	derivStencil.add(loVoFs[i], -1./numLoVoFs, dir);
+      }
+
+      derivStencil *= 1./a_dx;
+    }
+    else if(useHiCell){ 
+      derivStencil.add(a_vof, -1.0, dir);
+
+      for (int i = 0; i < numHiVoFs; i++){
+	derivStencil.add(hiVoFs[i], 1./numHiVoFs, dir);
+      }
+
+      derivStencil *= 1./a_dx;
+    }
+
+    if(useLoCell || useHiCell){
+      foundStencil = true;
+      
+      a_stencil += derivStencil;
+    }
+    else{
+      foundStencil = false;
+    }
+  }
+
+  return foundStencil;
+}
+
+bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
+					VoFStencil&            a_stencilFine,
+					const VolIndex&        a_vofCoar,
+					const CellLocation&    a_dataLocation,
+					const EBISBox&         a_ebisBoxCoar,
+					const EBISBox&         a_ebisBoxFine,					
+					const DenseIntVectSet& a_validCellsCoar,
+					const DenseIntVectSet& a_validCellsFine,					
+					const Real&            a_dxCoar,
+					const Real&            a_dxFine,					
+					const int&             a_order,
+					const int&             a_weight) {
+  CH_TIME("EBGradient::getLeastSquaresStencil");
+
+  bool foundStencil;
+
+  a_stencilCoar.clear();
+  a_stencilFine.clear();
+    
+  // Get all coarse cells within radius 1.
+  constexpr int radius = 1;
+  
+  Vector<VolIndex> coarVoFs = VofUtils::getVofsInRadius(a_vofCoar, a_ebisBoxCoar, radius, VofUtils::Connectivity::MonotonePath, false);
+  
+
+  const int numEquations = coarVoFs.size();
+  const int numUnknowns  = LeastSquares::getTaylorExpansionSize(a_order) - 1; // The "-1" is because we know the value at the coarse vof.
+
+  if(numEquations > numUnknowns){
+
+    // Build the displacement vectors
+    Vector<RealVect> coarDisplacements;
+    for (const auto& coarVoF : coarVoFs.stdVector()){
+      coarDisplacements.push_back(LeastSquares::displacement(a_dataLocation, a_dataLocation, a_vofCoar, coarVoF, a_ebisBoxCoar, a_dxCoar));
+    }
+
+    // These are the unknown terms that we want stencils for. 
+    IntVectSet knownTerms;
+    knownTerms |= IntVect::Zero;
+
+    // Now solve the least squares system for the gradient at the input VoF. After this we have found an expression which minimizes the
+    // truncation error in the neighborhood of the VoF.    
+    const VoFStencil lsqStencil = LeastSquares::computeGradSten(coarVoFs, coarDisplacements, a_weight, a_order, knownTerms);
+
+
+    // We have modified the right-hand side of the least squares system by pruning a_vofCoar from the system of equations (it's value is known). So,
+    // our least squares solution is actually something like
+    //
+    //    [df/dx]     [A11 A12 ... ] [f(x0) - f(x)]
+    //    [df/dy]  =  [A21 A22 ... ] [f(x1) - f(x)]
+    //    [df/dz]     [A31 A32 ... ] [f(x2) - f(x)]
+    // 
+    // where f(x) = phi(a_vofCoar). LeastSquares::computeGradSten does not case about the modified right-hand side and the stencils it returns
+    // only account for f(x0), f(x1) etc. We need to add in the contribution from a_vofCoar, which is fortunately just the sum of the weights for 
+    // each derivative. 
+
+    for (int dir = 0; dir < SpaceDim; dir++){
+      Real coarVofWeight = 0.0;
+
+      for (int i = 0; i < lsqStencil.size(); i++){
+	const int  curVar    = lsqStencil.variable(i);
+	const Real curWeight = lsqStencil.weight(i);
+
+	if(curVar == dir){
+	  coarVofWeight += curWeight;
+	}
+      }
+
+      a_stencilCoar.add(a_vofCoar, -1.0*coarVofWeight, dir);
+    }
+
+    // Found the stencil. 
+    a_stencilCoar += lsqStencil;
+
+    foundStencil = true;
+  }
+  else{
+    MayDay::Warning("Not enough equations!");
+    foundStencil = false;
+  }
+}
 
 #include <CD_NamespaceFooter.H>

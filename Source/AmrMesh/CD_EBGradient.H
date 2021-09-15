@@ -91,8 +91,9 @@ public:
     @param[out] a_gradient Gradient of input scalar
     @param[in]  a_phi      Input scalar
   */
-  void computeGradient(LevelData<EBCellFAB>&       a_gradient,
-		       const LevelData<EBCellFAB>& a_phi) const;
+  void computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
+			  const LevelData<EBCellFAB>& a_phi,
+			  const LevelData<EBCellFAB>& a_phiFine) const;
 
   /*!
     @brief Destructor (does nothing)
@@ -127,6 +128,16 @@ protected:
   EBLevelGrid m_eblgFine;
 
   /*!
+    @brief Refined coarse grids
+  */
+  EBLevelGrid m_eblgFiCo;
+
+  /*!
+    @brief Buffer for putting fine-grid data on the coarse-grid layout
+  */
+  mutable LevelData<EBCellFAB> m_bufferFiCo;
+
+  /*!
     @brief True if we have a finer level (m_eblgFine is defined)
   */
   bool m_hasFine;
@@ -158,35 +169,46 @@ protected:
 
   /*!
     @brief Stencils for boundaries and cut-cells
+    @note Lives on the coarse layout. 
   */
   LayoutData<BaseIVFAB<VoFStencil> > m_bndryStencils;
 
   /*!
-    @brief Iterator for boundary cells (either domain or EB)
+    @brief Part of EBCF gradient stencil which reaches into the coarse level. 
+    @note Lives on the coarse layout. 
   */
-  mutable LayoutData<VoFIterator> m_bndryIterator;
+  LayoutData<BaseIVFAB<VoFStencil> > m_ebcfStencilsCoar;
 
   /*!
-    @brief EBCF stencils
+    @brief Part of EBCF gradient stencil which reaches into the fine level. 
+    @note Lives on the coarse layout. 
   */
-  LayoutData<BaseIVFAB<VoFStencil> > m_ebcfStencils;
-
-  /*!
-    @brief EBCF iterators. 
-  */
-  mutable LayoutData<VoFIterator> m_ebcfIterator;
+  LayoutData<BaseIVFAB<VoFStencil> > m_ebcfStencilsFine;  
 
   /*!
     @brief Map of cells that lie on the coarse-fine interface
     @details This is built in defineMasks(). If true, the cell abuts the fine grid. 
+    @note Lives on the coarse layout. 
   */
   LayoutData<DenseIntVectSet> m_coarseFineRegion;
 
   /*!
     @brief Map of cells that are covered by the finer level.
     @details This is built in defineMasks(). If true, the cell is covered by a finer level. 
+    @note Lives on the coarse layout. 
   */
   LayoutData<DenseIntVectSet> m_invalidRegion;
+
+  /*!
+    @brief Iterator for boundary cells (either domain or EB)
+    @note Lives on the coarse layout. 
+  */
+  mutable LayoutData<VoFIterator> m_bndryIterator;  
+
+  /*!
+    @brief EBCF iterators. 
+  */
+  mutable LayoutData<VoFIterator> m_ebcfIterator;  
 
   /*!
     @brief Define level stencils. 
@@ -194,14 +216,67 @@ protected:
   void defineLevelStencils();
 
   /*!
+    @brief Make masks
+  */
+  void defineMasks();
+
+  /*!
+    @brief Define buffers
+  */
+  void defineBuffers();
+
+  /*!
+    @brief Define iterators and cells that need modified stencils
+  */
+  void defineIteratorsEBCF();
+
+  /*!
     @brief Define stencils for interpolation across the EBCF refinement boundary. 
   */
   void defineStencilsEBCF();
 
   /*!
-    @brief Make masks
+    @brief Get a finite difference stencil, assuming that the data is cell-centered
+    @param[out] a_stencil       Finite difference stencil. 
+    @param[in]  a_vof           Grid cell
+    @param[in]  a_ebisBox       EBISBox
+    @param[in]  a_invalidRegion Map of cells that can/can't be used. 
+    @param[in]  a_dx            Grid resolution
   */
-  void defineMasks();
+  bool getFiniteDifferenceStencil(VoFStencil&            a_stencil,
+				  const VolIndex&        a_vof,
+				  const EBISBox&         a_ebisBox,
+				  const DenseIntVectSet& a_invalidRegion,
+				  const Real             a_dx);
+
+  /*!
+    @brief Build a gradient stencil using least squares. 
+    @param[out] a_stencilCoar       Coarse-grid stencil
+    @param[out] a_stencilFine       Fine-grid stencil
+    @param[in]  a_vofCoar           VoF on the coarse level. 
+    @param[in]  a_dataLocation      Data location
+    @param[in]  a_ebisBoxCoar       Coarse grid EBISBox
+    @param[in]  a_ebisBoxFine       Fine grid EBISBox
+    @param[in]  a_validCellsCoar    Map of cells that are valid on the coarse domain. 
+    @param[in]  a_validCellsFine    Map of cells that are valid on the coarse domain. 
+    @param[in]  a_dxCoar            Grid resolution on the coarse level
+    @param[in]  a_dxFine            Grid resolution on the fine level
+    @param[in]  a_order             Interpolation order
+    @param[in]  a_weight            Equation weighting for least squares reconstruction. 
+    @return Returns true if a stencil was found, in which case it is defined in a_stencilFine and a_stencilCoar. 
+  */
+  bool getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
+			      VoFStencil&            a_stencilFine,
+			      const VolIndex&        a_vofCoar,
+			      const CellLocation&    a_dataLocation,
+			      const EBISBox&         a_ebisBoxCoar,
+			      const EBISBox&         a_ebisBoxFine,			      
+			      const DenseIntVectSet& a_validCellsCoar,
+			      const DenseIntVectSet& a_validCellsFine,
+			      const Real&            a_dxCoar,
+			      const Real&            a_dxFine,					
+			      const int&             a_order,
+			      const int&             a_weight);
 };
 
 #include <CD_NamespaceFooter.H>
