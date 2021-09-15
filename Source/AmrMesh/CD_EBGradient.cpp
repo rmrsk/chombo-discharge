@@ -330,18 +330,42 @@ void EBGradient::defineMasks(){
 
   // Add to the coarMaskCF. After this, coarMaskCF will have a value of 1 in all cells that abut the fine level. Likewise, coarMaskInvalid
   // will have a value of 1 in all cells that are covered by a finer level.
+#if 0
   LevelData<FArrayBox> coarMaskCF     (dbl, m_nComp, IntVect::Zero); // CF region always lies on the valid region in the coarse grid. 
   LevelData<FArrayBox> coarMaskInvalid(dbl, m_nComp, IntVect::Unit); // Stencil's have width 1, so need one ghost layer to check for valid cells
+
+  for (DataIterator dit(dbl); dit.ok(); ++dit){
+    coarMaskCF     [dit()].setVal(zero);
+    coarMaskInvalid[dit()].setVal(zero);
+  }  
+
+  coFiMaskCF.     addTo(interv, coarMaskCF,      interv, ebisl.getDomain()); // Contains > 0 in coarse cells that abut the refinement bounary. 
+  coFiMaskInvalid.addTo(interv, coarMaskInvalid, interv, ebisl.getDomain()); // Contains > 0 in coarse cells that are covered by a finer level.
+
+  coarMaskInvalid.exchange();  
+#else
+  Vector<int>      coarRanks = dbl.procIDs();
+  Vector<Box>      coarBoxes = dbl.boxArray();
+  Vector<Box> grownCoarBoxes = dbl.boxArray();
+
+  for (int i = 0; i < grownCoarBoxes.size(); i++){
+    grownCoarBoxes[i].grow(1);
+  }
+
+  BoxLayout      coarLayout(     coarBoxes, coarRanks);
+  BoxLayout grownCoarLayout(grownCoarBoxes, coarRanks);
   
+  BoxLayoutData<FArrayBox> coarMaskCF     (     coarLayout, m_nComp); 
+  BoxLayoutData<FArrayBox> coarMaskInvalid(grownCoarLayout, m_nComp);
+
   for (DataIterator dit(dbl); dit.ok(); ++dit){
     coarMaskCF     [dit()].setVal(zero);
     coarMaskInvalid[dit()].setVal(zero);
   }
 
   coFiMaskCF.     addTo(interv, coarMaskCF,      interv, ebisl.getDomain()); // Contains > 0 in coarse cells that abut the refinement bounary. 
-  coFiMaskInvalid.addTo(interv, coarMaskInvalid, interv, ebisl.getDomain()); // Contains > 0 in coarse cells that are covered by a finer level.
-
-  coarMaskInvalid.exchange();
+  coFiMaskInvalid.addTo(interv, coarMaskInvalid, interv, ebisl.getDomain()); // Contains > 0 in coarse cells that are covered by a finer level.  
+#endif
 
   // Define the boolean (DenseIntVectSet) masks and iterate through the FArrayBoxData data in order to determine
   // if the mask should be set to true. 
@@ -570,6 +594,10 @@ void EBGradient::defineStencilsEBCF(){
 	order--;
       }
 
+      if(!foundStencil){
+	coarStencil.clear();
+	fineStencil.clear();	
+      }
       // As a last-ditch effort, get a finite difference stencil. 
       // if(!foundStencil){
       // 	std::cout << "shit, all stencils dropped order" << std::endl;
@@ -693,14 +721,15 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
   }
 
   // Only unique, in case something went wrong. 
-  VofUtils::onlyUnique(coarVoFs);
+  //  VofUtils::onlyUnique(coarVoFs);
   VofUtils::onlyUnique(fineVoFs);  
 
   // Only include fine VoFs that lie with a_validCellsFine.
   VofUtils::includeCells(coarVoFs, a_validCellsCoar);  
-  VofUtils::includeCells(fineVoFs, a_validCellsFine);  
+  VofUtils::includeCells(fineVoFs, a_validCellsFine);
 
-  // See if we have enough cells to solve the system of equations.
+  // See if we have enough cells to solve the system of equations. The "-1" is because we interpolate to the cell center/centroid, but we already know
+  // phi at this point. 
   const int numEquations = fineVoFs.size() + coarVoFs.size();
   const int numUnknowns  = LeastSquares::getTaylorExpansionSize(a_order) - 1;
 
