@@ -541,7 +541,7 @@ void EBGradient::defineStencilsEBCF(){
     VoFIterator&           vofitEBCF     = m_ebcfIterator    [dit()];
     BaseIVFAB<VoFStencil>& coarStencils  = m_ebcfStencilsCoar[dit()];
     BaseIVFAB<VoFStencil>& fineStencils  = m_ebcfStencilsFine[dit()];
-    
+
     const DenseIntVectSet& invalidRegion = m_invalidRegion   [dit()];
     
     const Box stencilBoxCoar = invalidRegion.box();
@@ -549,19 +549,18 @@ void EBGradient::defineStencilsEBCF(){
 
     // Make a map of all the valid cells on the coarse level and the fine level. Here, if a cell in m_invalidRegion
     // is "true", then it means that the cell is covered by a finer grid cell. 
-    DenseIntVectSet validCellsCoar = DenseIntVectSet(stencilBoxCoar, false);
+    DenseIntVectSet validCellsCoar = DenseIntVectSet(stencilBoxCoar, true );
     DenseIntVectSet validCellsFine = DenseIntVectSet(stencilBoxFine, false);
 
-    for (DenseIntVectSetIterator divs(invalidRegion); divs.ok(); ++divs){
-      const IntVect iv = divs();
+    for (BoxIterator bit(stencilBoxCoar); bit.ok(); ++bit){
+      const IntVect ivCoar = bit();
 
-      if(invalidRegion[iv]){
-	Box bx(iv, iv);
+      if(invalidRegion[ivCoar]){
+	validCellsCoar -= ivCoar;
+
+	Box bx(ivCoar, ivCoar);
 	bx.refine(m_refRat);
 	validCellsFine |= bx;
-      }
-      else{
-	validCellsCoar |= iv;
       }
     }
 
