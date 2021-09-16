@@ -205,6 +205,12 @@ protected:
   LayoutData<DenseIntVectSet> m_validRegion;
 
   /*!
+    @brief Map of cells that are valid on the fine level. 
+    @note Lives on the coarse layout
+  */
+  LayoutData<DenseIntVectSet> m_validRegionFine;  
+
+  /*!
     @brief Iterator for boundary cells (either domain or EB)
     @note Lives on the coarse layout. 
   */

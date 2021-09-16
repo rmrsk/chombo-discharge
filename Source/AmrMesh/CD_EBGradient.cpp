@@ -356,17 +356,21 @@ void EBGradient::defineMasks(){
   // if the mask should be set to true. 
   m_coarseFineRegion.define(dbl);
   m_validRegion.     define(dbl);
+  m_validRegionFine. define(dbl);  
   
   for (DataIterator dit(dbl); dit.ok(); ++dit){
-    const Box cellBox  = dbl[dit()];
-    const Box grownBox = grow(cellBox, 1);
+    const Box cellBox    = dbl[dit()];
+    const Box grownBox   = grow(cellBox, 1);
+    const Box refinedBox = refine(grownBox, m_refRat);
 
     // Set to false by default. 
-    m_coarseFineRegion[dit()] = DenseIntVectSet(cellBox,  false);
-    m_validRegion     [dit()] = DenseIntVectSet(grownBox, false);
+    m_coarseFineRegion[dit()] = DenseIntVectSet(cellBox,    false);
+    m_validRegion     [dit()] = DenseIntVectSet(grownBox,   true );
+    m_validRegionFine [dit()] = DenseIntVectSet(refinedBox, false);    
     
     DenseIntVectSet& coarseFineRegion = m_coarseFineRegion[dit()];
     DenseIntVectSet& validRegion      = m_validRegion     [dit()];
+    DenseIntVectSet& validRegionFine  = m_validRegionFine [dit()];    
 
     const FArrayBox& fabMaskCF      = coarMaskCF     [dit()];
     const FArrayBox& fabMaskInvalid = coarMaskInvalid[dit()];
@@ -382,10 +386,14 @@ void EBGradient::defineMasks(){
 
     // Set the invalid mask. 
     for(BoxIterator bit(grownBox); bit.ok(); ++bit){
-      const IntVect iv = bit();
+      const IntVect ivCoar = bit();
       
-      if(fabMaskInvalid(iv, m_comp) > zero){
-	validRegion |= iv;
+      if(fabMaskInvalid(ivCoar, m_comp) > zero){
+	validRegion -= ivCoar;
+
+	Box bx(ivCoar, ivCoar);
+	bx.refine(m_refRat);
+	validRegionFine |= bx;
       }
     }
   }
@@ -474,7 +482,7 @@ void EBGradient::defineIteratorsEBCF(){
 	    const VolIndex& ivof = gradSten.vof(j);
 	    const IntVect   gid  = ivof.gridIndex();
 	      
-	    const bool isCoveredByFinerCell = validRegion[gid];
+	    const bool isCoveredByFinerCell = !validRegion[gid];
 	    const bool isIrregularCell      = ebisBox.isIrregular(gid);
 
 	    if(isCoveredByFinerCell && isIrregularCell){
@@ -502,9 +510,6 @@ void EBGradient::defineIteratorsEBCF(){
 
 void EBGradient::defineStencilsEBCF(){
   CH_TIME("EBGradient::defineStencilsEBCF");
-
-
-  Timer timer("EBGradient::defineStencilsEBCF");
   
   const DisjointBoxLayout& dbl        = m_eblg.    getDBL();
   const DisjointBoxLayout& dblFine    = m_eblgFiCo.getDBL();
@@ -523,38 +528,16 @@ void EBGradient::defineStencilsEBCF(){
     const EBISBox& ebisBoxFine = ebislFine[dit()];
     
     const EBGraph& ebgraph     = ebisBox.    getEBGraph();
-    const EBGraph& ebgraphFine = ebisBoxFine.getEBGraph();    
+    const EBGraph& ebgraphFine = ebisBoxFine.getEBGraph();
+
+    const DenseIntVectSet& validRegion     = m_validRegion    [dit()];
+    const DenseIntVectSet& validRegionFine = m_validRegionFine[dit()];        
 
     // Define the iterator and stencils for places where we need to drop order.
     VoFIterator&           vofitEBCF     = m_ebcfIterator    [dit()];
     BaseIVFAB<VoFStencil>& coarStencils  = m_ebcfStencilsCoar[dit()];
     BaseIVFAB<VoFStencil>& fineStencils  = m_ebcfStencilsFine[dit()];
 
-    const DenseIntVectSet& validRegion = m_validRegion   [dit()];
-    
-    const Box stencilBoxCoar = validRegion.box();
-    const Box stencilBoxFine = refine(stencilBoxCoar, m_refRat); 
-
-    // Make a map of all the valid cells on the coarse level and the fine level. Here, if a cell in m_validRegion
-    // is "true", then it means that the cell is covered by a finer grid cell.
-    timer.startEvent("mask");
-    DenseIntVectSet validCellsCoar = DenseIntVectSet(stencilBoxCoar, true );
-    DenseIntVectSet validCellsFine = DenseIntVectSet(stencilBoxFine, false);
-
-    for (BoxIterator bit(stencilBoxCoar); bit.ok(); ++bit){
-      const IntVect ivCoar = bit();
-
-      if(validRegion[ivCoar]){
-	validCellsCoar -= ivCoar;
-
-	Box bx(ivCoar, ivCoar);
-	bx.refine(m_refRat);
-	validCellsFine |= bx;
-      }
-    }
-    timer.stopEvent("mask");    
-
-    timer.startEvent("EBCF loop");
     for (vofitEBCF.reset(); vofitEBCF.ok(); ++vofitEBCF){
       const VolIndex& vof = vofitEBCF();
 
@@ -575,8 +558,8 @@ void EBGradient::defineStencilsEBCF(){
 						    ebisl,
 						    ebislFine,
 						    dit(),
-						    validCellsCoar,
-						    validCellsFine,
+						    validRegion,
+						    validRegionFine,
 						    m_dx,
 						    m_dxFine,
 						    order,
@@ -593,10 +576,7 @@ void EBGradient::defineStencilsEBCF(){
 	MayDay::Warning("CD_EBGradient::defineStencilsEBCF -- could not find stencil!");
       }
     }
-    timer.stopEvent("EBCF loop");    
   }
-
-  timer.eventReport(pout(), false);
 }
 
 bool EBGradient::getFiniteDifferenceStencil(VoFStencil&            a_stencil,
@@ -727,6 +707,57 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
 
   if(numEquations > numUnknowns){
 
+    // In many cases we will have WAY too many equations for the specified order. This is particularly true in 3D
+    // because the number of coar vofs included in a radius r from the ghost vof can be 3^3 = 27. In addition, if we
+    // use a refinement factor of 4 and just half of those cells are covered by finer cells, we end up with a system
+    // size of = 13 + 14*4^3 = 97. That's way more than we need for order 2 which requires 10 equations. Since the SVD
+    // decomposition scales as O(n^3), we trim the system size to bring the cost down, discarding the cells that are
+    // furthest away. 
+    std::vector<VolIndex>& fineVofsTrimmedSize = fineVoFs.stdVector();
+    std::vector<VolIndex>& coarVofsTrimmedSize = coarVoFs.stdVector();
+
+    // Coordinates of the vof that we will interpolate to (excluding lower-left corner because of the subtraction
+    // in the comparators). 
+    const RealVect x0 = Location::position(a_dataLocation, a_vofCoar, ebisBoxCoar, a_dxCoar);
+
+    // For sorting fine vofs, based on distance to the ghost vof. Shortest distance goes first. 
+    auto comparatorFine = [&loc     = a_dataLocation,
+			   &p       = x0,
+			   &ebisbox = ebisBoxFine,
+			   &dx      = a_dxFine](const VolIndex& v1, const VolIndex& v2) -> bool {
+      const RealVect d1 = Location::position(loc, v1, ebisbox, dx) - p;
+      const RealVect d2 = Location::position(loc, v2, ebisbox, dx) - p;
+
+      const Real l1 = d1.vectorLength();
+      const Real l2 = d2.vectorLength();
+      
+      return l1 < l2;
+    };
+
+    // For sorting coar vofs, based on distance to the ghost vof. Shortest distance goes first. 
+    auto comparatorCoar = [&loc     = a_dataLocation,
+			   &p       = x0,
+			   &ebisbox = ebisBoxCoar,
+			   &dx      = a_dxCoar](const VolIndex& v1, const VolIndex& v2) -> bool {
+      const RealVect d1 = Location::position(loc, v1, ebisbox, dx) - p;
+      const RealVect d2 = Location::position(loc, v2, ebisbox, dx) - p;
+
+      const Real l1 = d1.vectorLength();
+      const Real l2 = d2.vectorLength();
+      
+      return l1 < l2;
+    };    
+
+    // Sort and trim the system size. 
+    std::sort(fineVofsTrimmedSize.begin(), fineVofsTrimmedSize.end(), comparatorFine);
+    std::sort(coarVofsTrimmedSize.begin(), coarVofsTrimmedSize.end(), comparatorCoar);
+
+    const int curFineSize = fineVofsTrimmedSize.size();
+    const int curCoarSize = coarVofsTrimmedSize.size();
+    
+    fineVofsTrimmedSize.resize(std::min(2*numUnknowns, curFineSize));
+    coarVofsTrimmedSize.resize(std::min(2*numUnknowns, curCoarSize));
+    
     // Build the displacement vectors
     Vector<RealVect> fineDisplacements;
     Vector<RealVect> coarDisplacements;
@@ -822,7 +853,6 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
     foundStencil = true;    
   }
   else{
-    std::cout  << coarVoFs.size() << "\t" << fineVoFs.size() << std::endl;
     foundStencil = false;
   }
 
