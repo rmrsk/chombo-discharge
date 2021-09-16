@@ -411,6 +411,8 @@ bool EBGradient::isFiniteDifferenceStencilValid(const IntVect&   a_ivCoar,
 void EBGradient::defineIteratorsEBCF(){
   CH_TIME("EBGradient::defineIteratorsEBCF");
 
+  Timer timer("EBGradient::defineIteratorsEBCF");
+  
   constexpr Real zero   = 0.0;
   constexpr Real one    = 1.0;      
 
@@ -430,7 +432,7 @@ void EBGradient::defineIteratorsEBCF(){
   Vector<Box> ebcfBoxes;
 
   LayoutData<IntVectSet> sets(dbl);
-  
+
   for (DataIterator dit(dbl); dit.ok(); ++dit){
     const Box      cellBox = dbl  [dit()];
     const EBISBox& ebisBox = ebisl[dit()];
@@ -445,11 +447,14 @@ void EBGradient::defineIteratorsEBCF(){
 
     bool addedBox = false;
 
-    // Determine cells where we need to drop order. 
+    // Determine cells where we need to drop order.
     IntVectSet& ebcfIVS = sets[dit()];
+    timer.startEvent("dit loop");          
     if(isIrregular){
 
+
       // Iterate through the coarse-fine region and check if the finite difference stencil reaches into a cut-cell.
+
       for (BoxIterator bit(cellBox); bit.ok(); ++bit){
 	const IntVect ivCoar = bit();
 	
@@ -467,23 +472,39 @@ void EBGradient::defineIteratorsEBCF(){
 	  }
 	}
       }
-    }
 
-    // Define the iterator. 
+    }
+    timer.stopEvent("dit loop");                
+
+    // Define the iterator.
+    timer.startEvent("iter def");
     m_ebcfIterator[dit()].define(ebcfIVS, ebgraph);
+    timer.stopEvent("iter def");
   }
 
   // Define storage for holding gradient
-  m_ebcfGradient.define(dbl, SpaceDim, IntVect::Zero, BaseIVFactory<Real>(ebisl, sets));   
+  timer.startEvent("grad def");
+  m_ebcfGradient.define(dbl, SpaceDim, IntVect::Zero, BaseIVFactory<Real>(ebisl, sets));
+  timer.stopEvent("grad def");  
 
 
-  // Make the grids that contain irregular boxes that require better stencils. We will use this as a buffered layout. 
+  // Make the grids that contain irregular boxes that require better stencils. We will use this as a buffered layout.
+  timer.startEvent("gather/balance");
   LoadBalancing::gatherBoxes(ebcfBoxes);
   LoadBalancing::makeBalance(ebcfRanks, ebcfBoxes);
+  timer.stopEvent("gather/balance");  
 
+  timer.startEvent("define dbl");
   DisjointBoxLayout coarGrids(ebcfBoxes, ebcfRanks);
-  m_bufferEblgCoar.define(coarGrids, domain, 2, m_eblg.getEBIS());
+  timer.stopEvent("define dbl");
+  timer.startEvent("define buff");  
+  m_bufferEblgCoar.define(coarGrids, domain, 1, m_eblg.getEBIS());
+  timer.stopEvent("define buff");
+  timer.startEvent("refine buff");
   refine(m_bufferEblgFine, m_bufferEblgCoar, m_refRat);
+  timer.stopEvent("refine buff");
+
+  timer.eventReport(pout(), true);
 }
 
 void EBGradient::defineBuffers(){
