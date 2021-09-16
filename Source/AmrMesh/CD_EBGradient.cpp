@@ -330,20 +330,6 @@ void EBGradient::defineMasks(){
 
   // Add to the coarMaskCF. After this, coarMaskCF will have a value of 1 in all cells that abut the fine level. Likewise, coarMaskInvalid
   // will have a value of 1 in all cells that are covered by a finer level.
-#if 0
-  LevelData<FArrayBox> coarMaskCF     (dbl, m_nComp, IntVect::Zero); // CF region always lies on the valid region in the coarse grid. 
-  LevelData<FArrayBox> coarMaskInvalid(dbl, m_nComp, IntVect::Unit); // Stencil's have width 1, so need one ghost layer to check for valid cells
-
-  for (DataIterator dit(dbl); dit.ok(); ++dit){
-    coarMaskCF     [dit()].setVal(zero);
-    coarMaskInvalid[dit()].setVal(zero);
-  }  
-
-  coFiMaskCF.     addTo(interv, coarMaskCF,      interv, ebisl.getDomain()); // Contains > 0 in coarse cells that abut the refinement bounary. 
-  coFiMaskInvalid.addTo(interv, coarMaskInvalid, interv, ebisl.getDomain()); // Contains > 0 in coarse cells that are covered by a finer level.
-
-  coarMaskInvalid.exchange();  
-#else
   Vector<int>      coarRanks = dbl.procIDs();
   Vector<Box>      coarBoxes = dbl.boxArray();
   Vector<Box> grownCoarBoxes = dbl.boxArray();
@@ -365,12 +351,11 @@ void EBGradient::defineMasks(){
 
   coFiMaskCF.     addTo(interv, coarMaskCF,      interv, ebisl.getDomain()); // Contains > 0 in coarse cells that abut the refinement bounary. 
   coFiMaskInvalid.addTo(interv, coarMaskInvalid, interv, ebisl.getDomain()); // Contains > 0 in coarse cells that are covered by a finer level.  
-#endif
 
   // Define the boolean (DenseIntVectSet) masks and iterate through the FArrayBoxData data in order to determine
   // if the mask should be set to true. 
   m_coarseFineRegion.define(dbl);
-  m_invalidRegion.   define(dbl);
+  m_validRegion.     define(dbl);
   
   for (DataIterator dit(dbl); dit.ok(); ++dit){
     const Box cellBox  = dbl[dit()];
@@ -378,10 +363,10 @@ void EBGradient::defineMasks(){
 
     // Set to false by default. 
     m_coarseFineRegion[dit()] = DenseIntVectSet(cellBox,  false);
-    m_invalidRegion   [dit()] = DenseIntVectSet(grownBox, false);
+    m_validRegion     [dit()] = DenseIntVectSet(grownBox, false);
     
     DenseIntVectSet& coarseFineRegion = m_coarseFineRegion[dit()];
-    DenseIntVectSet& invalidRegion    = m_invalidRegion   [dit()];
+    DenseIntVectSet& validRegion      = m_validRegion     [dit()];
 
     const FArrayBox& fabMaskCF      = coarMaskCF     [dit()];
     const FArrayBox& fabMaskInvalid = coarMaskInvalid[dit()];
@@ -400,7 +385,7 @@ void EBGradient::defineMasks(){
       const IntVect iv = bit();
       
       if(fabMaskInvalid(iv, m_comp) > zero){
-	invalidRegion |= iv;
+	validRegion |= iv;
       }
     }
   }
@@ -458,7 +443,7 @@ void EBGradient::defineIteratorsEBCF(){
     const bool isIrregular  = !isAllRegular && !isAllCovered;
 
     const DenseIntVectSet& coarseFineRegion = m_coarseFineRegion[dit()];
-    const DenseIntVectSet& invalidRegion    = m_invalidRegion   [dit()];    
+    const DenseIntVectSet& validRegion      = m_validRegion   [dit()];    
 
     // Determine cells where we need to drop order. 
     IntVectSet ebcfIVS;
@@ -489,7 +474,7 @@ void EBGradient::defineIteratorsEBCF(){
 	    const VolIndex& ivof = gradSten.vof(j);
 	    const IntVect   gid  = ivof.gridIndex();
 	      
-	    const bool isCoveredByFinerCell = invalidRegion[gid];
+	    const bool isCoveredByFinerCell = validRegion[gid];
 	    const bool isIrregularCell      = ebisBox.isIrregular(gid);
 
 	    if(isCoveredByFinerCell && isIrregularCell){
@@ -518,6 +503,9 @@ void EBGradient::defineIteratorsEBCF(){
 void EBGradient::defineStencilsEBCF(){
   CH_TIME("EBGradient::defineStencilsEBCF");
 
+
+  Timer timer("EBGradient::defineStencilsEBCF");
+  
   const DisjointBoxLayout& dbl        = m_eblg.    getDBL();
   const DisjointBoxLayout& dblFine    = m_eblgFiCo.getDBL();
   
@@ -542,20 +530,21 @@ void EBGradient::defineStencilsEBCF(){
     BaseIVFAB<VoFStencil>& coarStencils  = m_ebcfStencilsCoar[dit()];
     BaseIVFAB<VoFStencil>& fineStencils  = m_ebcfStencilsFine[dit()];
 
-    const DenseIntVectSet& invalidRegion = m_invalidRegion   [dit()];
+    const DenseIntVectSet& validRegion = m_validRegion   [dit()];
     
-    const Box stencilBoxCoar = invalidRegion.box();
+    const Box stencilBoxCoar = validRegion.box();
     const Box stencilBoxFine = refine(stencilBoxCoar, m_refRat); 
 
-    // Make a map of all the valid cells on the coarse level and the fine level. Here, if a cell in m_invalidRegion
-    // is "true", then it means that the cell is covered by a finer grid cell. 
+    // Make a map of all the valid cells on the coarse level and the fine level. Here, if a cell in m_validRegion
+    // is "true", then it means that the cell is covered by a finer grid cell.
+    timer.startEvent("mask");
     DenseIntVectSet validCellsCoar = DenseIntVectSet(stencilBoxCoar, true );
     DenseIntVectSet validCellsFine = DenseIntVectSet(stencilBoxFine, false);
 
     for (BoxIterator bit(stencilBoxCoar); bit.ok(); ++bit){
       const IntVect ivCoar = bit();
 
-      if(invalidRegion[ivCoar]){
+      if(validRegion[ivCoar]){
 	validCellsCoar -= ivCoar;
 
 	Box bx(ivCoar, ivCoar);
@@ -563,7 +552,9 @@ void EBGradient::defineStencilsEBCF(){
 	validCellsFine |= bx;
       }
     }
+    timer.stopEvent("mask");    
 
+    timer.startEvent("EBCF loop");
     for (vofitEBCF.reset(); vofitEBCF.ok(); ++vofitEBCF){
       const VolIndex& vof = vofitEBCF();
 
@@ -597,18 +588,21 @@ void EBGradient::defineStencilsEBCF(){
 	coarStencil.clear();
 	fineStencil.clear();
 
-	this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, invalidRegion, m_dx);
+	this->getFiniteDifferenceStencil(coarStencil, vof, ebisBox, validRegion, m_dx);
 
 	MayDay::Warning("CD_EBGradient::defineStencilsEBCF -- could not find stencil!");
       }
     }
-  }  
+    timer.stopEvent("EBCF loop");    
+  }
+
+  timer.eventReport(pout(), false);
 }
 
 bool EBGradient::getFiniteDifferenceStencil(VoFStencil&            a_stencil,
 					    const VolIndex&        a_vof,
 					    const EBISBox&         a_ebisBox,
-					    const DenseIntVectSet& a_invalidRegion,
+					    const DenseIntVectSet& a_validRegion,
 					    const Real             a_dx){
   CH_TIME("EBGradient::getFiniteDifferenceStencil");
 
@@ -625,8 +619,8 @@ bool EBGradient::getFiniteDifferenceStencil(VoFStencil&            a_stencil,
     const IntVect ivLo = iv - BASISV(dir);
     const IntVect ivHi = iv + BASISV(dir);
 
-    const bool isLoCellCovered    = a_invalidRegion[ivLo];
-    const bool isHiCellCovered    = a_invalidRegion[ivHi];
+    const bool isLoCellCovered    = a_validRegion[ivLo];
+    const bool isHiCellCovered    = a_validRegion[ivHi];
 
     const bool isLoCellIrregular  = a_ebisBox.isIrregular(ivLo);
     const bool isHiCellIrregular  = a_ebisBox.isIrregular(ivHi);

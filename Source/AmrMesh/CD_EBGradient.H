@@ -202,7 +202,7 @@ protected:
     @details This is built in defineMasks(). If true, the cell is covered by a finer level. 
     @note Lives on the coarse layout. 
   */
-  LayoutData<DenseIntVectSet> m_invalidRegion;
+  LayoutData<DenseIntVectSet> m_validRegion;
 
   /*!
     @brief Iterator for boundary cells (either domain or EB)
