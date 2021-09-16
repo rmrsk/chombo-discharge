@@ -95,7 +95,7 @@ EBGradient::EBGradient(const EBLevelGrid& a_eblg,
       this->defineBuffers(bufferCoarMaskCF, bufferCoarMaskInvalid, coarMaskCF, coarMaskInvalid);
       timer.stopEvent("EBCF buffers");            
 
-      timer.startEvent("EBCF stencils");    
+      timer.startEvent("EBCF stencils");
       this->defineStencilsEBCF(bufferCoarMaskInvalid);
       timer.stopEvent("EBCF stencils");
     }
@@ -524,7 +524,7 @@ void EBGradient::defineIteratorsEBCF(BoxLayoutData<FArrayBox>& a_coarMaskCF, Box
     m_hasEBCF = false;
   }
 
-  timer.eventReport(pout(), false);
+  //  timer.eventReport(pout(), true);
 }
 
 void EBGradient::defineBuffers(BoxLayoutData<FArrayBox>&       a_bufferCoarMaskCF,
