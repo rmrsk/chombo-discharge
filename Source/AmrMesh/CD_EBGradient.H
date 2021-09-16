@@ -133,6 +133,11 @@ protected:
   bool m_hasFine;
 
   /*!
+    @brief True if we have a finer level (m_eblgFine is defined)
+  */
+  bool m_hasEBCF;
+
+  /*!
     @brief Resolution
   */
   Real m_dx;
@@ -156,31 +161,26 @@ protected:
     @brief Refinement factor between fine and coarse level. 
   */
   int m_refRat;
-  
-  /*!
-    @brief Refined coarse grids
-  */
-  EBLevelGrid m_eblgFiCo;
 
   /*!
-    @brief Buffer for putting fine-grid data on the coarse-grid layout
-  */
-  mutable BoxLayoutData<EBCellFAB> m_bufferCoar;
+    @brief Coarse-grid buffers
+  */  
+  DisjointBoxLayout m_bufferDblCoar;
 
   /*!
-    @brief Buffer for putting fine-grid data on the coarse-grid layout
+    @brief Fine-grid buffers
   */
-  mutable BoxLayoutData<EBCellFAB> m_bufferFine;  
+  DisjointBoxLayout m_bufferDblFine;  
 
   /*!
     @brief Coarse grids
   */
-  EBLevelGrid m_bufferEblgCoar;
+  EBISLayout m_bufferEBISLCoar;
 
   /*!
     @brief Refined coarse grids
   */
-  EBLevelGrid m_bufferEblgFine;
+  EBISLayout m_bufferEBISLFine;
 
   /*!
     @brief Stencils for boundaries and cut-cells
@@ -200,58 +200,6 @@ protected:
   LayoutData<BaseIVFAB<VoFStencil> > m_bufferStencilsFine;
 
   /*!
-    @brief Storage for corrected gradient. 
-  */
-  mutable LevelData<BaseIVFAB<Real> > m_ebcfGradient;
-
-  /*!
-    @brief This is the buffer on the reduced grids. 
-  */
-  mutable LevelData<BaseIVFAB<Real> > m_bufferGradient;
-
-  /*!
-    @brief Map of cells that lie on the coarse-fine interface
-    @details This is built in defineMasks(). If true, the cell abuts the fine grid. 
-    @note Lives on the coarse layout. 
-  */
-  LayoutData<DenseIntVectSet> m_coarseFineRegion;
-
-  /*!
-    @brief Map of cells that are covered by the finer level.
-    @details This is built in defineMasks(). If true, the cell is covered by a finer level. 
-    @note Lives on the coarse layout. 
-  */
-  LayoutData<DenseIntVectSet> m_validRegion;
-
-  /*!
-    @brief Map of cells that are valid on the fine level. 
-    @note Lives on the coarse layout
-  */
-  LayoutData<DenseIntVectSet> m_validRegionFine;
-
-  /*!
-    @brief CF region on coarse level.
-    @details This is defined on the (ungrown) coarse grid. The CF region is defined by regions where the value is > 0
-  */
-  BoxLayoutData<FArrayBox> m_coarMaskCF;
-
-  /*!
-    @brief Cells that are covered by a finer grid. 
-    @brief This is defiend on the (grown) coarse grid. If a cell has a value > 0 it is covered by a finer grid. 
-  */  
-  BoxLayoutData<FArrayBox> m_coarMaskInvalid;
-
-  /*!
-    @brief CF region on coarse level.
-  */
-  BoxLayoutData<FArrayBox> m_bufferCoarMaskCF;
-
-  /*!
-    @brief Cells that are covered by a finer grid. 
-  */  
-  BoxLayoutData<FArrayBox> m_bufferCoarMaskInvalid;  
-
-  /*!
     @brief Iterator for boundary cells (either domain or EB)
     @note Lives on the coarse layout. 
   */
@@ -266,7 +214,27 @@ protected:
   /*!
     @brief EBCF iterators. 
   */
-  mutable LayoutData<VoFIterator> m_bufferIterator;
+  mutable LayoutData<VoFIterator> m_bufferIterator;  
+
+  /*!
+    @brief Buffer for putting fine-grid data on the coarse-grid layout
+  */
+  mutable BoxLayoutData<EBCellFAB> m_bufferCoar;
+
+  /*!
+    @brief Buffer for putting fine-grid data on the coarse-grid layout
+  */
+  mutable BoxLayoutData<EBCellFAB> m_bufferFine;  
+
+  /*!
+    @brief Storage for corrected gradient. 
+  */
+  mutable LevelData<BaseIVFAB<Real> > m_ebcfGradient;
+
+  /*!
+    @brief This is the buffer on the reduced grids. 
+  */
+  mutable LevelData<BaseIVFAB<Real> > m_bufferGradient;
 
   /*!
     @brief Define level stencils. 
@@ -276,27 +244,25 @@ protected:
   /*!
     @brief Make masks
   */
-  void defineMasks();
+  void defineMasks(BoxLayoutData<FArrayBox>& a_coarMaskCF, BoxLayoutData<FArrayBox>& a_coarMaskInvalid);
 
   /*!
     @brief Define buffers
   */
-  void defineBuffers();
+  void defineBuffers(BoxLayoutData<FArrayBox>&       a_bufferCoarMaskCF,
+		     BoxLayoutData<FArrayBox>&       a_bufferCoarMaskInvalid,
+		     const BoxLayoutData<FArrayBox>& a_coarMaskCF,
+		     const BoxLayoutData<FArrayBox>& a_coarMaskInvalid);
 
   /*!
     @brief Define iterators and cells that need modified stencils
   */
-  void defineIteratorsEBCF();
-
-  /*!
-    @brief Define iterators and cells that need modified stencils
-  */
-  void defineIteratorsAMR();  
+  void defineIteratorsEBCF(BoxLayoutData<FArrayBox>& a_coarMaskCF, BoxLayoutData<FArrayBox>& a_coarMaskInvalid);
 
   /*!
     @brief Define stencils for interpolation across the EBCF refinement boundary. 
   */
-  void defineStencilsEBCF();
+  void defineStencilsEBCF(const BoxLayoutData<FArrayBox>& a_bufferCoarMaskInvalid);
 
   /*!
     @brief Get a finite difference stencil, assuming that the data is cell-centered
