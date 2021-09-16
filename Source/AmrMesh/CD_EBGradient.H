@@ -128,21 +128,6 @@ protected:
   EBLevelGrid m_eblgFine;
 
   /*!
-    @brief Refined coarse grids
-  */
-  EBLevelGrid m_eblgFiCo;
-
-  /*!
-    @brief FiCo layout
-  */
-  BoxLayout m_layoutFiCo;
-
-  /*!
-    @brief Buffer for putting fine-grid data on the coarse-grid layout
-  */
-  mutable BoxLayoutData<EBCellFAB> m_bufferFiCo;
-
-  /*!
     @brief True if we have a finer level (m_eblgFine is defined)
   */
   bool m_hasFine;
@@ -171,24 +156,58 @@ protected:
     @brief Refinement factor between fine and coarse level. 
   */
   int m_refRat;
+  
+  /*!
+    @brief Refined coarse grids
+  */
+  EBLevelGrid m_eblgFiCo;
+
+  /*!
+    @brief Buffer for putting fine-grid data on the coarse-grid layout
+  */
+  mutable BoxLayoutData<EBCellFAB> m_bufferCoar;
+
+  /*!
+    @brief Buffer for putting fine-grid data on the coarse-grid layout
+  */
+  mutable BoxLayoutData<EBCellFAB> m_bufferFine;  
+
+  /*!
+    @brief Coarse grids
+  */
+  EBLevelGrid m_bufferEblgCoar;
+
+  /*!
+    @brief Refined coarse grids
+  */
+  EBLevelGrid m_bufferEblgFine;
 
   /*!
     @brief Stencils for boundaries and cut-cells
     @note Lives on the coarse layout. 
   */
-  LayoutData<BaseIVFAB<VoFStencil> > m_bndryStencils;
+  LayoutData<BaseIVFAB<VoFStencil> > m_levelStencils;
 
   /*!
     @brief Part of EBCF gradient stencil which reaches into the coarse level. 
-    @note Lives on the coarse layout. 
   */
-  LayoutData<BaseIVFAB<VoFStencil> > m_ebcfStencilsCoar;
+  LayoutData<BaseIVFAB<VoFStencil> > m_bufferStencilsCoar;
 
   /*!
     @brief Part of EBCF gradient stencil which reaches into the fine level. 
     @note Lives on the coarse layout. 
   */
-  LayoutData<BaseIVFAB<VoFStencil> > m_ebcfStencilsFine;  
+  LayoutData<BaseIVFAB<VoFStencil> > m_bufferStencilsFine;
+
+  /*!
+    @brief Storage for corrected gradient. 
+  */
+  mutable LevelData<BaseIVFAB<Real> > m_ebcfGradient;
+
+  /*!
+    @brief This is the buffer on the reduced grids. 
+  */
+  mutable LevelData<BaseIVFAB<Real> > m_bufferGradient;
 
   /*!
     @brief Map of cells that lie on the coarse-fine interface
@@ -208,18 +227,46 @@ protected:
     @brief Map of cells that are valid on the fine level. 
     @note Lives on the coarse layout
   */
-  LayoutData<DenseIntVectSet> m_validRegionFine;  
+  LayoutData<DenseIntVectSet> m_validRegionFine;
+
+  /*!
+    @brief CF region on coarse level.
+    @details This is defined on the (ungrown) coarse grid. The CF region is defined by regions where the value is > 0
+  */
+  BoxLayoutData<FArrayBox> m_coarMaskCF;
+
+  /*!
+    @brief Cells that are covered by a finer grid. 
+    @brief This is defiend on the (grown) coarse grid. If a cell has a value > 0 it is covered by a finer grid. 
+  */  
+  BoxLayoutData<FArrayBox> m_coarMaskInvalid;
+
+  /*!
+    @brief CF region on coarse level.
+  */
+  BoxLayoutData<FArrayBox> m_bufferCoarMaskCF;
+
+  /*!
+    @brief Cells that are covered by a finer grid. 
+  */  
+  BoxLayoutData<FArrayBox> m_bufferCoarMaskInvalid;  
 
   /*!
     @brief Iterator for boundary cells (either domain or EB)
     @note Lives on the coarse layout. 
   */
-  mutable LayoutData<VoFIterator> m_bndryIterator;  
+  mutable LayoutData<VoFIterator> m_levelIterator;
+
+  /*!
+    @brief Iterator for boundary cells (either domain or EB)
+    @note Lives on the coarse layout. 
+  */
+  mutable LayoutData<VoFIterator> m_ebcfIterator;    
 
   /*!
     @brief EBCF iterators. 
   */
-  mutable LayoutData<VoFIterator> m_ebcfIterator;  
+  mutable LayoutData<VoFIterator> m_bufferIterator;
 
   /*!
     @brief Define level stencils. 
@@ -240,6 +287,11 @@ protected:
     @brief Define iterators and cells that need modified stencils
   */
   void defineIteratorsEBCF();
+
+  /*!
+    @brief Define iterators and cells that need modified stencils
+  */
+  void defineIteratorsAMR();  
 
   /*!
     @brief Define stencils for interpolation across the EBCF refinement boundary. 
@@ -289,6 +341,15 @@ protected:
 			      const Real&            a_dxFine,					
 			      const int&             a_order,
 			      const int&             a_weight);
+
+  /*!
+    @brief Check if a cell can produce valid finite difference stencils
+  */
+  bool isFiniteDifferenceStencilValid(const IntVect&   a_ivCoar,
+				      const EBISBox&   a_ebisBox,
+				      const FArrayBox& a_invalidRegion);
+				      
+
 };
 
 #include <CD_NamespaceFooter.H>
