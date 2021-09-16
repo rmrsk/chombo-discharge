@@ -48,6 +48,7 @@ EBGradient::EBGradient(const EBLevelGrid& a_eblg,
   m_refRat       = a_refRat;
   m_order        = a_order;
   m_weighting    = a_weighting;
+  m_hasEBCF      = false;  
 
   if(a_eblgFine.isDefined()){
     m_hasFine  = true;
@@ -58,13 +59,19 @@ EBGradient::EBGradient(const EBLevelGrid& a_eblg,
     m_dxFine   = 1;
   }
 
+  ParmParse pp("EBGradient");
+  bool profile     = false;
+  bool forceNoEBCF = false;
+  pp.query("profile",       profile);
+  pp.query("force_no_ebcf", forceNoEBCF);    
+
   Timer timer("EBGradient::EBGradient");
 
   timer.startEvent("Define level stencils");
   this->defineLevelStencils();
   timer.stopEvent("Define level stencils");
 
-  if(m_hasFine){
+  if(m_hasFine && !forceNoEBCF){
 
     // Masks with transient lifetimes. 
     BoxLayoutData<FArrayBox> coarMaskCF;
@@ -93,10 +100,6 @@ EBGradient::EBGradient(const EBLevelGrid& a_eblg,
       timer.stopEvent("EBCF stencils");
     }
   }
-
-  ParmParse pp("EBGradient");
-  bool profile = false;
-  pp.query("profile", profile);
 
   if(profile){
     timer.eventReport(pout(), false);
@@ -507,8 +510,6 @@ void EBGradient::defineIteratorsEBCF(BoxLayoutData<FArrayBox>& a_coarMaskCF, Box
     m_bufferDblCoar.define(ebcfBoxes, ebcfRanks);
     refine(m_bufferDblFine, m_bufferDblCoar, m_refRat);
     timer.stopEvent("define buff grids");    
-
-    constexpr int numGhost = 2;
 
     timer.startEvent("define coar ebislayout");
     ebisPtr->fillEBISLayout(m_bufferEBISLCoar, m_bufferDblCoar, domain,  1);
