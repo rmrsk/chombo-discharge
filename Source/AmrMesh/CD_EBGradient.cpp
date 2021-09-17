@@ -67,11 +67,19 @@ EBGradient::EBGradient(const EBLevelGrid& a_eblg,
 
   Timer timer("EBGradient::EBGradient");
 
+  // Define the level stencils. These are regular finite-difference stencils. 
   timer.startEvent("Define level stencils");
   this->defineLevelStencils();
   timer.stopEvent("Define level stencils");
 
-  if(m_hasFine && !forceNoEBCF){
+  // If there's finer level there might also be an EBCF crossing. Those can be tricky to deal with because
+  // the stencil on this level might reach underneath the finer level and obtain bogus data. This loop defines
+  // a few masks for figuring out which cells lie on the CF region, and which cells can't be used for finite
+  // differencing. Once those masks have been defined, we iterate through them and see if there are cells
+  // where we can't find good stencils. If we do find such cells, we trigger m_hasEBCF which will define
+  // a new set of grids where we run a least squares procedure. THOSE stencils are "dual-level" stencils
+  // that only reach into valid regions (i.e., not covered by a finer grid level). 
+  if(m_hasFine && !forceNoEBCF) {
 
     // Masks with transient lifetimes. 
     BoxLayoutData<FArrayBox> coarMaskCF;
@@ -117,6 +125,8 @@ void EBGradient::computeLevelGradient(LevelData<EBCellFAB>&       a_gradient,
   CH_assert(a_gradient.nComp() == SpaceDim);
   CH_assert(a_phi.     nComp() == 1       );
 
+  // TLDR: This routine computes the level gradient, i.e. using finite difference stencils isolated to this level.
+  
   const DisjointBoxLayout& dbl   = m_eblg.getDBL();
   const EBISLayout&        ebisl = m_eblg.getEBISL();
 
@@ -171,23 +181,28 @@ void EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
 				    const LevelData<EBCellFAB>& a_phiFine) const {
   CH_TIME("EBGradient::computeAMRGradient(no finer)");
 
+  // TLDR: This routine computes the two-level gradient. It first computes the level gradient and then iterates through
+  //       all cells that require a "two-level" view of the gradient. The two-level stencils are applied to buffer data
+  //       holders. Once the gradient has been computed (in the buffer data holder), it is copied into a_gradient. 
+
   this->computeLevelGradient(a_gradient, a_phi);
 
   // Do corrections near the EBCF. 
   if(m_hasFine && m_hasEBCF){
 
-    // Copy input data to buffers
+    // Copy input data to buffers. 
     const Interval interv(m_comp, m_comp);    
     a_phi.    copyTo(interv, m_bufferCoar, interv);
     a_phiFine.copyTo(interv, m_bufferFine, interv);
 
-    // Go through data buffers and compute the gradient
+    // Go through data buffers and compute the gradient (on the buffer grids). 
     for (DataIterator dit(m_bufferDblCoar); dit.ok(); ++dit){
       VoFIterator&     vofit    = m_bufferIterator[dit()];
       BaseIVFAB<Real>& gradCoar = m_bufferGradient[dit()];
       const EBCellFAB& phiCoar  = m_bufferCoar    [dit()];
       const EBCellFAB& phiFine  = m_bufferFine    [dit()];
-      
+
+      // Go through all cells that have a two-level stencil. 
       for (vofit.reset(); vofit.ok(); ++vofit){
 	const VolIndex& vof = vofit();
 
@@ -198,7 +213,7 @@ void EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
 	  gradCoar(vof, dir) = 0.0;
 	}
 
-	// Apply coarse stencil
+	// Apply the coarse stencil. 
 	for (int i = 0; i < coarSten.size(); i++){
 	  const VolIndex& ivof    = coarSten.vof(i);
 	  const Real&     iweight = coarSten.weight(i);
@@ -207,7 +222,7 @@ void EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
 	  gradCoar(vof, ivar) += iweight * phiCoar(ivof, m_comp);
 	}
 
-	// Apply fine stencil
+	// Apply the fine stencil. 
 	for (int i = 0; i < fineSten.size(); i++){
 	  const VolIndex& ivof    = fineSten.vof(i);
 	  const Real&     iweight = fineSten.weight(i);
@@ -218,10 +233,12 @@ void EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
       }
     }
 
-    // Copy the result from the buffer grids to the "real" grids
+    // Now copy the result from the buffer grids to the "real" grids. Here, m_bufferGradient is a BaseIVFAB<Real> (for memory reasons)
+    // so we can't copy directly to a_gradient. After that we just iterate through those cells and copy the result to a_gradient. 
     m_bufferGradient.copyTo(m_ebcfGradient);
+
     for (DataIterator dit(m_eblg.getDBL()); dit.ok(); ++dit){
-      EBCellFAB&             gradient     = a_gradient[dit()];
+      EBCellFAB&             gradient     = a_gradient    [dit()];
       const BaseIVFAB<Real>& ebcfGradient = m_ebcfGradient[dit()];
 
       VoFIterator& vofit = m_ebcfIterator[dit()];
@@ -240,6 +257,9 @@ void EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
 void EBGradient::defineLevelStencils(){
   CH_TIME("EBGradient::defineLevelStencils");
 
+  // TLDR: This just defines finite-difference stencils on this level. We need explicit stencils at the domain boundary AND at
+  //       the EB. There are other cases, too, but those are handled by defineStencilsEBCF. 
+
   const DisjointBoxLayout& dbl    = m_eblg.getDBL();
   const EBISLayout&        ebisl  = m_eblg.getEBISL();
   const ProblemDomain&     domain = m_eblg.getDomain();
@@ -248,12 +268,10 @@ void EBGradient::defineLevelStencils(){
   m_levelIterator.define(dbl);  
 
   for (DataIterator dit(dbl); dit.ok(); ++dit){
-    const Box      cellBox  = dbl       [dit()];
-    const EBISBox& ebisbox  = ebisl     [dit()];
+    const Box      cellBox  = dbl  [dit()];
+    const EBISBox& ebisbox  = ebisl[dit()];
     const EBGraph& ebgraph  = ebisbox.getEBGraph();
 
-    // Determine which cells that need explicit stencils. This is certainly all the cut-cells
-    // and the ones at the domain boundaries.
     IntVectSet bndryIVS = ebisbox.getIrregIVS(cellBox);
     for (int dir = 0; dir < SpaceDim; dir++){
       Box loBox;
@@ -283,6 +301,7 @@ void EBGradient::defineLevelStencils(){
       
       stencil.clear();
 
+      // Get derivative in each direction. Note that EBArith might decide to drop order. 
       for (int dir = 0; dir < SpaceDim; dir++){
 	VoFStencil derivDirStencil;
 	EBArith::getFirstDerivStencilWidthOne(derivDirStencil, vof, ebisbox, dir, m_dx, nullptr, dir);
@@ -296,6 +315,12 @@ void EBGradient::defineMasks(BoxLayoutData<FArrayBox>& a_coarMaskCF, BoxLayoutDa
   CH_TIME("EBGradient::defineMasks");
 
   CH_assert(m_hasFine);
+
+  // TLDR: This routine defines the masks in a_coarMaskCF and a_coarMaskInvalid. These masks live on the coarse level
+  //       and they hold a value of 1 in coarse cells that abut the refinement boundary (a_coarMaskCF) and a value of 1
+  //       in cells that are covered by a finer level (a_coarMaskInvalid). These are just constructed by creating some
+  //       buffer storage on the (coarsened) fine grid with a value of 1 in the appropriate regions, and then copying
+  //       the result to the coarse grid. 
 
   constexpr Real     zero   = 0.0;
   constexpr Real     one    = 1.0;    
@@ -355,7 +380,7 @@ void EBGradient::defineMasks(BoxLayoutData<FArrayBox>& a_coarMaskCF, BoxLayoutDa
     coFiMaskInvalid[dit()].setVal(one, cellBox, m_comp, m_nComp);
   }
 
-  // Add to the coarMaskCF. After this, coarMaskCF will have a value of 1 in all cells that abut the fine level. Likewise, coarMaskInvalid
+  // Define the input masks. After this, coarMaskCF will have a value of 1 in all cells that abut the fine level. Likewise, coarMaskInvalid
   // will have a value of 1 in all cells that are covered by a finer level.
   Vector<int>      coarRanks = dbl.procIDs();
   Vector<Box>      coarBoxes = dbl.boxArray();
@@ -384,6 +409,9 @@ bool EBGradient::isFiniteDifferenceStencilValid(const IntVect&   a_ivCoar,
 						const EBISBox&   a_ebisBox,
 						const FArrayBox& a_invalidRegion){
   CH_TIME("EBGradient::isFiniteDifferenceStencilValid");
+
+  // TLDR: Routine which checks if a finite difference stencil is "valid" in the sense that
+  //       it does not reach into cut-cells in invalid regions. 
 
   constexpr Real zero = 0.0;
 
@@ -419,10 +447,12 @@ bool EBGradient::isFiniteDifferenceStencilValid(const IntVect&   a_ivCoar,
   return validStencil;
 }
 
-void EBGradient::defineIteratorsEBCF(BoxLayoutData<FArrayBox>& a_coarMaskCF, BoxLayoutData<FArrayBox>& a_coarMaskInvalid){
+void EBGradient::defineIteratorsEBCF(const BoxLayoutData<FArrayBox>& a_coarMaskCF, const BoxLayoutData<FArrayBox>& a_coarMaskInvalid){
   CH_TIME("EBGradient::defineIteratorsEBCF");
 
-  Timer timer("EBGradient::defineIteratorsEBCF");
+  // TLDR: This defines which cells need explicit two-level stencils. We move along the refinement boundary on the coarse
+  //       level and check if we can use finite-differencing. If not, we flag the cell and the box. We then generate the
+  //       buffer grids, which consist of all boxes that contain at least one cell that requires a least squares stencil. 
   
   constexpr Real zero   = 0.0;
   constexpr Real one    = 1.0;      
@@ -460,7 +490,6 @@ void EBGradient::defineIteratorsEBCF(BoxLayoutData<FArrayBox>& a_coarMaskCF, Box
 
     // Determine cells where we need to drop order.
     IntVectSet& ebcfIVS = sets[dit()];
-    timer.startEvent("dit loop");          
     if(isIrregular){
 
       // Iterate through the coarse-fine region and check if the finite difference stencil reaches into a cut-cell.
@@ -483,48 +512,33 @@ void EBGradient::defineIteratorsEBCF(BoxLayoutData<FArrayBox>& a_coarMaskCF, Box
       }
 
     }
-    timer.stopEvent("dit loop");                
 
     // Define the iterator.
-    timer.startEvent("iter def");
     m_ebcfIterator[dit()].define(ebcfIVS, ebgraph);
-    timer.stopEvent("iter def");
   }
 
   // Define storage for holding gradient
-  timer.startEvent("grad def");
   m_ebcfGradient.define(dbl, SpaceDim, IntVect::Zero, BaseIVFactory<Real>(ebisl, sets));
-  timer.stopEvent("grad def");  
-
 
   // Make the grids that contain irregular boxes that require better stencils. We will use this as a buffered layout.
-  timer.startEvent("gather/balance");
   LoadBalancing::gatherBoxes(ebcfBoxes);
   LoadBalancing::makeBalance(ebcfRanks, ebcfBoxes);
-  timer.stopEvent("gather/balance");  
 
+  // Fill the buffer layouts. Note that we need one ghost cell on the coarse level but m_refRat ghost cells on the fine level. 
   if(ebcfBoxes.size() > 0){
     m_hasEBCF = true;
-    timer.startEvent("define buff grids");
     const EBIndexSpace* const ebisPtr = m_eblg.getEBIS();
     m_bufferDblCoar.define(ebcfBoxes, ebcfRanks);
     refine(m_bufferDblFine, m_bufferDblCoar, m_refRat);
-    timer.stopEvent("define buff grids");    
 
-    timer.startEvent("define coar ebislayout");
     ebisPtr->fillEBISLayout(m_bufferEBISLCoar, m_bufferDblCoar, domain,  1);
-    m_bufferEBISLCoar.setMaxRefinementRatio(m_refRat, ebisPtr);
-    timer.stopEvent("define coar ebislayout");
-    
-    timer.startEvent("define fine ebislayout");        
     ebisPtr->fillEBISLayout(m_bufferEBISLFine, m_bufferDblFine, domainFine, m_refRat);
-    timer.stopEvent("define fine ebislayout");            
+
+    m_bufferEBISLCoar.setMaxRefinementRatio(m_refRat, ebisPtr);
   }
   else{
     m_hasEBCF = false;
   }
-
-  //  timer.eventReport(pout(), true);
 }
 
 void EBGradient::defineBuffers(BoxLayoutData<FArrayBox>&       a_bufferCoarMaskCF,
@@ -532,6 +546,10 @@ void EBGradient::defineBuffers(BoxLayoutData<FArrayBox>&       a_bufferCoarMaskC
 			       const BoxLayoutData<FArrayBox>& a_coarMaskCF,
 			       const BoxLayoutData<FArrayBox>& a_coarMaskInvalid){
   CH_TIME("EBGradient::defineBuffers");
+
+  // TLDR: This routine defines the required buffers for holding data for dual level stencils. We use the input masks for determining
+  //       which cells need a least squares stencil. Much of this code simply consists of creating masks that are viewable from the
+  //       buffer grids (rather than m_eblg). 
 
   constexpr Real zero   = 0.0;
   constexpr Real one    = 1.0;
@@ -624,6 +642,10 @@ void EBGradient::defineBuffers(BoxLayoutData<FArrayBox>&       a_bufferCoarMaskC
 void EBGradient::defineStencilsEBCF(const BoxLayoutData<FArrayBox>& a_bufferCoarMaskInvalid){
   CH_TIME("EBGradient::defineStencilsEBCF");
 
+  // TLDR: This code iterates through the buffer grids and defines least squares stencils in the
+  //       various cells that need it. The input mask is used to determine which cells we can use
+  //       on the fine/coarse levels. 
+
   const DisjointBoxLayout& dbl        = m_bufferDblCoar;
   const DisjointBoxLayout& dblFine    = m_bufferDblFine;
   
@@ -648,6 +670,8 @@ void EBGradient::defineStencilsEBCF(const BoxLayoutData<FArrayBox>& a_bufferCoar
 
     const FArrayBox& invalidRegion = a_bufferCoarMaskInvalid[dit()];
 
+    // Make the invalid region mask into DenseIntVectSets because that is what
+    // LeastSquares mostly want. 
     DenseIntVectSet validRegionCoar(grownCellBox,     true);
     DenseIntVectSet validRegionFine(grownCellBoxFine, false);
 
@@ -697,6 +721,7 @@ void EBGradient::defineStencilsEBCF(const BoxLayoutData<FArrayBox>& a_bufferCoar
 	order--;
       }
 
+      // As a last effort, get a finite difference stencil after all. 
       if(!foundStencil){
 	coarStencil.clear();
 	fineStencil.clear();
@@ -715,6 +740,9 @@ bool EBGradient::getFiniteDifferenceStencil(VoFStencil&            a_stencil,
 					    const DenseIntVectSet& a_validRegion,
 					    const Real             a_dx){
   CH_TIME("EBGradient::getFiniteDifferenceStencil");
+
+  // TLDR: This routine computes a finite difference stencil. If it does not have any valid cells to use (defined by a_validRegion)
+  //       it will not return a stencil. 
 
   a_stencil.clear();
 
@@ -802,6 +830,13 @@ bool EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
 					const int&             a_order,
 					const int&             a_weight) {
   CH_TIME("EBGradient::getLeastSquaresStencil");
+
+  // TLDR: This routine computes a two-level least squares stencil. We include cells that are within a range of 1 on the coarse level, but only
+  //       those in a monotone path from the input vof. The fine cells are defined as the cells that are available through a coarsening of the
+  //       coarse cells. Since the resulting system might sometimes be too big, we trim the system down to a specified size. Once the least squares
+  //       system has been "solved", i.e. a minimization of the truncation order for the various expansions has been achieved, we formulate the stencil
+  //       using the output of LeastSquares::computeDualLevelStencils. Note that the solution on the input vof is known, so it is pruned from the
+  //       system of equations. 
 
   bool foundStencil;
 
