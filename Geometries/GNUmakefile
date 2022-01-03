@@ -5,6 +5,7 @@ include $(DISCHARGE_HOME)/Lib/pre.make
 
 $(GEOMETRIES_LIB):
 
+# This is for Chombo -- it will compile the files in src_dirs into a library called GEOMETRIES_LIB
 lbase    = $(GEOMETRIES_LIB)
 src_dirs = $(GEOMETRIES_DIRS)
 
