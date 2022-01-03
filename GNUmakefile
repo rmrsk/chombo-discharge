@@ -1,8 +1,6 @@
-include $(DISCHARGE_HOME)/Lib/Definitions.make
-
-# clean:
-# 	$(MAKE) --directory=$(DISCHARGE_HOME)/Source     realclean
-# 	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries realclean
+clean:
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Source     realclean
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries realclean
 
 source:
 	$(MAKE) --directory=$(DISCHARGE_HOME)/Source
@@ -10,4 +8,4 @@ source:
 geometries: source
 	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries
 
-# all: source geometries
+all: source geometries

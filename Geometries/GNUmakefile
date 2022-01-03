@@ -4,16 +4,14 @@ include $(CHOMBO_HOME)/mk/Make.defs
 
 .PHONY: $(GEOMETRY_LIB)
 
-$(GEOMETRY_LIB): Src
+$(GEOMETRY_LIB):
 
 lbase = $(GEOMETRY_LIB)
 
-src_dirs=$(DISCHARGE_HOME)/Geometries/Aerosol\
-	$(DISCHARGE_HOME)/Geometries/CoaxialCable	
-
+src_dirs=$(GEOMETRIES_DIRS)
 
 # Linker needs to find library
-XTRACPPFLAGS += $(DISCHARGE_INCLUDE)
+XTRACPPFLAGS += $(SOURCE_INCLUDE) $(GEOMETRIES_INCLUDE) 
 XTRALIBFLAGS += $(addprefix -l, $(DISCHARGE_LIB))$(config)
 
 include $(CHOMBO_HOME)/mk/Make.example

@@ -32,6 +32,22 @@ SOURCE_DIRS = $(DISCHARGE_HOME)/Source/AmrMesh \
 	$(DISCHARGE_HOME)/Source/Particle \
 	$(DISCHARGE_HOME)/Source/Utilities \
 
+# Headers where the chombo-discharge Geometries code is located. This should all folders
+# under $DISCHARGE_HOME/Geometries
+GEOMETRIES_DIRS = $(DISCHARGE_HOME)/Geometries/Aerosol \
+	$(DISCHARGE_HOME)/Geometries/CoaxialCable \
+	$(DISCHARGE_HOME)/Geometries/DoubleRod \
+	$(DISCHARGE_HOME)/Geometries/ElectrodeArray \
+	$(DISCHARGE_HOME)/Geometries/MechanicalShaft \
+	$(DISCHARGE_HOME)/Geometries/RegularGeometry \
+	$(DISCHARGE_HOME)/Geometries/RodDielectric \
+	$(DISCHARGE_HOME)/Geometries/RodPlaneProfile \
+	$(DISCHARGE_HOME)/Geometries/RoughRod \
+	$(DISCHARGE_HOME)/Geometries/RoughSphere \
+	$(DISCHARGE_HOME)/Geometries/Tesselation \
+	$(DISCHARGE_HOME)/Geometries/Vessel \
+	$(DISCHARGE_HOME)/Geometries/WireWire \
+
 
 # Make a variable which holds all paths to include for source code. 
 SOURCE_INCLUDE = -I./ \
@@ -65,3 +81,5 @@ GEOMETRIES_INCLUDE = -I$(DISCHARGE_HOME)/Geometries/Aerosol \
 	-I$(DISCHARGE_HOME)/Geometries/Vessel \
 	-I$(DISCHARGE_HOME)/Geometries/WireWire \
 
+
+#DISCHARGE_INCLUDE = $(SOURCE_INCLUDE) $(GEOMETRIES_INCLUDE)
