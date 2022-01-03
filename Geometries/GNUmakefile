@@ -1,13 +1,12 @@
 # This file is for building the chombo-discharge source code as a library. The library will be named according to Chombo's naming convection.
-include $(DISCHARGE_HOME)/Lib/Definitions.make
-include $(CHOMBO_HOME)/mk/Make.defs
+include $(DISCHARGE_HOME)/Lib/pre.make
 
-lbase = $(GEOMETRIES_LIB)
+.PHONY: $(GEOMETRIES_LIB) 
 
-src_dirs=$(GEOMETRIES_DIRS)
+$(GEOMETRIES_LIB):
 
-# Linker needs to find library
-XTRACPPFLAGS += $(SOURCE_INCLUDE)
-XTRALIBFLAGS += $(addprefix -l, $(DISCHARGE_LIB))$(config)
+lbase    = $(GEOMETRIES_LIB)
+src_dirs = $(GEOMETRIES_DIRS)
 
-include $(CHOMBO_HOME)/mk/Make.example
+# Linker needs to find chombo-discharge source code
+include $(DISCHARGE_HOME)/Lib/src.post.make

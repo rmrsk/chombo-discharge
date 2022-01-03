@@ -4,6 +4,6 @@
 XTRACPPFLAGS += $(SOURCE_INCLUDE) $(GEOMETRIES_INCLUDE)
 
 XTRALIBFLAGS += $(addprefix -l, $(DISCHARGE_LIB))$(config)
-XTRALIBFLAGS += $(addprefix -l, $(GEOMETRY_LIB))$(config)
+XTRALIBFLAGS += $(addprefix -l, $(GEOMETRIES_LIB))$(config)
 
 include $(CHOMBO_HOME)/mk/Make.example

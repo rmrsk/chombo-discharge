@@ -3,9 +3,9 @@ clean:
 	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries realclean
 
 source:
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Source $(DISCHARGE_LIB)
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Source
 
 geometries: source
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries $(GEOMETRY_LIB)
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries
 
 all: source geometries
