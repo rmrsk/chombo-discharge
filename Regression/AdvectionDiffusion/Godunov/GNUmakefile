@@ -4,8 +4,8 @@ all: $(ebase) dependencies
 
 # Build chombo-discharge dependencies
 dependencies: 
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Source
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Source      $(DISCHARGE_LIB)
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries  $(GEOMETRIES_LIB)
 
 # Base file containing int main()
 ebase    = main

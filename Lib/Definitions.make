@@ -3,8 +3,8 @@
 # it makes sense to give the libraries a name through the makefile system. Here, DISCHARGE_LIB is the library name for the
 # the library compiled from $DISCHARGE_HOME/Source, GEOMETRY_LIB is the library name for the files compiled from
 # $DISCHARGE_HOME/Geometries and so on.
-DISCHARGE_LIB = Discharge
-GEOMETRY_LIB  = Geometries
+DISCHARGE_LIB  = Discharge
+GEOMETRIES_LIB = Geometries
 
 # As a rule we always use EB (embedded boundaries) and MF (multi-fluid) from
 # Chombo
