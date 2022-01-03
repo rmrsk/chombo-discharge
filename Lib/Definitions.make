@@ -15,71 +15,20 @@ USE_MF = TRUE
 LibNames = MFElliptic MFTools EBAMRTimeDependent EBAMRElliptic EBAMRTools EBTools AMRElliptic AMRTools \
 	AMRTimeDependent BaseTools BoxTools Workshop ParticleTools
 
-
 # Headers where the chombo-discharge source code is located. This should all folders
 # under $DISCHARGE_HOME/Source
-SOURCE_DIRS = $(DISCHARGE_HOME)/Source/AmrMesh \
-	$(DISCHARGE_HOME)/Source/ConvectionDiffusionReaction \
-	$(DISCHARGE_HOME)/Source/CellTagger \
-	$(DISCHARGE_HOME)/Source/Driver \
-	$(DISCHARGE_HOME)/Source/Elliptic \
-	$(DISCHARGE_HOME)/Source/Electrostatics \
-	$(DISCHARGE_HOME)/Source/Geometry \
-	$(DISCHARGE_HOME)/Source/ImplicitFunctions \
-	$(DISCHARGE_HOME)/Source/Multifluid \
-	$(DISCHARGE_HOME)/Source/RadiativeTransfer \
-	$(DISCHARGE_HOME)/Source/SigmaSolver \
-	$(DISCHARGE_HOME)/Source/Particle \
-	$(DISCHARGE_HOME)/Source/Utilities \
+SOURCE_DIRS     := $(shell find $(DISCHARGE_HOME)/Source     -type d -print)
+GEOMETRIES_DIRS := $(shell find $(DISCHARGE_HOME)/Geometries -type d -print)
 
-# Headers where the chombo-discharge Geometries code is located. This should all folders
-# under $DISCHARGE_HOME/Geometries
-GEOMETRIES_DIRS = $(DISCHARGE_HOME)/Geometries/Aerosol \
-	$(DISCHARGE_HOME)/Geometries/CoaxialCable \
-	$(DISCHARGE_HOME)/Geometries/DoubleRod \
-	$(DISCHARGE_HOME)/Geometries/ElectrodeArray \
-	$(DISCHARGE_HOME)/Geometries/MechanicalShaft \
-	$(DISCHARGE_HOME)/Geometries/RegularGeometry \
-	$(DISCHARGE_HOME)/Geometries/RodDielectric \
-	$(DISCHARGE_HOME)/Geometries/RodPlaneProfile \
-	$(DISCHARGE_HOME)/Geometries/RoughRod \
-	$(DISCHARGE_HOME)/Geometries/RoughSphere \
-	$(DISCHARGE_HOME)/Geometries/Tesselation \
-	$(DISCHARGE_HOME)/Geometries/Vessel \
-	$(DISCHARGE_HOME)/Geometries/WireWire \
+# Make variables that hold include flags for various source code.
+SOURCE_INCLUDE     := $(foreach dir, $(SOURCE_DIRS),     $(addprefix -I, $(dir)))
+GEOMETRIES_INCLUDE := $(foreach dir, $(GEOMETRIES_DIRS), $(addprefix -I, $(dir)))
 
+# Make headers visible
+XTRACPPFLAGS += $(SOURCE_INCLUDE) 
+XTRACPPFLAGS += $(GEOMETRIES_INCLUDE)
 
-# Make a variable which holds all paths to include for source code. 
-SOURCE_INCLUDE = -I./ \
-	     -I$(DISCHARGE_HOME)/Source/AmrMesh \
-	     -I$(DISCHARGE_HOME)/Source/ConvectionDiffusionReaction \
-	     -I$(DISCHARGE_HOME)/Source/CellTagger \
-	     -I$(DISCHARGE_HOME)/Source/Driver \
-	     -I$(DISCHARGE_HOME)/Source/Elliptic \
-	     -I$(DISCHARGE_HOME)/Source/Electrostatics \
-	     -I$(DISCHARGE_HOME)/Source/Geometry \
-	     -I$(DISCHARGE_HOME)/Source/ImplicitFunctions \
-	     -I$(DISCHARGE_HOME)/Source/Multifluid \
-	     -I$(DISCHARGE_HOME)/Source/RadiativeTransfer \
-	     -I$(DISCHARGE_HOME)/Source/SigmaSolver \
-	     -I$(DISCHARGE_HOME)/Source/Particle \
-	     -I$(DISCHARGE_HOME)/Source/Utilities \
-
-# Headers where the chombo-discharge geometry code is located. This should all folders
-# under $DISCHARGE_HOME/Geometries
-GEOMETRIES_INCLUDE = -I$(DISCHARGE_HOME)/Geometries/Aerosol \
-	-I$(DISCHARGE_HOME)/Geometries/CoaxialCable \
-	-I$(DISCHARGE_HOME)/Geometries/DoubleRod \
-	-I$(DISCHARGE_HOME)/Geometries/ElectrodeArray \
-	-I$(DISCHARGE_HOME)/Geometries/MechanicalShaft \
-	-I$(DISCHARGE_HOME)/Geometries/RegularGeometry \
-	-I$(DISCHARGE_HOME)/Geometries/RodDielectric \
-	-I$(DISCHARGE_HOME)/Geometries/RodPlaneProfile \
-	-I$(DISCHARGE_HOME)/Geometries/RoughRod \
-	-I$(DISCHARGE_HOME)/Geometries/RoughSphere \
-	-I$(DISCHARGE_HOME)/Geometries/Tesselation \
-	-I$(DISCHARGE_HOME)/Geometries/Vessel \
-	-I$(DISCHARGE_HOME)/Geometries/WireWire \
-
-
-#DISCHARGE_INCLUDE = $(SOURCE_INCLUDE) $(GEOMETRIES_INCLUDE)
+# Make libs visible
+XTRALIBFLAGS += $(addprefix -l, $(DISCHARGE_LIB))$(config)
+XTRALIBFLAGS += $(addprefix -l, $(GEOMETRIES_LIB))$(config)
+XTRALIBFLAGS += -L/$(DISCHARGE_HOME)/Lib

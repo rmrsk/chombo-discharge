@@ -1,15 +1,12 @@
 clean:
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Source     clean
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries clean
-
-realclean:
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Source     realclean
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries realclean
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Source     pristine
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries pristine
 
 source:
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Source
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Source lib
 
 geometries: source
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries lib
 
-all: source geometries
+lib: source geometries
+
