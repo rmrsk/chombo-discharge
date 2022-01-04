@@ -1,10 +1,11 @@
-
 # These are the names for the various chombo-discharge components. Because we build various components into libraries,
-# it makes sense to give the libraries a name through the makefile system. Here, DISCHARGE_LIB is the library name for the
+# it makes sense to give the libraries a name through the makefile system. Here, SOURCE_LIB is the library name for the
 # the library compiled from $DISCHARGE_HOME/Source, GEOMETRY_LIB is the library name for the files compiled from
 # $DISCHARGE_HOME/Geometries and so on.
-DISCHARGE_LIB  = Discharge
+SOURCE_LIB     = Source
 GEOMETRIES_LIB = Geometries
+ADVDIFF_LIB    = AdvectionDiffusion
+CDRPLASMA_LIB  = CdrPlasma
 
 # As a rule we always use EB (embedded boundaries) and MF (multi-fluid) from
 # Chombo
@@ -17,18 +18,22 @@ LibNames = MFElliptic MFTools EBAMRTimeDependent EBAMRElliptic EBAMRTools EBTool
 
 # Headers where the chombo-discharge source code is located. This should all folders
 # under $DISCHARGE_HOME/Source
-SOURCE_DIRS     := $(shell find $(DISCHARGE_HOME)/Source     -type d -print)
-GEOMETRIES_DIRS := $(shell find $(DISCHARGE_HOME)/Geometries -type d -print)
+SOURCE_DIRS     := $(shell find $(DISCHARGE_HOME)/Source                     -type d -print)
+GEOMETRIES_DIRS := $(shell find $(DISCHARGE_HOME)/Geometries                 -type d -print)
+ADVDIFF_DIRS    := $(shell find $(DISCHARGE_HOME)/Physics/AdvectionDiffusion -type d -print)
+CDRPLASMA_DIRS  := $(shell find $(DISCHARGE_HOME)/Physics/CdrPlasma          -type d -print)
 
 # Make variables that hold include flags for various source code.
 SOURCE_INCLUDE     := $(foreach dir, $(SOURCE_DIRS),     $(addprefix -I, $(dir)))
 GEOMETRIES_INCLUDE := $(foreach dir, $(GEOMETRIES_DIRS), $(addprefix -I, $(dir)))
+ADVDIFF_INCLUDE    := $(foreach dir, $(ADVDIFF_DIRS),    $(addprefix -I, $(dir)))
+CDRPLASMA_INCLUDE  := $(foreach dir, $(CDRPLASMA_DIRS),  $(addprefix -I, $(dir)))
 
 # Make headers visible
 XTRACPPFLAGS += $(SOURCE_INCLUDE) 
 XTRACPPFLAGS += $(GEOMETRIES_INCLUDE)
 
 # Make libs visible
-XTRALIBFLAGS += $(addprefix -l, $(DISCHARGE_LIB))$(config)
+XTRALIBFLAGS += $(addprefix -l, $(SOURCE_LIB))$(config)
 XTRALIBFLAGS += $(addprefix -l, $(GEOMETRIES_LIB))$(config)
 XTRALIBFLAGS += -L/$(DISCHARGE_HOME)/Lib

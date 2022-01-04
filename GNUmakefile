@@ -8,5 +8,15 @@ source:
 geometries: source
 	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries lib
 
-lib: source geometries
+advectiondiffusion: source
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/AdvectionDiffusion lib
+
+cdrplasma: source
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/CdrPlasma lib
+
+physics: source advectiondiffusion cdrplasma
+
+lib: source geometries 
+
+all: lib advectiondiffusion
 
