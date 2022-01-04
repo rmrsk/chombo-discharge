@@ -7,11 +7,11 @@ include $(CHOMBO_HOME)/mk/Make.example
 # For building this application -- it needs the chombo-discharge source code. 
 $(ebase): dependencies
 
-# Build dependencies if they do not exis. 
+# Build dependencies.
 dependencies: 
 	$(MAKE) --directory=$(DISCHARGE_HOME) lib
-	$(MAKE) --directory=$(DISCHARGE_HOME) electrostatics
+	$(MAKE) --directory=$(DISCHARGE_HOME) radiativetransfer
 
 # Make advection-diffusion headers and library visible. 
-XTRACPPFLAGS += $(ELECTROSTATICS_INCLUDE)
-XTRALIBFLAGS += $(addprefix -l, $(ELECTROSTATICS_LIB))$(config)
+XTRACPPFLAGS += $(RADTRANSFER_INCLUDE)
+XTRALIBFLAGS += $(addprefix -l, $(RADTRANSFER_LIB))$(config)

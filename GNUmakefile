@@ -1,5 +1,3 @@
-
-
 source:
 	$(MAKE) --directory=$(DISCHARGE_HOME)/Source lib
 

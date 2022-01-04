@@ -1,11 +1,11 @@
-#include <CD_Driver.H>
-#include <CD_FieldSolverMultigrid.H>
-#include <CD_RegularGeometry.H>
-#include <CD_FieldStepper.H>
-#include <ParmParse.H>
+#include "CD_Driver.H"
+#include "CD_EddingtonSP1.H"
+#include "CD_RegularGeometry.H"
+#include <CD_RadiativeTransferStepper.H>
+#include "ParmParse.H"
 
 using namespace ChomboDischarge;
-using namespace Physics::Electrostatics;
+using namespace Physics::RadiativeTransfer;
 
 int main(int argc, char* argv[]){
 
@@ -24,8 +24,8 @@ int main(int argc, char* argv[]){
   RefCountedPtr<CellTagger> tagger              = RefCountedPtr<CellTagger> (NULL);
 
   // Set up basic Poisson, potential = 1 
-  auto timestepper = RefCountedPtr<FieldStepper<FieldSolverMultigrid> >
-     (new FieldStepper<FieldSolverMultigrid>());
+  auto timestepper = RefCountedPtr<RadiativeTransferStepper<EddingtonSP1> >
+     (new RadiativeTransferStepper<EddingtonSP1>());
 
   // Set up the Driver and run it
   RefCountedPtr<Driver> engine = RefCountedPtr<Driver> (new Driver(compgeom, timestepper, amr, tagger, geocoarsen));
