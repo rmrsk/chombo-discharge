@@ -2,16 +2,16 @@
 include $(DISCHARGE_HOME)/Lib/Definitions.make
 
 # This is for Chombo -- it will compile the files in src_dirs into a library. Chombo's makefiles will expand
-# all files found in src_dirs into $objects so we can compile
-src_dirs = $(SOURCE_DIRS)
+# all files found in src_dirs into $objects so we can compile. 
+src_dirs = $(ELECTROSTATICS_DIRS)
 include $(CHOMBO_HOME)/mk/Make.example
 
-# Name of the library. Uses the Chombo configuration string. 
-SrcLib = $(DISCHARGE_HOME)/Lib/lib$(SOURCE_LIB)$(config).a
+# Name of the library
+SrcLib = $(DISCHARGE_HOME)/Lib/lib$(ELECTROSTATICS_LIB)$(config).a
 
 .PHONY: all lib pristine
 
-# For making $DISCHARGE_HOME/Source into a library in $DISCHARGE_HOME/Lib
+# For making the library.
 lib: $(objects)
 	if test -f $(SrcLib); then $(RM) $(SrcLib); fi
 	ar -cr $(SrcLib) o/$(config)/*.o
@@ -22,3 +22,5 @@ pristine:
 	if test -f $(SrcLib); then $(RM) $(SrcLib); fi
 
 all: lib
+
+
