@@ -3,11 +3,11 @@ include $(DISCHARGE_HOME)/Lib/Definitions.make
 
 # This is for Chombo -- it will compile the files in src_dirs into a library. Chombo's makefiles will expand
 # all files found in src_dirs into $objects so we can compile. 
-src_dirs = $(CDRPLASMA_DIRS)
+src_dirs = $(ITOPLASMA_DIRS)
 include $(CHOMBO_HOME)/mk/Make.example
 
 # Name of the library
-SrcLib = $(DISCHARGE_HOME)/Lib/lib$(CDRPLASMA_LIB)$(config).a
+SrcLib = $(DISCHARGE_HOME)/Lib/lib$(ITOPLASMA_LIB)$(config).a
 
 .PHONY: all lib pristine
 
