@@ -10,6 +10,8 @@ ADVDIFF_LIB        = PhysicsAdvectionDiffusionPhysics
 BROWNIAN_LIB       = BrownianWalkerPhysics
 CDRPLASMA_LIB      = CdrPlasmaPhysics
 ELECTROSTATICS_LIB = ElectrostaticPhysics
+GEOMETRYONLY_LIB   = GeometryPhysics
+RADTRANSFER_LIB    = RadiativeTransferPhysics
 
 # Headers where the chombo-discharge source code is located. This should all folders
 # under $DISCHARGE_HOME/Source
@@ -24,11 +26,15 @@ ADVDIFF_DIRS         := $(shell find $(DISCHARGE_HOME)/Physics/AdvectionDiffusio
 BROWNIAN_DIRS        := $(shell find $(DISCHARGE_HOME)/Physics/BrownianWalker     -type d -print)
 CDRPLASMA_DIRS       := $(shell find $(DISCHARGE_HOME)/Physics/CdrPlasma          -type d -print)
 ELECTROSTATICS_DIRS  := $(shell find $(DISCHARGE_HOME)/Physics/Electrostatics     -type d -print)
+GEOMETRYONLY_DIRS    := $(shell find $(DISCHARGE_HOME)/Physics/Geometry           -type d -print)
+RADTRANSFER_DIRS     := $(shell find $(DISCHARGE_HOME)/Physics/RadiativeTransfer  -type d -print)
 
 ADVDIFF_INCLUDE         := $(foreach dir, $(ADVDIFF_DIRS),         $(addprefix -I, $(dir)))
 BROWNIAN_INCLUDE        := $(foreach dir, $(BROWNIAN_DIRS),        $(addprefix -I, $(dir)))
 CDRPLASMA_INCLUDE       := $(foreach dir, $(CDRPLASMA_DIRS),       $(addprefix -I, $(dir)))
 ELECTROSTATICS_INCLUDE  := $(foreach dir, $(ELECTROSTATICS_DIRS),  $(addprefix -I, $(dir)))
+GEOMETRYONLY_INCLUDE    := $(foreach dir, $(GEOMETRYONLY_DIRS),    $(addprefix -I, $(dir)))
+RADTRANSFER_INCLUDE     := $(foreach dir, $(RADTRANSFER_DIRS),     $(addprefix -I, $(dir)))
 
 # Source and Geometries headers should always be visible. 
 XTRACPPFLAGS += $(SOURCE_INCLUDE) 

@@ -1,6 +1,4 @@
-clean:
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Source     pristine
-	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries pristine
+
 
 source:
 	$(MAKE) --directory=$(DISCHARGE_HOME)/Source lib
@@ -20,9 +18,27 @@ cdrplasma: source
 electrostatics: source
 	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/Electrostatics lib
 
-physics: source advectiondiffusion brownianwalker cdrplasma
+geometry: source
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/Geometry lib
+
+radiativetransfer: source
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/RadiativeTransfer lib
+
+clean:
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Source     pristine
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Geometries pristine
+
+realclean: clean
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/AdvectionDiffusion pristine
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/BrownianWalker     pristine
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/CdrPlasma          pristine
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/Electrostatics     pristine
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/Geometry           pristine
+	$(MAKE) --directory=$(DISCHARGE_HOME)/Physics/RadiativeTransfer  pristine
+
+physics: source advectiondiffusion brownianwalker cdrplasma electrostatics geometry radiativetransfer
 
 lib: source geometries 
 
-all: lib advectiondiffusion
+all: lib physics
 
