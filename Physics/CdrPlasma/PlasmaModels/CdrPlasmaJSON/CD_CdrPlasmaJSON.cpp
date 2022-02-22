@@ -546,100 +546,72 @@ void CdrPlasmaJSON::initializePlasmaSpecies() {
     const auto mobile      =      species["mobile"].   get<bool       >() ;
     const auto diffusive   =      species["diffusive"].get<bool       >() ;
 
-    // Does not get to contain at letter
-    if(this->containsWildcard(name)) this->throwParserError(baseError + "but species '" + name + "' can not contain the '@' letter");
-
-    // Names can not contain paranthesis either
-    if(this->containsBracket(name)) this->throwParserError(baseError + "but species '" + name + "' can not contain brackets");
-
-    // It's an error if the species was already defined. 
-    if(this->isPlasmaSpecies(name)) this->throwParserError(baseError + "but plasma species '" + name + "' was defined more than once");
-    
-    const bool hasInitData = species.contains("initial data");
+    // Names do not get to contain wildcards, brackets, or replicate former species names. 
+    if(this->containsWildcard(name)) this->throwParserError(baseError + "but species '" + name + "' can not contain the '@' letter"   );
+    if(this->containsBracket (name)) this->throwParserError(baseError + "but species '" + name + "' can not contain brackets"         );
+    if(this->isPlasmaSpecies (name)) this->throwParserError(baseError + "but plasma species '" + name + "' was defined more than once");
 
     // Get the initial data. 
-    std::function<Real(const RealVect, const Real)> initFunc;
+    const std::function<Real(const RealVect, const Real)> initFunc = this->parsePlasmaSpeciesInitialData(species);
 
-    if(hasInitData){
-      initFunc = [this, baseError, data = species["initial data"]] (const RealVect a_point, const Real a_time) -> Real {
-	Real ret = 0.0;
+    // Initialize the species.
+    const int transportIdx = m_cdrSpecies.size();
 
-	// Add uniform density. 
-	if(data.contains("uniform")){
-	  ret += data["uniform"].get<Real>();
-	}
+    // Make the string-int map encodings. 
+    m_cdrSpeciesMap.       emplace(std::make_pair(name,         transportIdx));
+    m_cdrSpeciesInverseMap.emplace(std::make_pair(transportIdx, name        ));
+    m_cdrIsEnergySolver   .emplace(std::make_pair(transportIdx, false       ));
+      
+    // Push the JSON entry and the new CdrSpecies to corresponding vectors. 
+    m_cdrSpecies.    push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(name, Z, diffusive, mobile, initFunc)));
+    m_cdrSpeciesJSON.push_back(species);
 
-	// Add gaussian seed.
-	if(data.contains("gauss2")){
-	  const auto& gauss2 = data["gauss2"];
+    // Now check if we should augment this species with an energy transport model. 
+    bool energyTransport = false;    
+    if(species.contains("energy transport")){
+      energyTransport = species["energy transport"].get<bool>();
 
-	  // These fields must exist
-	  if(!(gauss2.contains("amplitude"))) this->throwParserError(baseError + "and got gauss2 for initial data but field 'amplitude' is not specified");
-	  if(!(gauss2.contains("radius"   ))) this->throwParserError(baseError + "and got gauss2 for initial data but field 'radius' is not specified"   );
-	  if(!(gauss2.contains("position" ))) this->throwParserError(baseError + "and got gauss2 for initial data but field 'position' is not specified" );	  
+      if(energyTransport){
+	if(!(species.contains("initial energy"))) this->throwParserError(baseError + "and got energy transport but 'initial energy' is not specified");
 
-	  // Fetch fields and make the friggin functionl
-	  const Real     amplitude = gauss2["amplitude"].get<Real>();	  
-	  const Real     radius    = gauss2["radius"   ].get<Real>();
-	  const RealVect center    = RealVect(D_DECL(gauss2["position"][0].get<Real>(),
-						     gauss2["position"][1].get<Real>(),
-						     gauss2["position"][2].get<Real>()));
-	  const RealVect delta      = center - a_point;
+	// Set the initial energy function. I could easily think of more complex ways of doing this, but for now we just
+	// support a constant initial energy. 
+	const Real initialEnergy = species["initial energy"].get<Real>();
+	
+	auto initEnergy = [E = initialEnergy, f=initFunc](const RealVect a_point, const Real a_time) -> Real {
+	  return E * f(a_point, a_time);
+	};
+	
+	const std::string energyName = name + " energy_density";
+	const int         energyIdx  = m_cdrSpecies.size();
 
-	  ret += amplitude * exp(-delta.dotProduct(delta)/(2*std::pow(radius,2)));
-	}
+	m_cdrSpeciesMap.       emplace(std::make_pair(energyName, energyIdx ));
+	m_cdrSpeciesInverseMap.emplace(std::make_pair(energyIdx,  energyName));
+	m_cdrIsEnergySolver   .emplace(std::make_pair(energyIdx,  true      ));
+	
+	// Push the new CdrSpecies to our the list of species. 
+	m_cdrSpecies.push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(energyName, 0, false, false, initEnergy)));
+      }
+    }
 
-	// Add super-Gaussian seed.
-	if(data.contains("gauss4")){
-	  const auto& gauss4 = data["gauss4"];
-
-	  // These fields must exist
-	  if(!(gauss4.contains("amplitude"))) this->throwParserError(baseError + "and got gauss4 for initial data but field 'amplitude' is not specified");
-	  if(!(gauss4.contains("radius"   ))) this->throwParserError(baseError + "and got gauss4 for initial data but field 'radius' is not specified"   );
-	  if(!(gauss4.contains("position" ))) this->throwParserError(baseError + "and got gauss4 for initial data but field 'position' is not specified" );	  
-
-	  // Fetch fields and make the friggin functionl
-	  const Real     amplitude = gauss4["amplitude"].get<Real>();	  
-	  const Real     radius    = gauss4["radius"   ].get<Real>();
-	  const RealVect center    = RealVect(D_DECL(gauss4["position"][0].get<Real>(),
-						     gauss4["position"][1].get<Real>(),
-						     gauss4["position"][2].get<Real>()));
-	  const RealVect delta      = center - a_point;	  
-
-	  ret += amplitude * exp(-std::pow(delta.dotProduct(delta),2)/(2*std::pow(radius, 4)));
-	}
-
-	return ret;
-      };
+    // If we had energy transport we must let our associative containers know where the solvers live.
+    if(energyTransport){
+      m_cdrTransportEnergyMap.emplace(transportIdx, transportIdx+1);
+      m_cdrHasEnergySolver.emplace(transportIdx, true);
     }
     else{
-      initFunc = [](const RealVect a_point, const Real a_time) -> Real {
-	return 0.0;
-      };
+      m_cdrHasEnergySolver.emplace(transportIdx, false);
     }
-
-    initFunc = this->parsePlasmaSpeciesInitialData(species);
 
     // Print out a message if we're verbose.
     if(m_verbose){
       pout() << "CdrPlasmaJSON::initializePlasmaSpecies: instantiating species" << "\n"
-	     << "\tName        = " << name        << "\n"
-	     << "\tZ           = " << Z           << "\n"
-	     << "\tMobile      = " << mobile      << "\n"
-	     << "\tDiffusive   = " << diffusive   << "\n"
-	     << "\tInitialData = " << hasInitData << "\n";    	
-    }
-
-    // Initialize the species.
-    const int num = m_cdrSpecies.size();
-
-    // Make the string-int map encodings. 
-    m_cdrSpeciesMap.       emplace(std::make_pair(name, num ));
-    m_cdrSpeciesInverseMap.emplace(std::make_pair(num , name));
-
-    // Push the JSON entry and the new CdrSpecies to corresponding vectors. 
-    m_cdrSpecies.    push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(name, Z, diffusive, mobile, initFunc)));
-    m_cdrSpeciesJSON.push_back(species);
+	     << "\tName             = " << name        << "\n"
+	     << "\tZ                = " << Z           << "\n"
+	     << "\tMobile           = " << mobile      << "\n"
+	     << "\tDiffusive        = " << diffusive   << "\n"
+	     << "\tEnergy transport = " << energyTransport   << "\n";      
+    } 
   }
 }
 
@@ -1866,7 +1838,7 @@ void CdrPlasmaJSON::sanctifyPlasmaReaction(const std::vector<std::string>& a_rea
 					   const std::string               a_reaction) const {
   CH_TIME("CdrPlasmaJSON::sanctifyPlasmaReaction()");
   if(m_verbose){
-    pout() << "CdrPlasmaJSON::sanctifyPlasmaReaction()" << m_jsonFile << endl;
+    pout() << "CdrPlasmaJSON::sanctifyPlasmaReaction()" << endl;
   }
 
   const std::string baseError = "CdrPlasmaJSON::sanctifyPlasmaReaction "; 
@@ -1907,7 +1879,7 @@ void CdrPlasmaJSON::sanctifyPhotoReaction(const std::vector<std::string>& a_reac
 					  const std::string               a_reaction) const {
   CH_TIME("CdrPlasmaJSON::sanctifyPhotoReaction");
   if(m_verbose){
-    pout() << "CdrPlasmaJSON::sanctifyPhotoReaction" << m_jsonFile << endl;
+    pout() << "CdrPlasmaJSON::sanctifyPhotoReaction" << endl;
   }
 
   const std::string baseError = "CdrPlasmaJSON::sanctifyPhotoReaction for reaction '" + a_reaction + "' ";
@@ -1959,7 +1931,7 @@ void CdrPlasmaJSON::sanctifySurfaceReaction(const std::vector<std::string>& a_re
 					    const std::string               a_reaction) const {
   CH_TIME("CdrPlasmaJSON::sanctifySurfaceReaction");
   if(m_verbose){
-    pout() << "CdrPlasmaJSON::sanctifySurfaceReaction" << m_jsonFile << endl;
+    pout() << "CdrPlasmaJSON::sanctifySurfaceReaction" << endl;
   }
 
   const std::string baseError = "CdrPlasmaJSON::sanctifySurfaceReaction for reaction '" + a_reaction + "' ";
@@ -2811,6 +2783,10 @@ Vector<Real> CdrPlasmaJSON::getPlotVariables(const Vector<Real>     a_cdrDensiti
 					     const Real             a_dt,
 					     const Real             a_time,
 					     const Real             a_kappa) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::getPlotVariables" << endl;
+  }
+  
   Vector<Real> ret(0);
 
   // God how I hate the Chombo Vector.
@@ -2937,6 +2913,9 @@ bool CdrPlasmaJSON::doesFileExist(const std::string a_filename) const {
 std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesMobilities(const RealVect&          a_position,
 								const RealVect&          a_E,
 								const std::vector<Real>& a_cdrDensities) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::computePlasmaSpeciesMobilities" << endl;
+  }
 
   // Get E/N .
   const Real E   = a_E.vectorLength();
@@ -2946,20 +2925,20 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesMobilities(const RealVect& 
   // vector of mobilities
   std::vector<Real> mu(m_numCdrSpecies, 0.0);  
 
-  // Go through each species. 
+  // Go through each species and compute mobilities. 
   for (int i = 0; i < a_cdrDensities.size(); i++){
-    const bool isMobile = m_cdrSpecies[i]->isMobile();
-    const int  Z        = m_cdrSpecies[i]->getChargeNumber();
+    const bool isMobile       = m_cdrSpecies[i]->isMobile();
+    const bool isEnergySolver = m_cdrIsEnergySolver.at(i);
 
-    // Figure out how to compute the moiblity. 
-    if(isMobile && Z != 0){
-
+    // Figure out how to compute the mobility for the various species. 
+    if(isMobile && !isEnergySolver) {
       const LookupMethod& method = m_mobilityLookup.at(i);
       
       switch(method) {
       case LookupMethod::Constant:
 	{
 	  mu[i] = m_mobilityConstants.at(i);
+	  
 	  break;
 	}
       case LookupMethod::FunctionEN:
@@ -2984,6 +2963,12 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesMobilities(const RealVect& 
 
 	  break;
 	}
+      case LookupMethod::TableEnergy:
+	{
+	  MayDay::Error("CdrPlasmaJSON::computePlasmaSpeciesMobilities -- 'TableEnergy' not supported yet");
+	  
+	  break;
+	}
       default:
 	{
 	  MayDay::Error("CdrPlasmaJSON::computePlasmaSpeciesMobilities -- logic bust when computing the mobility. ");
@@ -2992,6 +2977,15 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesMobilities(const RealVect& 
     }
   }
 
+  // Go through the energy solvers and set mobilities as scaled transport solver mobilities.
+  for (const auto& m : m_cdrTransportEnergyMap){
+    const int transportIdx = m.first ;
+    const int energyIdx    = m.second;
+
+    mu[energyIdx] = 5./3. * mu[transportIdx];
+  }
+  
+
   return mu;
 }
 
@@ -2999,6 +2993,10 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesMobilities(const RealVect& 
 std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesDiffusion(const RealVect          a_pos,
 							       const RealVect          a_E,
 							       const std::vector<Real> a_cdrDensities) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::computePlasmaSpeciesDiffusion" << endl;
+  }
+  
   std::vector<Real> diffusionCoefficients(m_numCdrSpecies, 0.0);
 
   const Real E   = a_E.vectorLength();
@@ -3006,7 +3004,10 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesDiffusion(const RealVect   
   const Real Etd = (E/(N * Units::Td));    
 
   for (int i = 0; i < a_cdrDensities.size(); i++){
-    if(m_cdrSpecies[i]->isDiffusive()){
+    const bool isDiffusive    = m_cdrSpecies[i]->isDiffusive();
+    const bool isEnergySolver = m_cdrIsEnergySolver.at(i);
+    
+    if(isDiffusive && !isEnergySolver) {
       
       // Figure out how we compute the diffusion coefficient for this species. 
       const LookupMethod& method = m_diffusionLookup.at(i);
@@ -3046,51 +3047,117 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesDiffusion(const RealVect   
     }
   }
 
+  // Go through the energy solvers and set diffusion coefficients as scaled transport solver diffusion coefficients.
+  for (const auto& m : m_cdrTransportEnergyMap){
+    const int transportIdx = m.first ;
+    const int energyIdx    = m.second;
+
+    diffusionCoefficients[energyIdx] = 5./3. * diffusionCoefficients[transportIdx];
+  }  
+
   return diffusionCoefficients;
 }
 
 std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesTemperatures(const RealVect&          a_position,
 								  const RealVect&          a_E,
 								  const std::vector<Real>& a_cdrDensities) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::computePlasmaSpeciesTemperatures" << endl;
+  }
 
+  // First, compute energies in electron volts.
+  std::vector<Real> temperatures = this->computePlasmaSpeciesEnergies(a_position, a_E, a_cdrDensities);
+
+  // Convert to Kelvin.
+  constexpr Real factor = 2.0*Units::Qe/(3.0 * Units::kb);
+  
+  for (auto& T : temperatures){
+    T *= factor;
+  }
+
+  return temperatures;
+}
+
+std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesEnergies(const RealVect&          a_position,
+							      const RealVect&          a_E,
+							      const std::vector<Real>& a_cdrDensities) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::computePlasmaSpeciesEnergies" << endl;
+  }
+  
   // Electric field and neutral density. 
   const Real N   = m_gasDensity(a_position);
   const Real E   = a_E.vectorLength();
   const Real Etd = (E/(N * Units::Td));
 
   // Return vector of temperatures. 
-  std::vector<Real> T(m_numCdrSpecies, 0.0);
-  
+  std::vector<Real> energies(m_numCdrSpecies, 0.0);
+
   for (int i = 0; i < m_numCdrSpecies; i++){
-    const LookupMethod lookup = m_temperatureLookup.at(i);
+    const bool isEnergySolver  = m_cdrIsEnergySolver .at(i);
 
-    // Switch between various lookup methods. 
-    switch(lookup) {
-    case LookupMethod::FunctionX:
-      {
-	T[i] = (m_temperatureConstants.at(i))(a_position);
+    // Energy solvers don't have temperatures silly. They ARE temperatures. We skip these here and just
+    // define them below in a second hook. 
+    if(!isEnergySolver) {
+
+      // This is not an energy solver then we should have populated a map about whether or not
+      // this solver is _associated_ with an energy solver. 
+      const bool hasEnergySolver = m_cdrHasEnergySolver.at(i);
+      
+      if(hasEnergySolver){
+	// Energy solver solves for the energy in electron volts. We compute average_energy = n_energy/n_density and avoid division by zero. 
+	const int energyIdx = m_cdrTransportEnergyMap.at(i);
+
+	constexpr Real safety = 1.0;
 	
-	break;
+	energies[i] = std::max(a_cdrDensities[energyIdx], 0.0)/(safety + std::max(a_cdrDensities[i], 0.0));
       }
-    case LookupMethod::TableEN:
-      {
-	// Recall; the temperature tables are stored as (E/N, K) so we can fetch the temperature immediately. 
-	const LookupTable<2>& temperatureTable = m_temperatureTablesEN.at(i);
+      else{
+	// Otherwise -- we need to look up the 
+	const LookupMethod lookup  = m_temperatureLookup.at(i);
 
-	T[i] = temperatureTable.getEntry<1>(Etd);
-
-	break;
-      }
-    default:
-      {
-	MayDay::Error("CdrPlasmaJSON::computePlasmaSpeciesTemperatures -- logic bust when computing species temperature");
+	// Switch between various lookup methods.
+	Real T = 0.0;
+	switch(lookup) {
+	case LookupMethod::FunctionX:
+	  {
+	    T = (m_temperatureConstants.at(i))(a_position);
 	
-	break;
+	    break;
+	  }
+	case LookupMethod::TableEN:
+	  {
+	    // Recall; the temperature tables are stored as (E/N, K) so we can fetch the temperature immediately. 
+	    const LookupTable<2>& temperatureTable = m_temperatureTablesEN.at(i);
+
+	    T = temperatureTable.getEntry<1>(Etd);
+
+	    break;
+	  }
+	default:
+	  {
+	    MayDay::Error("CdrPlasmaJSON::computePlasmaSpeciesTemperatures -- logic bust when computing species energies");
+	
+	    break;
+	  }
+	}
+
+	// Convert to energy in electron-volts. We assume energy = 3/2 * kB*T but we also want it in electron-volts. 
+	energies[i] = 1.5 * Units::kb * T / Units::Qe;
       }
     }
   }
 
-  return T;
+  // Now go through the energy solvers and make sure energy is well-defined for them also.
+  for (const auto& m : m_cdrTransportEnergyMap) {
+    const int transportIdx = m.first ;
+    const int energyIdx    = m.second;
+
+    energies[energyIdx] = energies[transportIdx];
+  }
+
+  return energies;  
+
 }
 
 Real CdrPlasmaJSON::computePlasmaReactionRate(const int&                   a_reactionIndex,
@@ -3305,6 +3372,10 @@ void CdrPlasmaJSON::advanceReactionNetwork(Vector<Real>&          a_cdrSources,
 					   const Real             a_dt,
 					   const Real             a_time,
 					   const Real             a_kappa) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::advanceReactionNetwork" << endl;
+  }
+  
   // I really hate Chombo sometimes. 
   std::vector<Real>& cdrSources = a_cdrSources.stdVector();
   std::vector<Real>& rteSources = a_rteSources.stdVector();
@@ -3387,6 +3458,9 @@ Vector<RealVect> CdrPlasmaJSON::computeCdrDriftVelocities(const Real         a_t
 							  const RealVect     a_position,
 							  const RealVect     a_E,
 							  const Vector<Real> a_cdrDensities) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::computeCdrDriftVelocities" << endl;
+  }
 
   // I really hate Chombo sometimes.
   const std::vector<Real>& cdrDensities = ((Vector<Real>&) a_cdrDensities).stdVector();  
@@ -3416,6 +3490,10 @@ Vector<Real> CdrPlasmaJSON::computeCdrDiffusionCoefficients(const Real         a
 							    const RealVect     a_position,
 							    const RealVect     a_E,
 							    const Vector<Real> a_cdrDensities) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::computeCdrDiffusionCoefficients" << endl;
+  }
+  
   const std::vector<Real>& cdrDensities = ((Vector<Real>&) a_cdrDensities).stdVector();
 
   // Compute diffusion coefficients. 
@@ -3758,8 +3836,9 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
 				    const Real                  a_dx,
 				    const Real                  a_time,
 				    const Real                  a_kappa) const {
-
-  // TLDR: We are integrating over an interval (a_time, a_time + a_dt).
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::fillSourceTerms" << endl;
+  }
 
   // These may or may not be needed.
   const std::vector<Real> cdrMobilities            = this->computePlasmaSpeciesMobilities  (a_pos, a_E, a_cdrDensities);
@@ -3839,7 +3918,10 @@ void CdrPlasmaJSON::integrateReactionsExplicitEuler(std::vector<Real>&          
 						    const Real                  a_dt,
 						    const Real                  a_time,
 						    const Real                  a_kappa) const {
-
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::integrateReactionsExplicitEuler" << endl;
+  }
+  
   // TLDR: We are integrating over an interval (a_time, a_time + a_dt).
 
   // These may or may not be needed.
@@ -3916,6 +3998,10 @@ void CdrPlasmaJSON::integrateReactionsExplicitRK2(std::vector<Real>&          a_
 						  const Real                  a_time,
 						  const Real                  a_kappa,
 						  const Real                  a_tableuAlpha) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::integrateReactionsRK2" << endl;
+  }
+  
   // Electric field and reduce electric field. 
   const Real E   = a_E.vectorLength();
   const Real N   = m_gasDensity(a_pos);
@@ -4024,6 +4110,9 @@ void CdrPlasmaJSON::integrateReactionsExplicitRK4(std::vector<Real>&          a_
 						  const Real                  a_dt,
 						  const Real                  a_time,
 						  const Real                  a_kappa) const {
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::integrateReactionsRK4" << endl;
+  }  
 
   // TLDR: We are integrating over an interval (a_time, a_time + a_dt). The integration rule for dy/dt = f(y,t) is
   //

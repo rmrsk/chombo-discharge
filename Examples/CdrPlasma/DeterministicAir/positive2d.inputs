@@ -211,11 +211,11 @@ CdrPlasmaGodunovStepper.profile          = true          # Turn on/off performan
 # ====================================================================================================
 # CdrPlasmaJSON class options
 # ====================================================================================================
-CdrPlasmaJSON.verbose          = false
+CdrPlasmaJSON.verbose          = true
 CdrPlasmaJSON.chemistry_file   = air_chemistry.json
 CdrPlasmaJSON.discrete_photons = false
 CdrPlasmaJSON.skip_reactions   = false
-CdrPlasmaJSON.integrator       = explicit_euler # Reaction network integrator
+CdrPlasmaJSON.integrator       = explicit_midpoint # Reaction network integrator
 CdrPlasmaJSON.substeps         = 1                 # Substeps in the reaction integrator
 
 # ====================================================================================================

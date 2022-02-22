@@ -296,6 +296,7 @@ namespace Physics {
 	FunctionEN,
 	FunctionEX,
 	TableEN,
+	TableEnergy,
 	AlphaV,
 	EtaV
       };
@@ -357,7 +358,7 @@ namespace Physics {
       std::string m_jsonFile;
 
       /*!
-	@brief JSON entries for species in plasma_species
+	@brief JSON entries for species in the defined field 'plasma species'. 
       */
       std::vector<json> m_cdrSpeciesJSON;
 
@@ -418,6 +419,23 @@ namespace Physics {
 	@note This is the inverse of m_cdrSpeciesMap
       */
       std::map<int, std::string> m_cdrSpeciesInverseMap;
+
+      /*!
+	@brief int-bool encoding for determining if a solver is an energy solver. 
+      */
+      std::map<int, bool> m_cdrIsEnergySolver;
+
+      /*!
+	@brief int-bool encoding for determining if a CDR solver HAS an associated energy solver. 
+      */
+      std::map<int, bool> m_cdrHasEnergySolver;
+
+      /*!
+	@brief int-int encoding for associating a transport solver with an energy solver. 
+	@details This is only defined for the species that has/is an energy solver. The first index is the transport solver index
+	and the second index is the energy solver index. 
+      */
+      std::map<int, int> m_cdrTransportEnergyMap;
 
       /*!
 	@brief string-int encoding of the RTE species. 
@@ -491,9 +509,15 @@ namespace Physics {
       std::map<int, FunctionEX> m_mobilityFunctionsEX;
 
       /*!
-	@brief Map for function-based mobilities. 
+	@brief Map for table-based mobilities. Stored as tables (E/N, mu*N)
       */
       std::map<int, LookupTable<2> > m_mobilityTablesEN;
+
+      /*!
+	@brief Map for table-based mobilities as function of energy. 
+	@details Stored as tables (eV, mu*N)
+      */
+      std::map<int, LookupTable<2> > m_mobilityTablesEnergy;
       
       // ================================      
       // DIFFUSION  QUANTITIES BEGIN HERE
@@ -515,9 +539,16 @@ namespace Physics {
       std::map<int, FunctionEN> m_diffusionFunctionsEN;
 
       /*!
-	@brief Map for table-based diffusion coefficients. 
+	@brief Map for table-based diffusion coefficients D = D(E,N).
+	@details Tables stored as (E/N, D*N)
       */
       std::map<int, LookupTable<2> > m_diffusionTablesEN;
+
+      /*!
+	@brief Map for table-based diffusion coefficients as function of energy. 
+	@details Stored as tables (eV, D*N)
+      */
+      std::map<int, LookupTable<2> > m_diffusionTablesEnergy;            
 
       // ===========================================
       // PLASMA SPECIES TEMPERATURE DATA BEGINS HERE
@@ -929,6 +960,19 @@ namespace Physics {
 								 const RealVect&          a_E,
 								 const std::vector<Real>& a_cdrDensities) const;
 
+      /*!
+	@brief Compute the various plasma species energies. Returns a list of energies in electron-volts. We assume that 
+	temperature-energy relations are e = 3/2 * kB * T. 
+	@details If a transported species is associated with an energy solver the energy is computed from e = (n_eps)/ne. Otherwise, we compute
+	the energy and returns 3/2 * kB * T.
+	@param[in] a_position     Physical coordinates
+	@param[in] a_E            Electric field (SI units)
+	@param[in] a_cdrDensities List of plasma species densities.
+      */
+      virtual std::vector<Real> computePlasmaSpeciesEnergies(const RealVect&          a_position,
+							     const RealVect&          a_E,
+							     const std::vector<Real>& a_cdrDensities) const;   
+      
       /*!
 	@brief Compute the various plasma species mobilities. 
 	@param[in] a_position     Physical coordinates
