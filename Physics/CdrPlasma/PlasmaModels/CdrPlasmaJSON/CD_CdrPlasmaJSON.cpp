@@ -590,7 +590,7 @@ void CdrPlasmaJSON::initializePlasmaSpecies() {
 	m_cdrIsEnergySolver   .emplace(std::make_pair(energyIdx,  true      ));
 	
 	// Push the new CdrSpecies to our the list of species. 
-	m_cdrSpecies.push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(energyName, 0, false, false, initEnergy)));
+	m_cdrSpecies.push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(energyName, 0, diffusive, mobile, initEnergy)));
       }
     }
 
@@ -3474,13 +3474,25 @@ Vector<RealVect> CdrPlasmaJSON::computeCdrDriftVelocities(const Real         a_t
   // Make sure v = +/- mu*E depending on the sign charge. 
   for (int i = 0; i < a_cdrDensities.size(); i++){
     const int Z = m_cdrSpecies[i]->getChargeNumber();
+    
+    const bool isEnergySolver = m_cdrIsEnergySolver.at(i);
 
-    if(Z > 0){
-      velocities[i] = + mu[i] * a_E;
+    if(!isEnergySolver){
+      if(Z > 0){
+	velocities[i] = + mu[i] * a_E;
+      }
+      else if(Z < 0){
+	velocities[i] = - mu[i] * a_E;
+      }
     }
-    else if(Z < 0){
-      velocities[i] = - mu[i] * a_E;
-    }
+  }
+
+  // Now go through the energy solvers. The velocities should be multiplied by 5/3.
+  for (const auto& m : m_cdrTransportEnergyMap){
+    const int transportIdx = m.first ;
+    const int energyIdx    = m.second;
+
+    velocities[energyIdx] = 5./3. * velocities[transportIdx];
   }
 
   return velocities;
