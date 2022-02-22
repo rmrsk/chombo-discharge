@@ -45,7 +45,7 @@
 	     "points": 500,
 	     "spacing": "exponential"
 	 },
-	 "energy transport": true,
+	 "energy transport": false,
 	 "initial energy": 1.2345,
 	 "initial data": {
 	     "uniform": 1.0E10,

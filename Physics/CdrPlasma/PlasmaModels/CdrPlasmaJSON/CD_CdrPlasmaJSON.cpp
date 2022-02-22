@@ -3933,70 +3933,27 @@ void CdrPlasmaJSON::integrateReactionsExplicitEuler(std::vector<Real>&          
   if(m_verbose){
     pout() << "CdrPlasmaJSON::integrateReactionsExplicitEuler" << endl;
   }
-  
-  // TLDR: We are integrating over an interval (a_time, a_time + a_dt).
 
-  // These may or may not be needed.
-  const std::vector<Real> cdrMobilities            = this->computePlasmaSpeciesMobilities  (a_pos, a_E, a_cdrDensities);
-  const std::vector<Real> cdrDiffusionCoefficients = this->computePlasmaSpeciesDiffusion   (a_pos, a_E, a_cdrDensities);
-  const std::vector<Real> cdrTemperatures          = this->computePlasmaSpeciesTemperatures(a_pos, a_E, a_cdrDensities);
+  std::vector<Real> cdrSources(m_numCdrSpecies, 0.0);
+  std::vector<Real> rteSources(m_numRtSpecies,  0.0);
 
-  // Electric field and reduce electric field. 
-  const Real E   = a_E.vectorLength();
-  const Real N   = m_gasDensity(a_pos);
-  const Real Etd = (E/(N * Units::Td));
+  this->fillSourceTerms(cdrSources,
+			rteSources,
+			a_cdrDensities,
+			a_cdrGradients,
+			a_E,
+			a_pos,
+			a_dx,
+			a_time,
+			a_kappa);
 
-  // Townsend ionization and attachment coefficients. May or may not be used.
-  const Real alpha = this->computeAlpha(E, a_pos);
-  const Real eta   = this->computeEta  (E, a_pos);
+  // Advance states.
+  for (int i = 0; i < m_numCdrSpecies; i++) {
+    a_cdrDensities[i] += cdrSources[i] * a_dt;
+  }
 
-  // For simplicity, create a copy of the CDR densities. 
-  const std::vector<Real> cdrY0 = a_cdrDensities;
-
-  // Plasma reactions loop
-  for (int i = 0; i < m_plasmaReactions.size(); i++) {
-
-    // Reaction and species involved in the reaction. 
-    const CdrPlasmaReactionJSON& reaction  = m_plasmaReactions[i];
-
-    const std::list<int>& plasmaReactants  = reaction.getPlasmaReactants ();    
-    const std::list<int>& neutralReactants = reaction.getNeutralReactants();
-    const std::list<int>& plasmaProducts   = reaction.getPlasmaProducts  ();    
-    const std::list<int>& photonProducts   = reaction.getPhotonProducts  ();
-
-    // Compute the rate. This returns a volumetric rate in units of #/(m^3 * s) (or #/(m^2 * s) for Cartesian 2D).
-    const Real k = this->computePlasmaReactionRate(i,
-						   cdrY0,
-						   cdrMobilities,
-						   cdrDiffusionCoefficients,
-						   cdrTemperatures,
-						   a_cdrGradients,
-						   a_pos,
-						   a_E,
-						   E,
-						   Etd,
-						   N,
-						   alpha,
-						   eta,
-						   a_time);
-
-    // This is the total number of products 
-    const Real Sdt = k * a_dt;
-
-    // Remove consumption on the left-hand side.
-    for (const auto& r : plasmaReactants){
-      a_cdrDensities[r] -= Sdt;
-    }
-
-    // Add mass on the right-hand side.
-    for (const auto& p : plasmaProducts){
-      a_cdrDensities[p] += Sdt;
-    }
-
-    // Add photons on the right-hand side. 
-    for (const auto& p : photonProducts){
-      a_photonProduction[p] += Sdt;
-    }
+  for (int i = 0; i < m_numRtSpecies; i++) {
+    a_photonProduction[i] = rteSources[i] * a_dt;
   }
 }
 
@@ -4013,19 +3970,9 @@ void CdrPlasmaJSON::integrateReactionsExplicitRK2(std::vector<Real>&          a_
   if(m_verbose){
     pout() << "CdrPlasmaJSON::integrateReactionsRK2" << endl;
   }
-  
-  // Electric field and reduce electric field. 
-  const Real E   = a_E.vectorLength();
-  const Real N   = m_gasDensity(a_pos);
-  const Real Etd = (E/(N * Units::Td));
 
-  // Townsend ionization and attachment coefficients. May or may not be used.
-  const Real alpha = this->computeAlpha(E, a_pos);
-  const Real eta   = this->computeEta  (E, a_pos);
-
-  // Initial states for reactive problem. 
-  const std::vector<Real> cdrY0 = a_cdrDensities;
-  const std::vector<Real> rteY0 = std::vector<Real>(m_numRtSpecies, 0.0);
+  const Real c2 = 1./(2.0*a_tableuAlpha);
+  const Real c1 = 1.0 - c1;  
 
   // Storage for k1- and k2- coefficients, and intermediate states.
   std::vector<Real> cdrK1(m_numCdrSpecies, 0.0);
@@ -4034,83 +3981,23 @@ void CdrPlasmaJSON::integrateReactionsExplicitRK2(std::vector<Real>&          a_
   
   std::vector<Real> rteK1(m_numRtSpecies,  0.0);
   std::vector<Real> rteK2(m_numRtSpecies,  0.0);
-  std::vector<Real> rteY1(m_numRtSpecies,  0.0);
 
-  // Lambda for computing the k1-coefficient. 
-  auto computeRungeKuttaSlope = [&](std::vector<Real>& cdrK, std::vector<Real>& rteK, const std::vector<Real>& cdrDensities, const std::vector<Real>& rteDensities) -> void {
+  // Compute k1 coefficient and fill intermediate states. 
+  this->fillSourceTerms(cdrK1, rteK1, a_cdrDensities, a_cdrGradients, a_E, a_pos, a_dx, a_time, a_kappa);
+  for (int i = 0; i < m_numCdrSpecies; i++) {
+    cdrY1[i] = a_cdrDensities[i] + a_tableuAlpha * a_dt * cdrK1[i];
+  }
 
-    // Compute mobilities, diffusion coefficients, and temperatures. 
-    const std::vector<Real> cdrMobilities            = this->computePlasmaSpeciesMobilities  (a_pos, a_E, cdrDensities);
-    const std::vector<Real> cdrDiffusionCoefficients = this->computePlasmaSpeciesDiffusion   (a_pos, a_E, cdrDensities);
-    const std::vector<Real> cdrTemperatures          = this->computePlasmaSpeciesTemperatures(a_pos, a_E, cdrDensities);
-
-    // Run through all reactions. 
-    for (int i = 0; i < m_plasmaReactions.size(); i++) {    
-      const CdrPlasmaReactionJSON& reaction  = m_plasmaReactions[i];
-
-      // Species involved in the reaction. 
-      const std::list<int>& plasmaReactants  = reaction.getPlasmaReactants ();    
-      const std::list<int>& neutralReactants = reaction.getNeutralReactants();
-      const std::list<int>& plasmaProducts   = reaction.getPlasmaProducts  ();    
-      const std::list<int>& photonProducts   = reaction.getPhotonProducts  ();
-
-      // Compute the rate. This returns a volumetric rate in units of #/(m^3 * s) (or #/(m^2 * s) for Cartesian 2D).
-      const Real k = this->computePlasmaReactionRate(i,
-						     cdrDensities,
-						     cdrMobilities,
-						     cdrDiffusionCoefficients,
-						     cdrTemperatures,
-						     a_cdrGradients,
-						     a_pos,
-						     a_E,
-						     E,
-						     Etd,
-						     N,
-						     alpha,
-						     eta,
-						     a_time);
-    
-      // Remove consumption on the left-hand side.
-      for (const auto& r : plasmaReactants){
-	cdrK[r] -= k;
-      }
-
-      // Add mass on the right-hand side.
-      for (const auto& p : plasmaProducts){
-	cdrK[p] += k;      
-      }
-
-      // Add photons on the right-hand side.
-      for (const auto& p : photonProducts){
-	rteK[p] += k;
-      }
-    }    
-  };
-
-  // Compute k1-coefficients and intermediate states
-  computeRungeKuttaSlope(cdrK1, rteK1, cdrY0, rteY0);
+  // Compute k2 coefficient and advance to final state.
+  this->fillSourceTerms(cdrK2, rteK2, cdrY1, a_cdrGradients, a_E, a_pos, a_dx, a_time, a_kappa);  
   
-  for (int i = 0; i < m_numCdrSpecies; i++){
-    cdrY1[i] = cdrY0[i] + a_tableuAlpha * a_dt * cdrK1[i];
+  for (int i = 0; i < m_numCdrSpecies; i++) {
+    a_cdrDensities[i] = a_cdrDensities[i] + a_dt * (c1*cdrK1[i] + c2*cdrK2[i]);
   }
-
-  for (int i = 0; i < m_numRtSpecies; i++){
-    rteY1[i] = rteY0[i] + a_tableuAlpha * a_dt * rteK1[i];
-  }
-
-  // Compute k2-coefficients and the final states. 
-  computeRungeKuttaSlope(cdrK2, rteK2, cdrY1, rteY1);
-
-  const Real c2 = 1./(2.0*a_tableuAlpha);
-  const Real c1 = 1.0 - c1;
   
-  for (int i = 0; i < m_numCdrSpecies; i++){
-    a_cdrDensities[i] = cdrY0[i] + a_dt * (c1*cdrK1[i] + c2*cdrK2[i]);
+  for (int i = 0; i < m_numRtSpecies;  i++) {
+    a_photonProduction[i] = a_dt * (c1*rteK1[i] + c2*rteK2[i]);
   }
-
-  for (int i = 0; i < m_numRtSpecies; i++){
-    a_photonProduction[i] = rteY0[i] + a_dt * (c1*rteK1[i] + c2*rteK2[i]);
-  }    
 }
 
 void CdrPlasmaJSON::integrateReactionsExplicitRK4(std::vector<Real>&          a_cdrDensities,
@@ -4137,19 +4024,6 @@ void CdrPlasmaJSON::integrateReactionsExplicitRK4(std::vector<Real>&          a_
   //          k3 = f(t+dt/2, y(t) + 0.5*dt*k2)
   //          k4 = f(t+dt  , y(t) +     dt*k3)  
 
-  // Electric field and reduce electric field. 
-  const Real E   = a_E.vectorLength();
-  const Real N   = m_gasDensity(a_pos);
-  const Real Etd = (E/(N * Units::Td));
-
-  // Townsend ionization and attachment coefficients. May or may not be used.
-  const Real alpha = this->computeAlpha(E, a_pos);
-  const Real eta   = this->computeEta  (E, a_pos);
-
-  // Initial states for reactive problem. 
-  const std::vector<Real> cdrY0 = a_cdrDensities;
-  const std::vector<Real> rteY0 = std::vector<Real>(m_numRtSpecies, 0.0);    
-
   // Storage for Runge-Kutta k-coefficients and intermediate states. 
   std::vector<Real> cdrK1(m_numCdrSpecies, 0.0);
   std::vector<Real> cdrK2(m_numCdrSpecies, 0.0);
@@ -4162,83 +4036,32 @@ void CdrPlasmaJSON::integrateReactionsExplicitRK4(std::vector<Real>&          a_
   std::vector<Real> rteK3(m_numRtSpecies,  0.0);
   std::vector<Real> rteK4(m_numRtSpecies,  0.0);
 
-  // Lambda for computing the Runge-Kutta coefficients. 
-  auto computeRungeKuttaSlope = [&](std::vector<Real>& cdrK, std::vector<Real>& rteK, const std::vector<Real>& cdrDensities) -> void {
-
-    // Compute mobilities, diffusion coefficients, and temperatures. 
-    const std::vector<Real> cdrMobilities            = this->computePlasmaSpeciesMobilities  (a_pos, a_E, cdrDensities);
-    const std::vector<Real> cdrDiffusionCoefficients = this->computePlasmaSpeciesDiffusion   (a_pos, a_E, cdrDensities);
-    const std::vector<Real> cdrTemperatures          = this->computePlasmaSpeciesTemperatures(a_pos, a_E, cdrDensities);
-
-    // Run through all reactions. 
-    for (int i = 0; i < m_plasmaReactions.size(); i++) {    
-      // Reaction and species involved in the reaction. 
-      const CdrPlasmaReactionJSON& reaction  = m_plasmaReactions[i];
-
-      const std::list<int>& plasmaReactants  = reaction.getPlasmaReactants ();    
-      const std::list<int>& neutralReactants = reaction.getNeutralReactants();
-      const std::list<int>& plasmaProducts   = reaction.getPlasmaProducts  ();    
-      const std::list<int>& photonProducts   = reaction.getPhotonProducts  ();
-
-      // Compute the rate. This returns a volumetric rate in units of #/(m^3 * s) (or #/(m^2 * s) for Cartesian 2D).
-      const Real k = this->computePlasmaReactionRate(i,
-						     cdrDensities,
-						     cdrMobilities,
-						     cdrDiffusionCoefficients,
-						     cdrTemperatures,
-						     a_cdrGradients,
-						     a_pos,
-						     a_E,
-						     E,
-						     Etd,
-						     N,
-						     alpha,
-						     eta,
-						     a_time);
-    
-      // Remove consumption on the left-hand side.
-      for (const auto& r : plasmaReactants){
-	cdrK[r] -= k;
-      }
-
-      // Add mass on the right-hand side.
-      for (const auto& p : plasmaProducts){
-	cdrK[p] += k;      
-      }
-
-      // Add photons on the right-hand side.
-      for (const auto& p : photonProducts){
-	rteK[p] += k;
-      }
-    }
-  };
-
   // Compute k1-coefficients and intermediate states
-  computeRungeKuttaSlope(cdrK1, rteK1, cdrY0);
+  this->fillSourceTerms(cdrK1, rteK1, a_cdrDensities, a_cdrGradients, a_E, a_pos, a_dx, a_time, a_kappa);  
   for (int i = 0; i < m_numCdrSpecies; i++){
-    cdrY1[i] = cdrY0[i] + 0.5 * a_dt * cdrK1[i];
+    cdrY1[i] = a_cdrDensities[i] + 0.5 * a_dt * cdrK1[i];
   }
 
   // Compute k2-coefficients and intermediate states
-  computeRungeKuttaSlope(cdrK2, rteK2, cdrY1);
+  this->fillSourceTerms(cdrK2, rteK2, cdrY1, a_cdrGradients, a_E, a_pos, a_dx, a_time, a_kappa);    
   for (int i = 0; i < m_numCdrSpecies; i++){
-    cdrY1[i] = cdrY0[i] + 0.5 * a_dt * cdrK2[i];
+    cdrY1[i] = a_cdrDensities[i] + 0.5 * a_dt * cdrK2[i];
   }
 
   // Compute k3-coefficients and intermediate states
-  computeRungeKuttaSlope(cdrK3, rteK3, cdrY1);
+  this->fillSourceTerms(cdrK3, rteK3, cdrY1, a_cdrGradients, a_E, a_pos, a_dx, a_time, a_kappa);      
   for (int i = 0; i < m_numCdrSpecies; i++){
-    cdrY1[i] = cdrY0[i] + a_dt * cdrK3[i];
+    cdrY1[i] = a_cdrDensities[i] + a_dt * cdrK3[i];
   }
 
   // Compute k4-coefficients and final states. 
-  computeRungeKuttaSlope(cdrK4, rteK4, cdrY1);
+  this->fillSourceTerms(cdrK4, rteK4, cdrY1, a_cdrGradients, a_E, a_pos, a_dx, a_time, a_kappa);      
   for (int i = 0; i < m_numCdrSpecies; i++){
-    a_cdrDensities[i] = cdrY0[i] + a_dt * (cdrK1[i] + 2.0*cdrK2[i] + 2.0*cdrK3[i] + cdrK4[i]) / 6.0;
+    a_cdrDensities[i] = a_cdrDensities[i] + a_dt * (cdrK1[i] + 2.0*cdrK2[i] + 2.0*cdrK3[i] + cdrK4[i]) / 6.0;
   }
 
   for (int i = 0; i < m_numRtSpecies; i++){
-    a_photonProduction[i] = rteY0[i] + a_dt * (rteK1[i] + 2.0*rteK2[i] + 2.0*rteK3[i] + rteK4[i]) / 6.0;
+    a_photonProduction[i] = a_dt * (rteK1[i] + 2.0*rteK2[i] + 2.0*rteK3[i] + rteK4[i]) / 6.0;
   }
 }
 
