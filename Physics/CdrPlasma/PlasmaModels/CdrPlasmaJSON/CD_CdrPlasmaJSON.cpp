@@ -110,6 +110,9 @@ void CdrPlasmaJSON::parseIntegrator() {
   else if(str == "explicit_euler") {
     integrator = ReactionIntegrator::ExplicitEuler;
   }
+  else if(str == "implicit_euler") {
+    integrator = ReactionIntegrator::ImplicitEuler;
+  }
   else if(str == "explicit_trapezoidal") {
     integrator = ReactionIntegrator::ExplicitTrapezoidal;
   }
@@ -2335,7 +2338,7 @@ void CdrPlasmaJSON::parsePlasmaReactionRate(const int a_reactionIndex, const jso
     // Add the tabulated rate and identifier. 
     m_plasmaReactionLookup.      emplace(std::make_pair(a_reactionIndex, LookupMethod::TableEnergy                ));
     m_plasmaReactionTablesEnergy.emplace(std::make_pair(a_reactionIndex, std::make_pair(speciesIdx, reactionTable)));      
-  }  
+  }
   else if (lookup == "functionEN expA"){
     if(!(a_R.contains("c1"))) this->throwParserError(baseError + "and got 'functionEN expA' but field 'c1' is required but not specified");
     if(!(a_R.contains("c2"))) this->throwParserError(baseError + "and got 'functionEN expA' but field 'c2' is required but not specified");
@@ -3403,7 +3406,7 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesEnergies(const RealVect&   
 
 	constexpr Real safety = 1.0;
 	
-	energies[i] = std::max(a_cdrDensities[energyIdx], 0.0)/(safety + std::max(a_cdrDensities[i], 0.0));
+	energies[i] = std::max(a_cdrDensities[energyIdx], 0.0)/(std::max(a_cdrDensities[i], 1.0));
       }
       else{
 	// Otherwise -- we need to look up the 
@@ -4124,6 +4127,12 @@ void CdrPlasmaJSON::integrateReactions(std::vector<Real>&          a_cdrDensitie
 
 	break;
       }
+    case ReactionIntegrator::ImplicitEuler:
+      {
+	this->integrateReactionsImplicitEuler(a_cdrDensities, a_photonProduction, a_cdrGradients, a_E, a_pos, a_dx, dt, time, a_kappa);
+
+	break;
+      }      
     case ReactionIntegrator::ExplicitTrapezoidal:
       {
 	this->integrateReactionsExplicitRK2(a_cdrDensities, a_photonProduction, a_cdrGradients, a_E, a_pos, a_dx, dt, time, a_kappa, 1.0);
@@ -4267,7 +4276,7 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
       sgn = -1;
     }
 
-    const RealVect flux  = sgn*n*mu*a_E - (D*gradn);
+    const RealVect flux  = sgn*n*mu*a_E;// - (D*gradn);
 
     a_cdrSources[energyIdx] += -flux.dotProduct(a_E);
   }
@@ -4298,6 +4307,48 @@ void CdrPlasmaJSON::integrateReactionsExplicitEuler(std::vector<Real>&          
 			a_dx,
 			a_time,
 			a_kappa);
+
+  // Advance states.
+  for (int i = 0; i < m_numCdrSpecies; i++) {
+    a_cdrDensities[i] += cdrSources[i] * a_dt;
+  }
+
+  for (int i = 0; i < m_numRtSpecies; i++) {
+    a_photonProduction[i] = rteSources[i] * a_dt;
+  }
+}
+
+
+void CdrPlasmaJSON::integrateReactionsImplicitEuler(std::vector<Real>&          a_cdrDensities,
+						    std::vector<Real>&          a_photonProduction,
+						    const std::vector<RealVect> a_cdrGradients,
+						    const RealVect              a_E,
+						    const RealVect              a_pos,
+						    const Real                  a_dx,
+						    const Real                  a_dt,
+						    const Real                  a_time,
+						    const Real                  a_kappa) const {
+  std::vector<Real> cdrSources(m_numCdrSpecies, 0.0);
+  std::vector<Real> rteSources(m_numRtSpecies,  0.0);
+
+  // Initial guess
+  std::vector<Real> cdrY = a_cdrDensities;
+
+  for (int i = 0; i < 5; i++){
+    this->fillSourceTerms(cdrSources,
+			  rteSources,
+			  cdrY,
+			  a_cdrGradients,
+			  a_E,
+			  a_pos,
+			  a_dx,
+			  a_time,
+			  a_kappa);
+
+    for (int j = 0; j < m_numCdrSpecies; j++){
+      cdrY[j] = a_cdrDensities[j] + a_dt * cdrSources[j];
+    }
+  }
 
   // Advance states.
   for (int i = 0; i < m_numCdrSpecies; i++) {
