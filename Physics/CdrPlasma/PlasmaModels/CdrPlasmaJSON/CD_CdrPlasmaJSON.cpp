@@ -3919,6 +3919,32 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
       a_rteSources[p] += k;
     }
   }
+
+  // Energy solvers should be incremented by v * n - D * grad(n)
+  for (const auto& m : m_cdrTransportEnergyMap){
+    const int transportIdx = m.first ;
+    const int energyIdx    = m.second;
+
+    const Real     mu    = cdrMobilities           [transportIdx];
+    const Real     D     = cdrDiffusionCoefficients[transportIdx];
+    const Real     n     = a_cdrDensities          [transportIdx];
+    const RealVect gradn = a_cdrGradients          [transportIdx];
+
+    const int Z = m_cdrSpecies[transportIdx]->getChargeNumber();
+
+    int sgn = 0;
+
+    if(Z > 0){
+      sgn = 1;
+    }
+    else if (Z < 0) {
+      sgn = -1;
+    }
+
+    const RealVect flux  = sgn*n*mu*a_E - (D*gradn);
+
+    a_cdrSources[energyIdx] += -flux.dotProduct(a_E);
+  }
 }
 
 void CdrPlasmaJSON::integrateReactionsExplicitEuler(std::vector<Real>&          a_cdrDensities,
