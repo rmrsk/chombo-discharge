@@ -2194,7 +2194,7 @@ void CdrPlasmaJSON::parsePlasmaReactionRate(const int a_reactionIndex, const jso
     m_plasmaReactionFunctionsTT.emplace(a_reactionIndex, std::make_tuple(firstIndex, secondIndex, functionT1T2));
     m_plasmaReactionLookup.     emplace(a_reactionIndex, LookupMethod::FunctionTT);
   }
-  else if (lookup == "table E/N"){
+  else if (lookup == "table E/N") {
     if(!(a_R.contains("file"   ))) this->throwParserError(baseError + "and got 'table E/N' but field 'file' was not found"   );
     if(!(a_R.contains("header" ))) this->throwParserError(baseError + "and got 'table E/N' but field 'header' was not found" );
     if(!(a_R.contains("E/N"    ))) this->throwParserError(baseError + "and got 'table E/N' but field 'E/N' was not found"    );
@@ -2259,6 +2259,82 @@ void CdrPlasmaJSON::parsePlasmaReactionRate(const int a_reactionIndex, const jso
     m_plasmaReactionLookup.  emplace(std::make_pair(a_reactionIndex, LookupMethod::TableEN));
     m_plasmaReactionTablesEN.emplace(std::make_pair(a_reactionIndex, reactionTable         ));      
   }
+  else if (lookup == "table energy") {
+    if(!(a_R.contains("file"      ))) this->throwParserError(baseError + "and got 'table energy' but field 'file' was not found"      );
+    if(!(a_R.contains("header"    ))) this->throwParserError(baseError + "and got 'table energy' but field 'header' was not found"    );
+    if(!(a_R.contains("eV"        ))) this->throwParserError(baseError + "and got 'table energy' but field 'eV' was not found"        );
+    if(!(a_R.contains("rate"      ))) this->throwParserError(baseError + "and got 'table energy' but field 'rate' was not found"      );
+    if(!(a_R.contains("min energy"))) this->throwParserError(baseError + "and got 'table energy' but field 'min energy' was not found");
+    if(!(a_R.contains("max energy"))) this->throwParserError(baseError + "and got 'table energy' but field 'max energy' was not found");
+    if(!(a_R.contains("points"    ))) this->throwParserError(baseError + "and got 'table energy' but field 'points' was not found"    );
+    if(!(a_R.contains("spacing"   ))) this->throwParserError(baseError + "and got 'table energy' but field 'spacing' was not found"   );
+    if(!(a_R.contains("species"   ))) this->throwParserError(baseError + "and got 'table energy' but field 'species' was not found"   );        
+
+    const std::string species   = this->trim(a_R["species"].get<std::string>());    
+    const std::string filename  = this->trim(a_R["file"   ].get<std::string>());
+    const std::string spacing   = this->trim(a_R["spacing"].get<std::string>());    
+    const std::string startRead = this->trim(a_R["header" ].get<std::string>());
+    const std::string stopRead  = "";
+
+    const int  xColumn   = a_R["eV"        ].get<int >();
+    const int  yColumn   = a_R["rate"      ].get<int >();
+    const int  numPoints = a_R["points"    ].get<int >();    
+    const Real minEnergy = a_R["min energy"].get<Real>();
+    const Real maxEnergy = a_R["max energy"].get<Real>();
+
+    // It's an error if max energy < min energy
+    if(maxEnergy < minEnergy) this->throwParserError(baseError + "and got 'table energy' but can't have 'max energy' < 'min energy'");
+
+    // Throw an error if the input file does not exist.
+    if(!(this->doesFileExist(filename))) this->throwParserError(baseError + "and got 'table energy' but file '" + filename + "' does not exist");
+
+    // Read the table and format it. We happen to know that this function reads data into the approprate columns. So if
+    // the user specified the correct E/N column then that data will be put in the first column. The data for D*N will be in the
+    // second column. 
+    LookupTable<2> reactionTable = DataParser::fractionalFileReadASCII(filename, startRead, stopRead, xColumn, yColumn);
+
+    // If the table is empty then it's an error.
+    if(reactionTable.getNumEntries() == 0){
+      this->throwParserError(baseError + "and got 'table energy' but table is empty. This is probably an error");
+    }
+
+    // Figure out the table spacing
+    TableSpacing tableSpacing;
+    if(spacing == "uniform"){
+      tableSpacing = TableSpacing::Uniform;
+    }
+    else if(spacing == "exponential"){
+      tableSpacing = TableSpacing::Exponential;
+    }
+    else{
+      this->throwParserError(baseError + "and got 'table energy' but 'spacing' field = '" + spacing + "' which is not supported");
+    }        
+
+    // Format the table. 
+    reactionTable.setRange(minEnergy, maxEnergy, 0);
+    reactionTable.sort(0);
+    reactionTable.setTableSpacing(tableSpacing);
+    reactionTable.makeUniform(numPoints);
+
+    // Check if we should dump the table to file so that users can debug.
+    if(a_R.contains("dump")){
+      const std::string dumpFile = a_R["dump"].get<std::string>();
+      reactionTable.dumpTable(dumpFile);
+    }
+
+    // Now figure out the species whose energy determines the reaction rate. This MUST be a transport solver 
+    const bool isPlasma  = this->isPlasmaSpecies(species);
+    if(!isPlasma) {
+      this->throwParserError(baseError + "and got 'table energy' for reaction rate but species '" + species + "' is not a plasma species");
+    }
+
+    const int speciesIdx = m_cdrSpeciesMap.at(species);
+
+
+    // Add the tabulated rate and identifier. 
+    m_plasmaReactionLookup.      emplace(std::make_pair(a_reactionIndex, LookupMethod::TableEnergy                ));
+    m_plasmaReactionTablesEnergy.emplace(std::make_pair(a_reactionIndex, std::make_pair(speciesIdx, reactionTable)));      
+  }  
   else if (lookup == "functionEN expA"){
     if(!(a_R.contains("c1"))) this->throwParserError(baseError + "and got 'functionEN expA' but field 'c1' is required but not specified");
     if(!(a_R.contains("c2"))) this->throwParserError(baseError + "and got 'functionEN expA' but field 'c2' is required but not specified");
@@ -2940,7 +3016,8 @@ Vector<Real> CdrPlasmaJSON::getPlotVariables(const Vector<Real>     a_cdrDensiti
   // These may or may not be needed.
   const std::vector<Real> cdrMobilities            = this->computePlasmaSpeciesMobilities  (a_pos, a_E, cdrDensities);  
   const std::vector<Real> cdrDiffusionCoefficients = this->computePlasmaSpeciesDiffusion   (a_pos, a_E, cdrDensities);  
-  const std::vector<Real> cdrTemperatures          = this->computePlasmaSpeciesTemperatures(a_pos, a_E, cdrDensities);  
+  const std::vector<Real> cdrTemperatures          = this->computePlasmaSpeciesTemperatures(a_pos, a_E, cdrDensities);
+  const std::vector<Real> cdrEnergies              = this->computePlasmaSpeciesEnergies    (a_pos, a_E, cdrDensities);    
 
   // Electric field and reduce electric field. 
   const Real E   = a_E.vectorLength();
@@ -2971,6 +3048,7 @@ Vector<Real> CdrPlasmaJSON::getPlotVariables(const Vector<Real>     a_cdrDensiti
 						     cdrMobilities,
 						     cdrDiffusionCoefficients,
 						     cdrTemperatures,
+						     cdrEnergies,						     
 						     cdrGradients,
 						     a_pos,
 						     a_E,
@@ -3323,7 +3401,8 @@ Real CdrPlasmaJSON::computePlasmaReactionRate(const int&                   a_rea
 					      const std::vector<Real>&     a_cdrDensities,					      
 					      const std::vector<Real>&     a_cdrMobilities,
 					      const std::vector<Real>&     a_cdrDiffusionCoefficients,
-					      const std::vector<Real>&     a_cdrTemperatures,					     					      
+					      const std::vector<Real>&     a_cdrTemperatures,
+					      const std::vector<Real>&     a_cdrEnergies,
 					      const std::vector<RealVect>& a_cdrGradients,					     
 					      const RealVect&              a_pos,					     					     
 					      const RealVect&              a_vectorE,
@@ -3381,7 +3460,24 @@ Real CdrPlasmaJSON::computePlasmaReactionRate(const int&                   a_rea
       }
 	  
       break;
-    }    
+    }
+  case LookupMethod::TableEnergy:
+    {
+      const int&            speciesIndex  = m_plasmaReactionTablesEnergy.at(a_reactionIndex).first;
+      const LookupTable<2>& reactionTable = m_plasmaReactionTablesEnergy.at(a_reactionIndex).second;
+
+      const Real energy = a_cdrEnergies[speciesIndex];
+
+      // Get the reaction rate.
+      k = reactionTable.getEntry<1>(energy);
+
+      // Multiply by neutral species densities.
+      for (const auto& n : neutralReactants){
+	k *= (m_neutralSpeciesDensities[n])(a_pos);
+      }
+      
+      break;
+    }
   case LookupMethod::AlphaV:
     {
       const int idx = m_plasmaReactionAlphaV.at(a_reactionIndex);
@@ -4015,6 +4111,7 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
   const std::vector<Real> cdrMobilities            = this->computePlasmaSpeciesMobilities  (a_pos, a_E, a_cdrDensities);
   const std::vector<Real> cdrDiffusionCoefficients = this->computePlasmaSpeciesDiffusion   (a_pos, a_E, a_cdrDensities);
   const std::vector<Real> cdrTemperatures          = this->computePlasmaSpeciesTemperatures(a_pos, a_E, a_cdrDensities);
+  const std::vector<Real> cdrEnergies              = this->computePlasmaSpeciesEnergies    (a_pos, a_E, a_cdrDensities);  
 
   // Electric field and reduce electric field. 
   const Real E   = a_E.vectorLength();
@@ -4052,6 +4149,7 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
 						   cdrMobilities,
 						   cdrDiffusionCoefficients,
 						   cdrTemperatures,
+						   cdrEnergies,						   
 						   a_cdrGradients,
 						   a_pos,
 						   a_E,

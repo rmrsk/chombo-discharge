@@ -615,9 +615,15 @@ namespace Physics {
       std::map<int, FunctionEN> m_plasmaReactionFunctionsEN;
 
       /*!
-	@brief Map for table-based reaction coefficients (using reduced electric field)
+	@brief Map for table-based reaction coefficients, where k = k(E,N).
       */
       std::map<int, LookupTable<2> > m_plasmaReactionTablesEN;
+
+      /*!
+	@brief Map for table-based reaction coefficients where k = k(energy).
+	@details The first index is the reaction index, while the pair describes which species energy and the tabulated data. 
+      */
+      std::map<int, std::pair<int, LookupTable<2> > > m_plasmaReactionTablesEnergy;
 
       /*!
 	@brief Scaled plasma reactions. These account for e.g. reaction efficiencies, collisional quenching, etc. 
@@ -1003,6 +1009,7 @@ namespace Physics {
 	@param[in] a_cdrMobilities            Plasma species mobilities. 
 	@param[in] a_cdrDiffusionCoefficients Plasma species diffusion coefficients. 
 	@param[in] a_cdrTemperatures          Plasma species temperatures. 
+	@param[in] a_cdrEnergies              Plasma species energies.
 	@param[in] a_cdrGradients             Plasma species gradients. 
 	@param[in] a_pos                      Position (physical coordinates)
 	@param[in] a_vectorE                  Electric field (vector)
@@ -1017,7 +1024,8 @@ namespace Physics {
 					     const std::vector<Real>&     a_cdrDensities,
 					     const std::vector<Real>&     a_cdrMobilities,
 					     const std::vector<Real>&     a_cdrDiffusionCoefficients,
-					     const std::vector<Real>&     a_cdrTemperatures,					     
+					     const std::vector<Real>&     a_cdrTemperatures,
+					     const std::vector<Real>&     a_cdrEnergies,
 					     const std::vector<RealVect>& a_cdrGradients,					     
 					     const RealVect&              a_pos,					     					     
 					     const RealVect&              a_vectorE,
