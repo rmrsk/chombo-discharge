@@ -1884,11 +1884,12 @@ void CdrPlasmaJSON::parsePlasmaReactions() {
       this->sanctifyPlasmaReaction(curReactants, trimmedProducts, reaction);      
 
       // Parse the reaction parameters. 
-      this->parsePlasmaReactionRate       (reactionIndex, R);
-      this->parsePlasmaReactionScaling    (reactionIndex, R);
-      this->parsePlasmaReactionPlot       (reactionIndex, R);
-      this->parsePlasmaReactionDescription(reactionIndex, R);
-      this->parsePlasmaReactionSoloviev   (reactionIndex, R);
+      this->parsePlasmaReactionRate        (reactionIndex, R);
+      this->parsePlasmaReactionScaling     (reactionIndex, R);
+      this->parsePlasmaReactionPlot        (reactionIndex, R);
+      this->parsePlasmaReactionDescription (reactionIndex, R);
+      this->parsePlasmaReactionSoloviev    (reactionIndex, R);
+      this->parsePlasmaReactionEnergyLosses(reactionIndex, R);
 
       // Make the string-int encoding so we can encode the reaction properly. Then add the reaction to the pile. 
       std::list<int> plasmaReactants ;
@@ -2540,6 +2541,61 @@ void CdrPlasmaJSON::parsePlasmaReactionSoloviev(const int a_reactionIndex, const
   }
   else{
     m_plasmaReactionSolovievCorrection.emplace(a_reactionIndex, std::make_pair(false, -1));
+  }
+}
+
+void CdrPlasmaJSON::parsePlasmaReactionEnergyLosses(const int a_reactionIndex, const json& a_R) {
+  CH_TIME("CdrPlasmaJSON::parsePlasmaReactionEnergyLosses()");
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::parsePlasmaReactionEnergyLosses()" << endl;
+  }
+  
+  std::list<std::pair<int, Real> > reactionEnergyLosses;  
+
+  // TLDR: This will look through reactions and check if we should use the Soloviev energy correction for LFA-based models. 
+  if(a_R.contains("energy losses")){
+    
+    const std::string reaction  = a_R["reaction"].get<std::string>();
+    const std::string baseError = "CdrPlasmaJSON::parsePlasmaEnergyLosses for '" + reaction + "' ";
+
+
+
+    for (const auto& energyLoss : a_R["energy losses"]){
+
+      if(!energyLoss.contains("species")) this->throwParserError(baseError + "but did not find field 'species'");
+      if(!energyLoss.contains("eV"     )) this->throwParserError(baseError + "but did not find field 'eV'"     );
+
+      // Get the species name (string) and associated energy loss. 
+      const std::string speciesName  = this->trim(energyLoss["species"].get<std::string>());
+      const Real        loss         = energyLoss["eV"].get<Real>();
+
+      // It's an error if the species name is not in the list of plasma species. 
+      if(!(this->isPlasmaSpecies(speciesName))) this->throwParserError(baseError + "but species '" + speciesName + "' is not a plasma species");
+
+      // Get the species index, and make sure the specified species is not an energy solver. 
+      const int speciesIndex = m_cdrSpeciesMap.at(speciesName);
+      if(m_cdrIsEnergySolver.at(speciesIndex)) this->throwParserError(baseError + "but species '" + speciesName + "' is an energy solver");
+
+
+      // Append energy losses to the list of losses, but ONLY if there is a corresponding energy solver for the specified species. This allows
+      // us to ignore all energy losses for a species by just turning off energy transport in the input script. 
+      if(m_cdrHasEnergySolver.at(speciesIndex)){
+	reactionEnergyLosses.emplace_back(speciesIndex, loss);
+      }
+    }
+
+    // If none if the species are associated with an energy solver, just ignore the entire thing. 
+    bool hasEnergySolver = false;
+    for (const auto& p : reactionEnergyLosses) {
+      if(m_cdrHasEnergySolver.at(p.first)) hasEnergySolver = true;
+    }
+
+    m_plasmaReactionEnergyLosses. emplace(a_reactionIndex, reactionEnergyLosses);
+    m_plasmaReactionHasEnergyLoss.emplace(a_reactionIndex, hasEnergySolver     );
+  }
+  else{
+    m_plasmaReactionEnergyLosses. emplace(a_reactionIndex, reactionEnergyLosses);
+    m_plasmaReactionHasEnergyLoss.emplace(a_reactionIndex, false               );
   }
 }
 
@@ -4175,6 +4231,19 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
     for (const auto& p : photonProducts){
       a_rteSources[p] += k;
     }
+
+    // If there is an energy loss associated with this reaction, we need to add the losses to the corresponding energy transport solvers.
+    if(m_plasmaReactionHasEnergyLoss.at(i)){
+      const std::list<std::pair<int, Real> >& energyLosses = m_plasmaReactionEnergyLosses.at(i);
+
+      for (const auto& curReactionLoss : energyLosses) {
+      	const int&  transportIndex = curReactionLoss.first;
+      	const int&  energyIndex    = m_cdrTransportEnergyMap.at(transportIndex);
+      	const Real& loss           = curReactionLoss.second;
+
+	a_cdrSources[energyIndex] += loss * k;
+      }
+    }    
   }
 
   // Energy solvers should be incremented by v * n - D * grad(n)

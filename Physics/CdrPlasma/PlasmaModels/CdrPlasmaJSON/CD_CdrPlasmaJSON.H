@@ -641,6 +641,17 @@ namespace Physics {
       std::map<int, bool> m_plasmaReactionPlot;
 
       /*!
+	@brief Associated energy losses for a plasma reaction.
+	@details The list is a list of species and the corresponding energy losses for a reaction.
+      */
+      std::map<int, std::list<std::pair<int, Real> > > m_plasmaReactionEnergyLosses;
+
+      /*!
+	@brief Associative container for determining if a reaction is associated with an energy loss/gain.
+      */
+      std::map<int, bool> m_plasmaReactionHasEnergyLoss;
+
+      /*!
 	@brief Flag for whether or not reaction includes Soloviev energy correction. 
 	@details If this is true, the rate for a reaction (in the local field approximation) will be modified as k * (1 + E.(D * grad(phi))/n * 
       */
@@ -873,7 +884,15 @@ namespace Physics {
 	@param[in] a_reactionIndex  Reaction index. 
 	@param[in] a_reactionJSON   Input reaction. Must be one of the entries in the 'plasma reactions' array. 
       */
-      virtual void parsePlasmaReactionSoloviev(const int a_reactionIndex, const json& a_reactionJSON);      
+      virtual void parsePlasmaReactionSoloviev(const int a_reactionIndex, const json& a_reactionJSON);
+
+
+      /*!
+	@brief Parse plasma reaction energy losses.
+	@param[in] a_reactionIndex  Reaction index. 
+	@param[in] a_reactionJSON   Input reaction. Must be one of the entries in the 'plasma reactions' array. 
+      */      
+      virtual void parsePlasmaReactionEnergyLosses(const int a_reactionIndex, const json& a_reactionJSON);
 
       /*!
 	@brief Parse photo-reactions
