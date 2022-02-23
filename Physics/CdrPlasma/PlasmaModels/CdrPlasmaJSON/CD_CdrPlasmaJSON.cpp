@@ -1292,7 +1292,7 @@ void CdrPlasmaJSON::parseMobilities() {
 	  tableSpacing = TableSpacing::Exponential;
 	}
 	else{
-	  this->throwParserError(baseError + "and got tabulated mobility but 'spacing' field = '" + spacing + "' which is not supported");
+	  this->throwParserError(baseError + "and got 'table E/N' but 'spacing' field = '" + spacing + "' which is not supported");
 	}
 
 	// Format the table appropriately. 
@@ -1311,7 +1311,79 @@ void CdrPlasmaJSON::parseMobilities() {
 	// Ok, put the table where it belongs. 
 	m_mobilityLookup.  emplace(std::make_pair(idx, LookupMethod::TableEN));
 	m_mobilityTablesEN.emplace(std::make_pair(idx, mobilityTable         ));
-      }		
+      }
+      else if(lookup == "table energy"){
+	if(!(mobilityJSON.contains("file"   ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'file' was not specified"   );
+	if(!(mobilityJSON.contains("header" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'header' was not specified" );
+	if(!(mobilityJSON.contains("eV"     ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'eV' was not specified"     );
+	if(!(mobilityJSON.contains("mu*N"   ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'mu*N' was not specified"   );
+	if(!(mobilityJSON.contains("min eV" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'min eV' was not specified" );
+	if(!(mobilityJSON.contains("max eV" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'max eV' was not specified" );
+	if(!(mobilityJSON.contains("points" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'points' was not specified" );
+	if(!(mobilityJSON.contains("spacing"))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'spacing' was not specified");	
+	
+	const std::string filename  = this->trim(mobilityJSON["file"   ].get<std::string>());
+	const std::string startRead = this->trim(mobilityJSON["header" ].get<std::string>());
+	const std::string spacing   = this->trim(mobilityJSON["spacing"].get<std::string>());
+	const std::string stopRead  = "";
+
+	const int  xColumn   = mobilityJSON["eV"     ].get<int >();
+	const int  yColumn   = mobilityJSON["mu*N"   ].get<int >();
+	const int  numPoints = mobilityJSON["points" ].get<int >();
+	const Real minEnergy = mobilityJSON["min eV" ].get<Real>();
+	const Real maxEnergy = mobilityJSON["max eV" ].get<Real>();
+
+	// Check if we should scale the table.
+	Real scale = 1.0;
+	if(mobilityJSON.contains("scale")){
+	  scale = mobilityJSON["scale"].get<Real>();
+	}
+
+	// Can't have maximum energy < minimum energy
+	if(maxEnergy < minEnergy) this->throwParserError(baseError + "and got 'table energy' but can't have 'max eV' < 'min eV'");
+
+	// Issue an error if the file does not exist at all!
+	if(!(this->doesFileExist(filename))) this->throwParserError(baseError + "and got 'table energy' with file = '" + filename + "' but file was not found");
+
+	// Read the table and format it. We happen to know that this function reads data into the approprate columns. So if
+	// the user specified the correct eV column then that data will be put in the first column. The data for mu*N will be in the
+	// second column. 
+	LookupTable<2> mobilityTable = DataParser::fractionalFileReadASCII(filename, startRead, stopRead, xColumn, yColumn);
+
+	// If the table is empty then it's an error.
+	if(mobilityTable.getNumEntries() == 0){
+	  this->throwParserError(baseError + " and got 'table energy' but mobility table '" + startRead + "' in file '" + filename + "'is empty");
+	}
+
+	// Figure out the table spacing
+	TableSpacing tableSpacing;
+	if(spacing == "uniform"){
+	  tableSpacing = TableSpacing::Uniform;
+	}
+	else if(spacing == "exponential"){
+	  tableSpacing = TableSpacing::Exponential;
+	}
+	else{
+	  this->throwParserError(baseError + "and got 'table energy' but 'spacing' field = '" + spacing + "' which is not supported");
+	}
+
+	// Format the table appropriately. 
+	mobilityTable.scale<1>(scale);		
+	mobilityTable.setRange(minEnergy, maxEnergy, 0);
+	mobilityTable.sort(0);
+	mobilityTable.setTableSpacing(tableSpacing);
+	mobilityTable.makeUniform(numPoints);
+
+	// Check if we should dump the table to file so that users can debug.
+	if(mobilityJSON.contains("dump")){
+	  const std::string dumpFile = mobilityJSON["dump"].get<std::string>();
+	  mobilityTable.dumpTable(dumpFile);
+	}
+
+	// Ok, put the table where it belongs. 
+	m_mobilityLookup.      emplace(std::make_pair(idx, LookupMethod::TableEnergy));
+	m_mobilityTablesEnergy.emplace(std::make_pair(idx, mobilityTable            ));	
+      }
       else if (lookup == "functionEN A"){
 	FunctionEN func;
 	
@@ -1513,6 +1585,77 @@ void CdrPlasmaJSON::parseDiffusion() {
 	m_diffusionLookup.  emplace(std::make_pair(idx, LookupMethod::TableEN));
 	m_diffusionTablesEN.emplace(std::make_pair(idx, diffusionTable       ));
       }
+      else if(lookup == "table energy"){
+	if(!(diffusionJSON.contains("file"      ))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'file' was not specified"      );
+	if(!(diffusionJSON.contains("header"    ))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'header' was not specified"    );
+	if(!(diffusionJSON.contains("eV"        ))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'eV' was not specified"        );
+	if(!(diffusionJSON.contains("D*N"       ))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'D*N' was not specified"       );
+	if(!(diffusionJSON.contains("min energy"))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'min energy' was not specified");
+	if(!(diffusionJSON.contains("max energy"))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'max energy' was not specified");
+	if(!(diffusionJSON.contains("points"    ))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'points' was not specified"    );
+	if(!(diffusionJSON.contains("spacing"   ))) this->throwParserError(baseError + "and got 'table energy' for diffusion but field 'spacing' was not specified"   );
+	
+	const std::string filename  = this->trim(diffusionJSON["file"  ].get<std::string>());
+	const std::string startRead = this->trim(diffusionJSON["header"].get<std::string>());
+	const std::string spacing   = this->trim(diffusionJSON["spacing"].get<std::string>());	
+	const std::string stopRead  = "";
+
+	const int  xColumn   = diffusionJSON["eV"        ].get<int >();
+	const int  yColumn   = diffusionJSON["D*N"       ].get<int >();
+	const int  numPoints = diffusionJSON["points"    ].get<int >();		
+	const Real minEnergy = diffusionJSON["min energy"].get<Real>();
+	const Real maxEnergy = diffusionJSON["max energy"].get<Real>();
+
+	// Can't have maximum energy < minimum energy
+	if(maxEnergy < minEnergy) this->throwParserError(baseError + "and got 'table energy' for diffusion but can't have 'max eV' < 'min eV'");
+
+	// Issue an error if the file does not exist at all!
+	if(!(this->doesFileExist(filename))) this->throwParserError(baseError + "and got 'table energy' for diffusion with file = '" + filename + "' but file was not found");
+
+	// Read the table and format it. We happen to know that this function reads data into the approprate columns. So if
+	// the user specified the correct E/N column then that data will be put in the first column. The data for D*N will be in the
+	// second column. 
+	LookupTable<2> diffusionTable = DataParser::fractionalFileReadASCII(filename, startRead, stopRead, xColumn, yColumn);
+
+	// If the table is empty then it's an error.
+	if(diffusionTable.getNumEntries() == 0){
+	  this->throwParserError(baseError + " and got 'table energy' for diffusion but diffusion table '" + startRead + "' in file '" + filename + "'is empty");	  
+	}
+
+	// Check if we should scale the table.
+	Real scale = 1.0;
+	if(diffusionJSON.contains("scale")){
+	  scale = diffusionJSON["scale"].get<Real>();
+	}
+
+	// Figure out the table spacing
+	TableSpacing tableSpacing;
+	if(spacing == "uniform"){
+	  tableSpacing = TableSpacing::Uniform;
+	}
+	else if(spacing == "exponential"){
+	  tableSpacing = TableSpacing::Exponential;
+	}
+	else{
+	  this->throwParserError(baseError + " and got 'table energy' for diffusion but 'spacing' field = '" + spacing + "' which is not supported");
+	}	
+
+	// Format the table
+	diffusionTable.scale<1>(scale);
+	diffusionTable.setRange(minEnergy, maxEnergy, 0);
+	diffusionTable.sort(0);
+	diffusionTable.setTableSpacing(tableSpacing);	
+	diffusionTable.makeUniform(numPoints);
+
+	// Check if we should dump the table to file so that users can debug.
+	if(diffusionJSON.contains("dump")){
+	  const std::string dumpFile = diffusionJSON["dump"].get<std::string>();
+	  diffusionTable.dumpTable(dumpFile);
+	}	
+
+	m_diffusionLookup.      emplace(std::make_pair(idx, LookupMethod::TableEnergy));
+	m_diffusionTablesEnergy.emplace(std::make_pair(idx, diffusionTable           ));
+      }      
       else if (lookup == "functionEN A"){
 	FunctionEN func;
 	
@@ -2818,8 +2961,6 @@ Vector<Real> CdrPlasmaJSON::getPlotVariables(const Vector<Real>     a_cdrDensiti
     ret.push_back(m_gasDensity    (a_pos));
   }
 
-  //  MayDay::Error("CdrPlasmaJSON::getPlotVariables -- need to start from here -- something fishy about the reactions");
-
   for (const auto& m : m_plasmaReactionPlot){
     if(m.second){
       const int reactionIndex = m.first;
@@ -2922,6 +3063,8 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesMobilities(const RealVect& 
   const Real N   = m_gasDensity(a_position);
   const Real Etd = (E/(N * Units::Td));
 
+  const std::vector<Real> energies = this->computePlasmaSpeciesEnergies(a_position, a_E, a_cdrDensities);
+
   // vector of mobilities
   std::vector<Real> mu(m_numCdrSpecies, 0.0);  
 
@@ -2965,7 +3108,10 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesMobilities(const RealVect& 
 	}
       case LookupMethod::TableEnergy:
 	{
-	  MayDay::Error("CdrPlasmaJSON::computePlasmaSpeciesMobilities -- 'TableEnergy' not supported yet");
+	  const LookupTable<2>& mobilityTable = m_mobilityTablesEnergy.at(i);
+
+	  mu[i]  = mobilityTable.getEntry<1> (energies[i]);
+	  mu[i] /= N;
 	  
 	  break;
 	}
@@ -3001,7 +3147,10 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesDiffusion(const RealVect   
 
   const Real E   = a_E.vectorLength();
   const Real N   = m_gasDensity(a_pos);
-  const Real Etd = (E/(N * Units::Td));    
+  const Real Etd = (E/(N * Units::Td));
+
+  // Compute the species energies. We might need them. 
+  const std::vector<Real> energies = this->computePlasmaSpeciesEnergies(a_pos, a_E, a_cdrDensities);  
 
   for (int i = 0; i < a_cdrDensities.size(); i++){
     const bool isDiffusive    = m_cdrSpecies[i]->isDiffusive();
@@ -3037,6 +3186,16 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesDiffusion(const RealVect   
 
 	  break;
 	}
+      case LookupMethod::TableEnergy:
+	{
+	  // Recall: The diffusion tables are stored as (eV, D*N) so we just get D from that. 
+	  const LookupTable<2>& diffusionTable = m_diffusionTablesEnergy.at(i);
+
+	  Dco  = diffusionTable.getEntry<1> (energies[i]);
+	  Dco /= N;
+	  
+	  break;
+	}	
       default:
 	{
 	  MayDay::Error("CdrPlasmaJSON::computePlasmaSpeciesDiffusion -- logic bust");
