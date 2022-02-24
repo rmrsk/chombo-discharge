@@ -2553,7 +2553,9 @@ void CdrPlasmaJSON::parsePlasmaReactionEnergyLosses(const int a_reactionIndex, c
     pout() << "CdrPlasmaJSON::parsePlasmaReactionEnergyLosses()" << endl;
   }
   
-  std::list<std::pair<int, Real> > reactionEnergyLosses;  
+  std::list<std::pair<int, Real> > reactionEnergyLosses2;
+
+  std::map<int, std::pair<ReactiveEnergyLoss, Real> > reactionEnergyLosses;
 
   // TLDR: This will look through reactions and check if we should use the Soloviev energy correction for LFA-based models. 
   if(a_R.contains("energy losses")){
@@ -2568,20 +2570,52 @@ void CdrPlasmaJSON::parsePlasmaReactionEnergyLosses(const int a_reactionIndex, c
 
       // Get the species name (string) and associated energy loss. 
       const std::string speciesName  = this->trim(energyLoss["species"].get<std::string>());
-      const Real        loss         = energyLoss["eV"].get<Real>();
 
-      // It's an error if the species name is not in the list of plasma species. 
+      // It's an error if the species name is not in the list of plasma species, or if the user has specified an energy solver as a plasma species. 
       if(!(this->isPlasmaSpecies(speciesName))) this->throwParserError(baseError + "but species '" + speciesName + "' is not a plasma species");
-
-      // Get the species index, and make sure the specified species is not an energy solver. 
       const int speciesIndex = m_cdrSpeciesMap.at(speciesName);
       if(m_cdrIsEnergySolver.at(speciesIndex)) this->throwParserError(baseError + "but species '" + speciesName + "' is an energy solver");
 
 
+      // It's also an error to specify the reactive energy loss twice. Make sure the species is not already in the list of losses.
+      if(reactionEnergyLosses.find(speciesIndex) != reactionEnergyLosses.end()) {
+	this->throwParserError(baseError + "but it's an error to specify a loss more than once (for species '" + speciesName + "')");
+      }
+
+      // Now parse the energy loss. If the 'eV' field is a string then we check if we should add the average energy loss or not. 
+      Real loss = 0.0;
+
+      ReactiveEnergyLoss lossMethod;
+      
+
+      const auto& j = energyLoss["eV"];
+      if(j.type() == json::value_t::string){
+	const std::string str = this->trim(energyLoss["eV"].get<std::string>());
+
+	if(str == "+mean" || str == "+avg") {
+	  lossMethod = ReactiveEnergyLoss::AddMean;
+	}
+	else if(str == "-mean" || str == "-avg") {
+	  lossMethod = ReactiveEnergyLoss::SubtractMean;	  
+	}
+	else{
+	  this->throwParserError(baseError + "and got 'eV' = '" + str + "' but this must be '+mean', '-mean', or a floating point number");
+	}
+
+	// In the reaction routines we will compute the loss/gain using the mean energy. I'm leaving the number as a back door in case we ever want
+	// to use this number for scaling the mean energy loss. 
+	loss = 1.0;
+      }
+      else{
+	lossMethod = ReactiveEnergyLoss::External;
+	
+	loss = energyLoss["eV"].get<Real>();
+      }
+
       // Append energy losses to the list of losses, but ONLY if there is a corresponding energy solver for the specified species. This allows
       // us to ignore all energy losses for a species by just turning off energy transport in the input script. 
       if(m_cdrHasEnergySolver.at(speciesIndex)){
-	reactionEnergyLosses.emplace_back(speciesIndex, loss);
+	reactionEnergyLosses.emplace(speciesIndex, std::make_pair(lossMethod, loss));
       }
     }
 
@@ -4320,14 +4354,36 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
 
     // If there is an energy loss associated with this reaction, we need to add the losses to the corresponding energy transport solvers.
     if(m_plasmaReactionHasEnergyLoss.at(i)){
-      const std::list<std::pair<int, Real> >& energyLosses = m_plasmaReactionEnergyLosses.at(i);
+      const auto& energyLosses = m_plasmaReactionEnergyLosses.at(i);
 
       for (const auto& curReactionLoss : energyLosses) {
       	const int&  transportIndex = curReactionLoss.first;
       	const int&  energyIndex    = m_cdrTransportEnergyMap.at(transportIndex);
-      	const Real& loss           = curReactionLoss.second;
 
-	a_cdrSources[energyIndex] += loss * k;
+	const auto& lossMethod = (curReactionLoss.second).first;
+	const auto& lossFactor = (curReactionLoss.second).second;
+
+	switch(lossMethod){
+	case ReactiveEnergyLoss::AddMean:
+	  {
+	    a_cdrSources[energyIndex] += lossFactor * cdrEnergies[transportIndex] * k;
+
+	    break;
+	  }
+	case ReactiveEnergyLoss::SubtractMean:
+	  {
+	    a_cdrSources[energyIndex] -= lossFactor * cdrEnergies[transportIndex] * k;
+
+	    break;
+	  }
+
+	case ReactiveEnergyLoss::External:
+	  {
+	    a_cdrSources[energyIndex] += lossFactor * k;
+
+	    break;
+	  }	  	  
+	}
       }
     }    
   }

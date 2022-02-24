@@ -84,7 +84,7 @@ namespace Physics {
 	@param[in] a_T1 Some species temperature. 
 	@param[in] a_T2 Some other species temperature. 
       */
-      using FunctionTT = std::function<Real(const Real a_T1, const Real a_T2)>;      
+      using FunctionTT = std::function<Real(const Real a_T1, const Real a_T2)>;
 
       /*!
 	@brief Default constructor.
@@ -311,6 +311,17 @@ namespace Physics {
 	ExplicitTrapezoidal,
 	ExplicitMidpoint,	
 	ExplicitRK4
+      };
+
+      /*!
+	@brief Enum class for distinguishing how we add/lose energy when running LEA-based models. The user will
+	specify how to do this in the chemistry file, where 'AddMean' means that we add the mean energy to the equation.
+	Likewise, 'SubtractMean' implies removing the mean energy, and 'External' is a user-specified energy to be added/removed.
+      */
+      enum class ReactiveEnergyLoss {
+	AddMean,
+	SubtractMean,
+	External
       };
 
       /*!
@@ -648,10 +659,12 @@ namespace Physics {
       std::map<int, std::pair<bool, int> > m_plasmaReactionSolovievCorrection;
 
       /*!
-	@brief Associated energy losses for a plasma reaction.
-	@details The list is a list of species and the corresponding energy losses for a reaction.
+	@brief For mapping reactive energy losses for all reactions. 
+	@details The index in the first map is the reaction (i.e., index in m_plasmaReactions).
+	The second map determines how reactive energy losses/gains are computed for each species. The first index in the second map
+	indicates the species which will add/lose energy, and the std::pair indicates how this loss is computed. 
       */
-      std::map<int, std::list<std::pair<int, Real> > > m_plasmaReactionEnergyLosses;
+      std::map<int, std::map<int, std::pair<ReactiveEnergyLoss, Real> > > m_plasmaReactionEnergyLosses;      
 
       /*!
 	@brief Associative container for determining if a reaction is associated with an energy loss/gain.
@@ -680,7 +693,7 @@ namespace Physics {
       /*!
 	@brief Associated energy losses for a photo-reaction.
 	@details The list is a list of species and the corresponding energy losses for a reaction. Note that although 
-	we write 'loss', this can also be an energy 'gain'.
+	we write 'loss', this can also be an energy 'gain'. 
       */
       std::map<int, std::list<std::pair<int, Real> > > m_photoReactionEnergyLosses;
 
