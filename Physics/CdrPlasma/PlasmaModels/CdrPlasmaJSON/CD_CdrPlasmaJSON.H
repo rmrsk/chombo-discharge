@@ -832,11 +832,11 @@ namespace Physics {
 	@param[in] a_reactants List of reactants. Can contain wildcard.
 	@param[in] a_products  List of products. Can contain wildcard.
 	@param[in] a_reaction  JSON reaction entry. 
-	@return Returns a list of reactants and products with wilcards replace. 
+	@return Returns a list of reactants and products with wilcards replaced. The tuple entries are: <wildcard, reactants, products>
       */
-      virtual std::list<std::pair<std::vector<std::string>, std::vector<std::string> > > parseReactionWildcards(const std::vector<std::string>& a_reactants,
-														const std::vector<std::string>& a_products,
-														const json& a_reaction);
+      virtual std::list<std::tuple<std::string, std::vector<std::string>, std::vector<std::string> > > parseReactionWildcards(const std::vector<std::string>& a_reactants,
+															      const std::vector<std::string>& a_products,
+															      const json& a_reaction);
       /*!
 	@brief Parses a reaction string into reactangs and products
 	@param[out] a_reactants Left-hand side of reaction
@@ -905,7 +905,7 @@ namespace Physics {
 	@param[in] a_reactionIndex  Reaction index. 
 	@param[in] a_reactionJSON   Input reaction. Must be one of the entries in the 'plasma reactions' array. 
       */
-      virtual void parsePlasmaReactionDescription(const int a_reactionIndex, const json& a_reactionJSON);
+      virtual void parsePlasmaReactionDescription(const int a_reactionIndex, const json& a_reactionJSON, const std::string a_wildcard);
 
       /*!
 	@brief Parse plasma reaction energy correction. 

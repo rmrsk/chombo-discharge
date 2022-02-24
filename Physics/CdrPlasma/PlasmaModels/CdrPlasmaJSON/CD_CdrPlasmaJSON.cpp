@@ -1868,8 +1868,9 @@ void CdrPlasmaJSON::parsePlasmaReactions() {
     // Now run through the superset of reactions encoded by the input string. Because of the @ character some of the rate functions
     // need special handling. 
     for (const auto& curReaction : reactionSets){
-      const std::vector<std::string> curReactants = curReaction.first ;
-      const std::vector<std::string> curProducts  = curReaction.second;
+      const std::string wildcard                  = std::get<0>(curReaction);
+      const std::vector<std::string> curReactants = std::get<1>(curReaction);
+      const std::vector<std::string> curProducts  = std::get<2>(curReaction);
 
       // This is the reaction index for the current index. The reaction we are currently
       // dealing with is put in m_plasmaReactions[reactionIdex]. 
@@ -1890,7 +1891,7 @@ void CdrPlasmaJSON::parsePlasmaReactions() {
       this->parsePlasmaReactionRate        (reactionIndex, R);
       this->parsePlasmaReactionScaling     (reactionIndex, R);
       this->parsePlasmaReactionPlot        (reactionIndex, R);
-      this->parsePlasmaReactionDescription (reactionIndex, R);
+      this->parsePlasmaReactionDescription (reactionIndex, R, wildcard);
       this->parsePlasmaReactionSoloviev    (reactionIndex, R);
       this->parsePlasmaReactionEnergyLosses(reactionIndex, R);
 
@@ -1918,16 +1919,16 @@ void CdrPlasmaJSON::parsePlasmaReactions() {
   }
 }
 
-std::list<std::pair<std::vector<std::string>, std::vector<std::string> > > CdrPlasmaJSON::parseReactionWildcards(const std::vector<std::string>& a_reactants,
-														 const std::vector<std::string>& a_products,
-														 const json& a_R){
+std::list<std::tuple<std::string, std::vector<std::string>, std::vector<std::string> > > CdrPlasmaJSON::parseReactionWildcards(const std::vector<std::string>& a_reactants,
+															       const std::vector<std::string>& a_products,
+															       const json& a_R) {
   CH_TIME("CdrPlasmaJSON::parseReactionWildcards()");
   if(m_verbose){
     pout() << "CdrPlasmaJSON::parseReactionWildcards()" << endl;
   }
 
   // This is what we return. A horrific creature.
-  std::list<std::pair<std::vector<std::string>, std::vector<std::string> > > reactionSets;  
+  std::list<std::tuple<std::string, std::vector<std::string>, std::vector<std::string> > > reactionSets;  
 
   // This is the reaction name. 
   const std::string reaction  = a_R["reaction"].get<std::string>();
@@ -1970,11 +1971,11 @@ std::list<std::pair<std::vector<std::string>, std::vector<std::string> > > CdrPl
 	}
       }
 
-      reactionSets.emplace_back(curReactants, curProducts);
+      reactionSets.emplace_back(w, curReactants, curProducts);
     }
   }
   else{
-    reactionSets.emplace_back(a_reactants, a_products);
+    reactionSets.emplace_back("", a_reactants, a_products);
   }
 
   return reactionSets;
@@ -2488,21 +2489,36 @@ void CdrPlasmaJSON::parsePlasmaReactionPlot(const int a_reactionIndex, const jso
   m_plasmaReactionPlot.emplace(a_reactionIndex, plot);  
 }
 
-void CdrPlasmaJSON::parsePlasmaReactionDescription(const int a_reactionIndex, const json& a_R) {
+void CdrPlasmaJSON::parsePlasmaReactionDescription(const int a_reactionIndex,
+						   const json& a_R,
+						   const std::string a_wildcard){
   CH_TIME("CdrPlasmaJSON::parsePlasmaReactionDescription");
   if(m_verbose){
     pout() << "CdrPlasmaJSON::parsePlasmaReactionDescription" << endl;
   }
 
   // Reaction name. 
-  std::string str = a_R["reaction"].get<std::string>();  
+  const std::string reactionString = a_R["reaction"].get<std::string>();  
 
   // Determine if the reaction had a field "description". If it did, we will use that description in I/O files
+  std::string description;
   if(a_R.contains("description")){
-    str = a_R["description"].get<std::string>();
+    description = a_R["description"].get<std::string>();
+  }
+  else{
+    description = reactionString;
   }
 
-  m_plasmaReactionDescriptions.emplace(a_reactionIndex, str);        
+  // Check if reaction string had a wildcard '@'. If it did we replace the wildcard with the corresponding species. This means that we need to
+  // build additional reactions. 
+  const bool containsWildcard = this->containsWildcard(reactionString);
+
+  // If the reaction string contained a wildcard, we append the description with the wildcard name. 
+  if(this->containsWildcard(reactionString)){
+    description = description + " " + a_wildcard;
+  }
+
+  m_plasmaReactionDescriptions.emplace(a_reactionIndex, description);        
 }
 
 void CdrPlasmaJSON::parsePlasmaReactionSoloviev(const int a_reactionIndex, const json& a_R) {
@@ -2866,8 +2882,8 @@ void CdrPlasmaJSON::parseElectrodeReactions() {
       // Go through all the reactions now. 
       for (const auto& curReaction : reactionSets){
 
-	const std::vector<std::string> curReactants = curReaction.first ;
-	const std::vector<std::string> curProducts  = curReaction.second;
+	const std::vector<std::string> curReactants = std::get<1>(curReaction);
+	const std::vector<std::string> curProducts  = std::get<2>(curReaction);
 
 	// Sanctify the reaction -- make sure that all left-hand side and right-hand side species make sense.
 	this->sanctifySurfaceReaction(curReactants, curProducts, reaction);
@@ -2999,8 +3015,8 @@ void CdrPlasmaJSON::parseDielectricReactions() {
       // Go through all the reactions now. 
       for (const auto& curReaction : reactionSets){
 
-	const std::vector<std::string> curReactants = curReaction.first ;
-	const std::vector<std::string> curProducts  = curReaction.second;
+	const std::vector<std::string> curReactants = std::get<1>(curReaction);
+	const std::vector<std::string> curProducts  = std::get<2>(curReaction);
 
 	// Sanctify the reaction -- make sure that all left-hand side and right-hand side species make sense.
 	this->sanctifySurfaceReaction(curReactants, curProducts, reaction);
