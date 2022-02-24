@@ -321,6 +321,8 @@ namespace Physics {
       enum class ReactiveEnergyLoss {
 	AddMean,
 	SubtractMean,
+	AddDirect,
+	SubtractDirect,
 	External
       };
 

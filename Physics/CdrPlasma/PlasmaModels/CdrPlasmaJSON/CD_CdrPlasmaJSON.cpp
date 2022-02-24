@@ -2598,8 +2598,14 @@ void CdrPlasmaJSON::parsePlasmaReactionEnergyLosses(const int a_reactionIndex, c
 	else if(str == "-mean" || str == "-avg") {
 	  lossMethod = ReactiveEnergyLoss::SubtractMean;	  
 	}
+	else if(str == "+direct"){
+	  lossMethod = ReactiveEnergyLoss::AddDirect;
+	}
+	else if(str == "-direct"){
+	  lossMethod = ReactiveEnergyLoss::SubtractDirect;
+	}	
 	else{
-	  this->throwParserError(baseError + "and got 'eV' = '" + str + "' but this must be '+mean', '-mean', or a floating point number");
+	  this->throwParserError(baseError + "and got 'eV' = '" + str + "', which is not supported");
 	}
 
 	// In the reaction routines we will compute the loss/gain using the mean energy. I'm leaving the number as a back door in case we ever want
@@ -4376,7 +4382,18 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
 
 	    break;
 	  }
+	case ReactiveEnergyLoss::AddDirect:
+	  {
+	    a_cdrSources[energyIndex] += k;
 
+	    break;
+	  }
+	case ReactiveEnergyLoss::SubtractDirect:
+	  {
+	    a_cdrSources[energyIndex] -= k;
+
+	    break;
+	  }	  
 	case ReactiveEnergyLoss::External:
 	  {
 	    a_cdrSources[energyIndex] += lossFactor * k;
