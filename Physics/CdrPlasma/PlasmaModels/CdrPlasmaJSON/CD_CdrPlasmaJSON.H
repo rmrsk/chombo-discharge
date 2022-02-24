@@ -642,6 +642,12 @@ namespace Physics {
       std::map<int, bool> m_plasmaReactionPlot;
 
       /*!
+	@brief Flag for whether or not reaction includes Soloviev energy correction. 
+	@details If this is true, the rate for a reaction (in the local field approximation) will be modified as k * (1 + E.(D * grad(phi))/n * 
+      */
+      std::map<int, std::pair<bool, int> > m_plasmaReactionSolovievCorrection;
+
+      /*!
 	@brief Associated energy losses for a plasma reaction.
 	@details The list is a list of species and the corresponding energy losses for a reaction.
       */
@@ -650,13 +656,7 @@ namespace Physics {
       /*!
 	@brief Associative container for determining if a reaction is associated with an energy loss/gain.
       */
-      std::map<int, bool> m_plasmaReactionHasEnergyLoss;
-
-      /*!
-	@brief Flag for whether or not reaction includes Soloviev energy correction. 
-	@details If this is true, the rate for a reaction (in the local field approximation) will be modified as k * (1 + E.(D * grad(phi))/n * 
-      */
-      std::map<int, std::pair<bool, int> > m_plasmaReactionSolovievCorrection;
+      std::map<int, bool> m_plasmaReactionHasEnergyLoss;      
 
       // ================================
       // PHOTO-REACTIONS BEGIN HERE
@@ -676,6 +676,18 @@ namespace Physics {
 	@brief Photo-reactions
       */
       std::vector<CdrPlasmaPhotoReactionJSON> m_photoReactions;
+
+      /*!
+	@brief Associated energy losses for a photo-reaction.
+	@details The list is a list of species and the corresponding energy losses for a reaction. Note that although 
+	we write 'loss', this can also be an energy 'gain'.
+      */
+      std::map<int, std::list<std::pair<int, Real> > > m_photoReactionEnergyLosses;
+
+      /*!
+	@brief Associative container for determining if a reaction is associated with an energy loss/gain.
+      */
+      std::map<int, bool> m_photoReactionHasEnergyLoss;
 
       // ===========================================
       // ELECTRODE SURFACE REACTIONS BEGIN HERE
@@ -723,8 +735,8 @@ namespace Physics {
       /*!
 	@brief List of dielectric reactions
       */
-      std::vector<CdrPlasmaSurfaceReactionJSON> m_dielectricReactions;      
-      
+      std::vector<CdrPlasmaSurfaceReactionJSON> m_dielectricReactions;
+
       /*!
 	@brief Parse class options
       */
@@ -905,7 +917,14 @@ namespace Physics {
 	@param[in] a_reactionIndex  Reaction index. 
 	@param[in] a_reactionJSON   Input reaction. Must be one of the entries in the 'photo reactions' array. 
       */
-      virtual void parsePhotoReactionScaling(const int a_reactionIndex, const json& a_reactionJSON);      
+      virtual void parsePhotoReactionScaling(const int a_reactionIndex, const json& a_reactionJSON);
+
+      /*!
+	@brief Parse photo-reaction energy losses.
+	@param[in] a_reactionIndex  Reaction index. 
+	@param[in] a_reactionJSON   Input reaction. Must be one of the entries in the 'photo reactions' array. 
+      */      
+      virtual void parsePhotoReactionEnergyLosses(const int a_reactionIndex, const json& a_reactionJSON);      
 
       /*!
 	@brief Do a species sanity check

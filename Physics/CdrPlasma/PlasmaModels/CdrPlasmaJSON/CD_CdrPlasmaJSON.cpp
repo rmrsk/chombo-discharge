@@ -1316,25 +1316,25 @@ void CdrPlasmaJSON::parseMobilities() {
 	m_mobilityTablesEN.emplace(std::make_pair(idx, mobilityTable         ));
       }
       else if(lookup == "table energy"){
-	if(!(mobilityJSON.contains("file"   ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'file' was not specified"   );
-	if(!(mobilityJSON.contains("header" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'header' was not specified" );
-	if(!(mobilityJSON.contains("eV"     ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'eV' was not specified"     );
-	if(!(mobilityJSON.contains("mu*N"   ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'mu*N' was not specified"   );
-	if(!(mobilityJSON.contains("min eV" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'min eV' was not specified" );
-	if(!(mobilityJSON.contains("max eV" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'max eV' was not specified" );
-	if(!(mobilityJSON.contains("points" ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'points' was not specified" );
-	if(!(mobilityJSON.contains("spacing"))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'spacing' was not specified");	
+	if(!(mobilityJSON.contains("file"      ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'file' was not specified"       );
+	if(!(mobilityJSON.contains("header"    ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'header' was not specified"     );
+	if(!(mobilityJSON.contains("eV"        ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'eV' was not specified"         );
+	if(!(mobilityJSON.contains("mu*N"      ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'mu*N' was not specified"       );
+	if(!(mobilityJSON.contains("min energy"))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'min energy' was not specified" );
+	if(!(mobilityJSON.contains("max energy"))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'max energy' was not specified" );
+	if(!(mobilityJSON.contains("points"    ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'points' was not specified"     );
+	if(!(mobilityJSON.contains("spacing"   ))) this->throwParserError(baseError + "and got 'table energy' mobility but field 'spacing' was not specified"    );	
 	
 	const std::string filename  = this->trim(mobilityJSON["file"   ].get<std::string>());
 	const std::string startRead = this->trim(mobilityJSON["header" ].get<std::string>());
 	const std::string spacing   = this->trim(mobilityJSON["spacing"].get<std::string>());
 	const std::string stopRead  = "";
 
-	const int  xColumn   = mobilityJSON["eV"     ].get<int >();
-	const int  yColumn   = mobilityJSON["mu*N"   ].get<int >();
-	const int  numPoints = mobilityJSON["points" ].get<int >();
-	const Real minEnergy = mobilityJSON["min eV" ].get<Real>();
-	const Real maxEnergy = mobilityJSON["max eV" ].get<Real>();
+	const int  xColumn   = mobilityJSON["eV"        ].get<int >();
+	const int  yColumn   = mobilityJSON["mu*N"      ].get<int >();
+	const int  numPoints = mobilityJSON["points"    ].get<int >();
+	const Real minEnergy = mobilityJSON["min energy"].get<Real>();
+	const Real maxEnergy = mobilityJSON["max energy"].get<Real>();
 
 	// Check if we should scale the table.
 	Real scale = 1.0;
@@ -2559,9 +2559,7 @@ void CdrPlasmaJSON::parsePlasmaReactionEnergyLosses(const int a_reactionIndex, c
   if(a_R.contains("energy losses")){
     
     const std::string reaction  = a_R["reaction"].get<std::string>();
-    const std::string baseError = "CdrPlasmaJSON::parsePlasmaEnergyLosses for '" + reaction + "' ";
-
-
+    const std::string baseError = "CdrPlasmaJSON::parsePlasmaReactionEnergyLosses for '" + reaction + "' ";
 
     for (const auto& energyLoss : a_R["energy losses"]){
 
@@ -2635,7 +2633,8 @@ void CdrPlasmaJSON::parsePhotoReactions(){
 
 
     // Parse if we use Helmholtz reconstruction for this photoionization method.
-    this->parsePhotoReactionScaling(reactionIndex, R);
+    this->parsePhotoReactionScaling     (reactionIndex, R);
+    this->parsePhotoReactionEnergyLosses(reactionIndex, R);    
 
     // Make the string-int encoding so we can encode the reaction properly. Then add the reaction to the pile. 
     std::list<int> plasmaReactants ;
@@ -2736,6 +2735,58 @@ void CdrPlasmaJSON::parsePhotoReactionScaling(const int a_reactionIndex, const j
 
   m_photoReactionEfficiencies.emplace(a_reactionIndex, func       );
   m_photoReactionUseHelmholtz.emplace(a_reactionIndex, doHelmholtz);
+}
+
+void CdrPlasmaJSON::parsePhotoReactionEnergyLosses(const int a_reactionIndex, const json& a_R) {
+  CH_TIME("CdrPlasmaJSON::parsePhotoReactionEnergyLosses()");
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::parsePhotoReactionEnergyLosses()" << endl;
+  }
+  
+  std::list<std::pair<int, Real> > reactionEnergyLosses;  
+
+  // TLDR: This will look through reactions and check if we should use the Soloviev energy correction for LFA-based models. 
+  if(a_R.contains("energy losses")){
+    
+    const std::string reaction  = a_R["reaction"].get<std::string>();
+    const std::string baseError = "CdrPlasmaJSON::parsePhotoReactionEnergyLosses for '" + reaction + "' ";
+
+    for (const auto& energyLoss : a_R["energy losses"]){
+
+      if(!energyLoss.contains("species")) this->throwParserError(baseError + "but did not find field 'species'");
+      if(!energyLoss.contains("eV"     )) this->throwParserError(baseError + "but did not find field 'eV'"     );
+
+      // Get the species name (string) and associated energy loss. 
+      const std::string speciesName  = this->trim(energyLoss["species"].get<std::string>());
+      const Real        loss         = energyLoss["eV"].get<Real>();
+
+      // It's an error if the species name is not in the list of plasma species. 
+      if(!(this->isPlasmaSpecies(speciesName))) this->throwParserError(baseError + "but species '" + speciesName + "' is not a plasma species");
+
+      // Get the species index, and make sure the specified species is not an energy solver. 
+      const int speciesIndex = m_cdrSpeciesMap.at(speciesName);
+      if(m_cdrIsEnergySolver.at(speciesIndex)) this->throwParserError(baseError + "but species '" + speciesName + "' is an energy solver");
+
+      // Append energy losses to the list of losses, but ONLY if there is a corresponding energy solver for the specified species. This allows
+      // us to ignore all energy losses for a species by just turning off energy transport in the input script. 
+      if(m_cdrHasEnergySolver.at(speciesIndex)){
+	reactionEnergyLosses.emplace_back(speciesIndex, loss);
+      }
+    }
+
+    // If none if the species are associated with an energy solver, just ignore the entire thing. 
+    bool hasEnergySolver = false;
+    for (const auto& p : reactionEnergyLosses) {
+      if(m_cdrHasEnergySolver.at(p.first)) hasEnergySolver = true;
+    }
+
+    m_photoReactionEnergyLosses. emplace(a_reactionIndex, reactionEnergyLosses);
+    m_photoReactionHasEnergyLoss.emplace(a_reactionIndex, hasEnergySolver     );
+  }
+  else{
+    m_photoReactionEnergyLosses. emplace(a_reactionIndex, reactionEnergyLosses);
+    m_photoReactionHasEnergyLoss.emplace(a_reactionIndex, false               );
+  }
 }
 
 void CdrPlasmaJSON::parseElectrodeReactions() {
@@ -3927,6 +3978,19 @@ Vector<Real> CdrPlasmaJSON::computeCdrElectrodeFluxes(const Real         a_time,
   for (int i = 0; i < m_numCdrSpecies; i++){
     fluxes[i] = outflowFluxes[i] - inflowFluxes[i];
   }
+
+  
+#if 1  // Outgoing thermal flux. This is debug code.
+  const std::vector<Real> temps = this->computePlasmaSpeciesTemperatures(a_pos, a_E, ((Vector<Real>& )a_cdrDensities).stdVector());
+
+  const Real Te = temps[0];
+  const Real vth = sqrt((Units::kb * Te)/Units::me);
+
+  if(isAnode) {
+    fluxes[1] += 2./3. * vth * a_cdrDensities[1];
+  }
+  
+#endif
   
   return fluxes;
 }
@@ -4103,6 +4167,19 @@ void CdrPlasmaJSON::addPhotoIonization(std::vector<Real>&       a_cdrSources,
     for (const auto& p : plasmaProducts){
       a_cdrSources[p] += k;
     }
+
+    // If there is an energy loss associated with this reaction, we need to add the losses to the corresponding energy transport solvers.
+    if(m_photoReactionHasEnergyLoss.at(i)){
+      const std::list<std::pair<int, Real> >& energyLosses = m_photoReactionEnergyLosses.at(i);
+
+      for (const auto& curReactionLoss : energyLosses) {
+      	const int&  transportIndex = curReactionLoss.first;
+      	const int&  energyIndex    = m_cdrTransportEnergyMap.at(transportIndex);
+      	const Real& loss           = curReactionLoss.second;
+
+	a_cdrSources[energyIndex] += loss * k;
+      }
+    }      
   }
 }
 
@@ -4276,7 +4353,7 @@ void CdrPlasmaJSON::fillSourceTerms(std::vector<Real>&          a_cdrSources,
       sgn = -1;
     }
 
-    const RealVect flux  = sgn*n*mu*a_E;// - (D*gradn);
+    const RealVect flux  = sgn*n*mu*a_E - (D*gradn);
 
     a_cdrSources[energyIdx] += -flux.dotProduct(a_E);
   }
