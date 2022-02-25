@@ -569,6 +569,27 @@ void CdrPlasmaJSON::initializePlasmaSpecies() {
     m_cdrSpecies.    push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(name, Z, diffusive, mobile, initFunc)));
     m_cdrSpeciesJSON.push_back(species);
 
+    if(species.contains("mass")){
+      const json& m = species["mass"];
+      
+      if(m.type() == json::value_t::string){
+	const std::string str = this->trim(m.get<std::string>());
+
+	if(str == "electron"){
+	  m_cdrMasses.emplace(std::make_pair(transportIdx, Units::me));
+	}
+	else{
+	  this->throwParserError(baseError + "and got field 'mass' but species mass '" + str + "' is not implemented (yet)");
+	}
+      }
+      else {
+	m_cdrMasses.emplace(std::make_pair(transportIdx, m.get<Real>()));
+      }
+    }
+    else{
+      m_cdrMasses.emplace(std::make_pair(transportIdx, std::numeric_limits<Real>::infinity()));
+    }
+
     // Now check if we should augment this species with an energy transport model. 
     bool energyTransport = false;    
     if(species.contains("energy transport")){
@@ -576,6 +597,7 @@ void CdrPlasmaJSON::initializePlasmaSpecies() {
 
       if(energyTransport){
 	if(!(species.contains("initial energy"))) this->throwParserError(baseError + "and got energy transport but 'initial energy' is not specified");
+	if(!(species.contains("mass"          ))) this->throwParserError(baseError + "and got energy transport but 'mass' is not specified");	
 
 	// Set the initial energy function. I could easily think of more complex ways of doing this, but for now we just
 	// support a constant initial energy. 
@@ -596,6 +618,8 @@ void CdrPlasmaJSON::initializePlasmaSpecies() {
 	m_cdrSpecies.push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(energyName, 0, diffusive, mobile, initEnergy)));
       }
     }
+
+
 
     // If we had energy transport we must let our associative containers know where the solvers live.
     if(energyTransport){
@@ -3511,9 +3535,12 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesEnergies(const RealVect&   
 	// Energy solver solves for the energy in electron volts. We compute average_energy = n_energy/n_density and avoid division by zero. 
 	const int energyIdx = m_cdrTransportEnergyMap.at(i);
 
-	constexpr Real safety = 1.0;
+	constexpr Real safety = 1.E10;
 	
-	energies[i] = std::max(a_cdrDensities[energyIdx], 0.0)/(std::max(a_cdrDensities[i], 1.0));
+	Real e = std::max(a_cdrDensities[energyIdx], 0.0)/(std::max(a_cdrDensities[i], safety));
+
+	energies[i] = std::max(0.1, std::min(e, 50.0));
+	
       }
       else{
 	// Otherwise -- we need to look up the 
@@ -3962,6 +3989,9 @@ Vector<Real> CdrPlasmaJSON::computeCdrElectrodeFluxes(const Real         a_time,
   const Real E   = a_E.vectorLength();
   const Real Etd = E/(Units::Td * N);
 
+  // Compute temperatures
+  const std::vector<Real> cdrTemperatures = this->computePlasmaSpeciesTemperatures(a_pos, a_E, ((Vector<Real>& )a_cdrDensities).stdVector());  
+
   // Compute the outflow fluxes. 
   for (int i = 0; i < m_numCdrSpecies; i++){
     const int Z = m_cdrSpecies[i]->getChargeNumber();
@@ -4035,18 +4065,16 @@ Vector<Real> CdrPlasmaJSON::computeCdrElectrodeFluxes(const Real         a_time,
     fluxes[i] = outflowFluxes[i] - inflowFluxes[i];
   }
 
-  
-#if 1  // Outgoing thermal flux. This is debug code.
-  const std::vector<Real> temps = this->computePlasmaSpeciesTemperatures(a_pos, a_E, ((Vector<Real>& )a_cdrDensities).stdVector());
+  // Now add an outgoing thermal flux for all species that have an energy solver.
+  for (const auto& m : m_cdrTransportEnergyMap) {
+    const int transportIndex = m.first;
+    const int energyIndex    = m.second;
 
-  const Real Te = temps[0];
-  const Real vth = sqrt((Units::kb * Te)/Units::me);
+    const Real T = cdrTemperatures[transportIndex];
+    const Real vth = sqrt((Units::kb * T)/(m_cdrMasses.at(transportIndex)));
 
-  if(isAnode) {
-    fluxes[1] += 2./3. * vth * a_cdrDensities[1];
+    fluxes[energyIndex] += (2./3.) * vth * a_cdrDensities[energyIndex];
   }
-  
-#endif
   
   return fluxes;
 }
@@ -4086,6 +4114,9 @@ Vector<Real> CdrPlasmaJSON::computeCdrDielectricFluxes(const Real         a_time
     if(Z < 0 && isAnode  ) outflowFluxes[i] = std::max(0.0, a_extrapCdrFluxes[i]);
     if(Z > 0 && isCathode) outflowFluxes[i] = std::max(0.0, a_extrapCdrFluxes[i]);
   }
+
+  // Compute temperatures
+  const std::vector<Real> cdrTemperatures = this->computePlasmaSpeciesTemperatures(a_pos, a_E, ((Vector<Real>& )a_cdrDensities).stdVector());    
 
   // Go through our list of dielectric reactions and compute the inflow fluxes from secondary emission from plasma species
   // and photon species. 
@@ -4150,6 +4181,17 @@ Vector<Real> CdrPlasmaJSON::computeCdrDielectricFluxes(const Real         a_time
   for (int i = 0; i < m_numCdrSpecies; i++){
     fluxes[i] = outflowFluxes[i] - inflowFluxes[i];
   }
+
+  // Now add an outgoing thermal flux for all species that have an energy solver.
+  for (const auto& m : m_cdrTransportEnergyMap) {
+    const int transportIndex = m.first;
+    const int energyIndex    = m.second;
+
+    const Real T = cdrTemperatures[transportIndex];
+    const Real vth = sqrt((Units::kb * T)/(m_cdrMasses.at(transportIndex)));
+
+    fluxes[energyIndex] += (2./3.) * vth * a_cdrDensities[energyIndex];
+  }  
   
   return fluxes;  
 }
