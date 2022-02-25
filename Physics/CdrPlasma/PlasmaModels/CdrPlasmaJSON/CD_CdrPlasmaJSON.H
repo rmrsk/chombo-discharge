@@ -452,6 +452,12 @@ namespace Physics {
       std::map<int, int> m_cdrTransportEnergyMap;
 
       /*!
+	@brief Map of the species masses. This is needed for imposing BCs on the energy equations.
+	@details This is populated in initializePlasmaSpecies.
+      */
+      std::map<int, Real> m_cdrMasses;
+
+      /*!
 	@brief string-int encoding of the RTE species. 
 	@details This is needed because we sometimes need to use the species name for indexing in the vector. 
       */
@@ -728,6 +734,18 @@ namespace Physics {
       */
       std::vector<CdrPlasmaSurfaceReactionJSON> m_electrodeReactions;
 
+      /*!
+	@brief Associated energy losses for a surface reaction on electrodes. 
+	@details The list is a list of species and the corresponding energy losses for a reaction. Note that although 
+	we write 'loss', this can also be an energy 'gain'. 
+      */
+      std::map<int, std::list<std::pair<int, Real> > > m_electrodeReactionEnergyLosses;
+
+      /*!
+	@brief Associative container for determining if a reaction is associated with an energy loss/gain.
+      */
+      std::map<int, bool> m_electrodeReactionHasEnergyLoss;      
+
       // ===========================================
       // DIELECTRIC SURFACE REACTIONS BEGIN HERE
       // ===========================================
@@ -751,6 +769,22 @@ namespace Physics {
 	@brief List of dielectric reactions
       */
       std::vector<CdrPlasmaSurfaceReactionJSON> m_dielectricReactions;
+
+      /*!
+	@brief Associated energy losses for a surface reaction on dielectrics. 
+	@details The list is a list of species and the corresponding energy losses for a reaction. Note that although 
+	we write 'loss', this can also be an energy 'gain'. 
+      */
+      std::map<int, std::list<std::pair<int, Real> > > m_dielectricReactionEnergyLosses;
+
+      /*!
+	@brief Associative container for determining if a reaction is associated with an energy loss/gain.
+      */
+      std::map<int, bool> m_dielectricReactionHasEnergyLoss;
+
+      // ===========================================
+      // MEMBER FUNCTIONS BEGIN HERE
+      // ===========================================
 
       /*!
 	@brief Parse class options
