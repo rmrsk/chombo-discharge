@@ -364,7 +364,7 @@ namespace Physics {
       /*!
 	@brief Reaction integrator
       */
-      std::pair<ReactionIntegrator, int> m_reactionIntegrator;
+      ReactionIntegrator m_reactionIntegrator;
 
       /*!
 	@brief Input JSON file name
@@ -400,6 +400,11 @@ namespace Physics {
 	@brief Gas number density (in m^(-3))
       */
       FunctionX m_gasDensity;
+
+      /*!
+	@brief Chemistry time step. 
+      */
+      Real m_chemistryDt;
 
       /*!
 	@brief Neutral species densities
@@ -443,6 +448,12 @@ namespace Physics {
 	@brief int-bool encoding for determining if a CDR solver HAS an associated energy solver. 
       */
       std::map<int, bool> m_cdrHasEnergySolver;
+
+      /*!
+	@brief Parameters for computing the mean energy from energy density and density. 
+	@details The energy is computed as e = max(Emin, min(Emax, E)) where E = n_energy/(min(n_density, safety));
+      */
+      std::map<int, std::tuple<Real, Real, Real> > m_cdrEnergyComputation;
 
       /*!
 	@brief int-int encoding for associating a transport solver with an energy solver. 

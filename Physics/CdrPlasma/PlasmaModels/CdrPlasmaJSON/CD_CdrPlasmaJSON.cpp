@@ -74,10 +74,10 @@ void CdrPlasmaJSON::parseOptions() {
   
   ParmParse pp("CdrPlasmaJSON");
 
-  pp.get("verbose",          m_verbose );
-  pp.get("chemistry_file",   m_jsonFile);
+  pp.get("verbose",          m_verbose        );
+  pp.get("chemistry_file",   m_jsonFile       );
   pp.get("discrete_photons", m_discretePhotons);
-  pp.get("skip_reactions",   m_skipReactions);
+  pp.get("skip_reactions",   m_skipReactions  );
 
   this->parseIntegrator();
 }
@@ -94,40 +94,36 @@ void CdrPlasmaJSON::parseIntegrator() {
   ParmParse pp("CdrPlasmaJSON");  
 
   std::string str;
-  int substeps;
   ReactionIntegrator integrator;    
   
-  pp.get("integrator", str     );
-  pp.get("substeps",   substeps);
+  pp.get("integrator",   str          );
+  pp.get("chemistry_dt", m_chemistryDt);
 
-  if(substeps <= 0){
+  if(m_chemistryDt <= 0.0){
     this->throwParserError("CdrPlasmaJSON::parseIntegrator -- substeps must be >= 1");
   }
 
   if(str == "none"){
-    integrator = ReactionIntegrator::None;
+    m_reactionIntegrator = ReactionIntegrator::None;
   }
   else if(str == "explicit_euler") {
-    integrator = ReactionIntegrator::ExplicitEuler;
+    m_reactionIntegrator = ReactionIntegrator::ExplicitEuler;
   }
   else if(str == "implicit_euler") {
-    integrator = ReactionIntegrator::ImplicitEuler;
+    m_reactionIntegrator = ReactionIntegrator::ImplicitEuler;
   }
   else if(str == "explicit_trapezoidal") {
-    integrator = ReactionIntegrator::ExplicitTrapezoidal;
+    m_reactionIntegrator = ReactionIntegrator::ExplicitTrapezoidal;
   }
   else if(str == "explicit_midpoint") {
-    integrator = ReactionIntegrator::ExplicitMidpoint;
+    m_reactionIntegrator = ReactionIntegrator::ExplicitMidpoint;
   }  
   else if(str == "explicit_rk4") {
-    integrator = ReactionIntegrator::ExplicitRK4;
+    m_reactionIntegrator = ReactionIntegrator::ExplicitRK4;
   }
   else {
     this->throwParserError("CdrPlasmaJSON::parseIntegrator -- I do not know the integrator '" + str + "'");
   }
-
-  // Set up the integrator. 
-  m_reactionIntegrator = std::make_pair(integrator, substeps);
 }
 
 void CdrPlasmaJSON::parseJSON() {
@@ -597,12 +593,23 @@ void CdrPlasmaJSON::initializePlasmaSpecies() {
 
       if(energyTransport){
 	if(!(species.contains("initial energy"))) this->throwParserError(baseError + "and got energy transport but 'initial energy' is not specified");
-	if(!(species.contains("mass"          ))) this->throwParserError(baseError + "and got energy transport but 'mass' is not specified");	
+	if(!(species.contains("mass"          ))) this->throwParserError(baseError + "and got energy transport but 'mass' is not specified");
+	if(!(species.contains("energy params" ))) this->throwParserError(baseError + "and got energy transport but 'energy params' is not specified");	
 
 	// Set the initial energy function. I could easily think of more complex ways of doing this, but for now we just
 	// support a constant initial energy. 
 	const Real initialEnergy = species["initial energy"].get<Real>();
 	
+	const json& energyParams = species["energy params"];
+
+	if(!(energyParams.contains("min"   ))) this->throwParserError(baseError + "and got 'energy params' but 'min' is not specified");
+	if(!(energyParams.contains("max"   ))) this->throwParserError(baseError + "and got 'energy params' but 'max' is not specified");
+	if(!(energyParams.contains("safety"))) this->throwParserError(baseError + "and got 'energy params' but 'safety' is not specified");	
+
+	const Real minEnergy = energyParams["min"   ].get<Real>();
+	const Real maxEnergy = energyParams["max"   ].get<Real>();
+	const Real safety    = energyParams["safety"].get<Real>();
+
 	auto initEnergy = [E = initialEnergy, f=initFunc](const RealVect a_point, const Real a_time) -> Real {
 	  return E * f(a_point, a_time);
 	};
@@ -613,13 +620,12 @@ void CdrPlasmaJSON::initializePlasmaSpecies() {
 	m_cdrSpeciesMap.       emplace(std::make_pair(energyName, energyIdx ));
 	m_cdrSpeciesInverseMap.emplace(std::make_pair(energyIdx,  energyName));
 	m_cdrIsEnergySolver   .emplace(std::make_pair(energyIdx,  true      ));
+	m_cdrEnergyComputation.emplace(transportIdx, std::make_tuple(minEnergy, maxEnergy, safety));
 	
 	// Push the new CdrSpecies to our the list of species. 
 	m_cdrSpecies.push_back(RefCountedPtr<CdrSpecies> (new CdrSpeciesJSON(energyName, 0, diffusive, mobile, initEnergy)));
       }
     }
-
-
 
     // If we had energy transport we must let our associative containers know where the solvers live.
     if(energyTransport){
@@ -3535,11 +3541,13 @@ std::vector<Real> CdrPlasmaJSON::computePlasmaSpeciesEnergies(const RealVect&   
 	// Energy solver solves for the energy in electron volts. We compute average_energy = n_energy/n_density and avoid division by zero. 
 	const int energyIdx = m_cdrTransportEnergyMap.at(i);
 
-	constexpr Real safety = 1.E10;
+	const Real& minEnergy = std::get<0>(m_cdrEnergyComputation.at(i));
+	const Real& maxEnergy = std::get<1>(m_cdrEnergyComputation.at(i));
+	const Real& safety    = std::get<2>(m_cdrEnergyComputation.at(i));
 	
-	Real e = std::max(a_cdrDensities[energyIdx], 0.0)/(std::max(a_cdrDensities[i], safety));
+	const Real safeEnergy = std::max(a_cdrDensities[energyIdx], 0.0)/(std::max(a_cdrDensities[i], safety));
 
-	energies[i] = std::max(0.1, std::min(e, 50.0));
+	energies[i] = std::max(minEnergy, std::min(maxEnergy, safeEnergy));
 	
       }
       else{
@@ -3846,7 +3854,7 @@ void CdrPlasmaJSON::advanceReactionNetwork(Vector<Real>&          a_cdrSources,
     
     // Solve the reactive problem. The first hook will INTEGRATE the reactive problem (and then linearize the source terms). The other hook
     // will just fill the source terms. 
-    if(m_reactionIntegrator.first != ReactionIntegrator::None) {
+    if(m_reactionIntegrator != ReactionIntegrator::None) {
       std::vector<Real> finalCdrDensities = cdrDensities;
       std::vector<Real> photonProduction (m_numRtSpecies,  0.0);
 
@@ -4291,11 +4299,13 @@ void CdrPlasmaJSON::integrateReactions(std::vector<Real>&          a_cdrDensitie
 				       const Real                  a_time,
 				       const Real                  a_kappa) const {
   // Do substeps. We happen to know that we have m_reactionIntegrator.second substeps for the whole integration interval.
-  for (int step = 0; step < m_reactionIntegrator.second; step++){
-    const Real dt   = a_dt/m_reactionIntegrator.second;    
+  const int numSteps = std::ceil(a_dt/m_chemistryDt);
+  
+  for (int step = 0; step < numSteps; step++){
+    const Real dt   = a_dt/numSteps;
     const Real time = a_time + dt*(step-1);
 
-    switch(m_reactionIntegrator.first){
+    switch(m_reactionIntegrator){
     case ReactionIntegrator::ExplicitEuler:
       {
 	this->integrateReactionsExplicitEuler(a_cdrDensities, a_photonProduction, a_cdrGradients, a_E, a_pos, a_dx, dt, time, a_kappa);
