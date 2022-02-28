@@ -1025,6 +1025,13 @@ namespace Physics {
       virtual void parseElectrodeReactionScaling(const int a_reactionIndex, const json& a_reactionJSON);
 
       /*!
+	@brief Parse electrode-reaction energy losses.
+	@param[in] a_reactionIndex  Reaction index. 
+	@param[in] a_reactionJSON   Input reaction. Must be one of the entries in the 'electrode reactions' array. 
+      */      
+      virtual void parseElectrodeReactionEnergyLosses(const int a_reactionIndex, const json& a_reactionJSON);            
+
+      /*!
 	@brief Parse secondary emission on dielectrics
       */
       virtual void parseDielectricReactions();
