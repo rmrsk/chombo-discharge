@@ -3109,8 +3109,9 @@ void CdrPlasmaJSON::parseDielectricReactions() {
 	const int reactionIndex = m_dielectricReactions.size();
 
 	// Parse the scaling factor for the dielectric surface reaction
-	this->parseDielectricReactionRate   (reactionIndex, dielectricReaction);	
-	this->parseDielectricReactionScaling(reactionIndex, dielectricReaction);
+	this->parseDielectricReactionRate        (reactionIndex, dielectricReaction);	
+	this->parseDielectricReactionScaling     (reactionIndex, dielectricReaction);
+	this->parseDielectricReactionEnergyLosses(reactionIndex, dielectricReaction);	
 
 	// Make the string-int encoding so we can encode the reaction properly. Then add the reaction to the pile. 
 	std::list<int> plasmaReactants ;
@@ -3214,6 +3215,58 @@ int CdrPlasmaJSON::getNumberOfPlotVariables() const {
   }  
 
   return ret;
+}
+
+void CdrPlasmaJSON::parseDielectricReactionEnergyLosses(const int a_reactionIndex, const json& a_R) {
+  CH_TIME("CdrPlasmaJSON::parseDielectricReactionEnergyLosses()");
+  if(m_verbose){
+    pout() << "CdrPlasmaJSON::parseDielectricReactionEnergyLosses()" << endl;
+  }
+  
+  std::list<std::pair<int, Real> > reactionEnergyLosses;  
+
+  // TLDR: This will look through reactions and check if we should use the Soloviev energy correction for LFA-based models. 
+  if(a_R.contains("energy losses")){
+    
+    const std::string reaction  = a_R["reaction"].get<std::string>();
+    const std::string baseError = "CdrPlasmaJSON::parseDielectricReactionEnergyLosses for '" + reaction + "' ";
+
+    for (const auto& energyLoss : a_R["energy losses"]){
+
+      if(!energyLoss.contains("species")) this->throwParserError(baseError + "but did not find field 'species'");
+      if(!energyLoss.contains("eV"     )) this->throwParserError(baseError + "but did not find field 'eV'"     );
+
+      // Get the species name (string) and associated energy loss. 
+      const std::string speciesName  = this->trim(energyLoss["species"].get<std::string>());
+      const Real        loss         = energyLoss["eV"].get<Real>();
+
+      // It's an error if the species name is not in the list of plasma species. 
+      if(!(this->isPlasmaSpecies(speciesName))) this->throwParserError(baseError + "but species '" + speciesName + "' is not a plasma species");
+
+      // Get the species index, and make sure the specified species is not an energy solver. 
+      const int speciesIndex = m_cdrSpeciesMap.at(speciesName);
+      if(m_cdrIsEnergySolver.at(speciesIndex)) this->throwParserError(baseError + "but species '" + speciesName + "' is an energy solver");
+
+      // Append energy losses to the list of losses, but ONLY if there is a corresponding energy solver for the specified species. This allows
+      // us to ignore all energy losses for a species by just turning off energy transport in the input script. 
+      if(m_cdrHasEnergySolver.at(speciesIndex)){
+	reactionEnergyLosses.emplace_back(speciesIndex, loss);
+      }
+    }
+
+    // If none if the species are associated with an energy solver, just ignore the entire thing. 
+    bool hasEnergySolver = false;
+    for (const auto& p : reactionEnergyLosses) {
+      if(m_cdrHasEnergySolver.at(p.first)) hasEnergySolver = true;
+    }
+
+    m_dielectricReactionEnergyLosses. emplace(a_reactionIndex, reactionEnergyLosses);
+    m_dielectricReactionHasEnergyLoss.emplace(a_reactionIndex, hasEnergySolver     );
+  }
+  else{
+    m_dielectricReactionEnergyLosses. emplace(a_reactionIndex, reactionEnergyLosses);
+    m_dielectricReactionHasEnergyLoss.emplace(a_reactionIndex, false               );
+  }
 }
 
 Vector<std::string> CdrPlasmaJSON::getPlotVariableNames() const {
@@ -4127,7 +4180,6 @@ Vector<Real> CdrPlasmaJSON::computeCdrElectrodeFluxes(const Real         a_time,
 	const Real& loss           = curReactionLoss.second;	
       	const int&  energyIndex    = m_cdrTransportEnergyMap.at(transportIndex);
 
-
 	inflowFluxes[energyIndex] += inflow * loss;
       }
     }
@@ -4248,6 +4300,20 @@ Vector<Real> CdrPlasmaJSON::computeCdrDielectricFluxes(const Real         a_time
     for (const auto& p : plasmaProducts){
       inflowFluxes[p] += inflow;
     }
+
+    // If there is an energy loss associated with this reaction we need to add the energies to the relevant energy transport
+    // equations.
+    if(m_dielectricReactionHasEnergyLoss.at(i)){
+      const std::list<std::pair<int, Real> >& energyLosses = m_dielectricReactionEnergyLosses.at(i);
+      
+      for (const auto& curReactionLoss : energyLosses) {
+      	const int&  transportIndex = curReactionLoss.first;
+	const Real& loss           = curReactionLoss.second;	
+      	const int&  energyIndex    = m_cdrTransportEnergyMap.at(transportIndex);
+
+	inflowFluxes[energyIndex] += inflow * loss;
+      }
+    }    
   }
 
   // Now set the finite volume fluxes on the EB accordingly. The negative sign is because 'inflowFluxes' is the magnitude, but in our

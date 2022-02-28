@@ -1050,7 +1050,14 @@ namespace Physics {
 	@param[in] a_reactionIndex Reaction index (this is the array index in the dielectric reaction array supplied in the JSON file)
 	@param[in] a_reactionJSON  JSON entry for the reaction in the JSON input file.
       */
-      virtual void parseDielectricReactionScaling(const int a_reactionIndex, const json& a_reactionJSON);      
+      virtual void parseDielectricReactionScaling(const int a_reactionIndex, const json& a_reactionJSON);
+
+      /*!
+	@brief Parse dielectric-reaction energy losses.
+	@param[in] a_reactionIndex  Reaction index. 
+	@param[in] a_reactionJSON   Input reaction. Must be one of the entries in the 'dielectric reactions' array. 
+      */      
+      virtual void parseDielectricReactionEnergyLosses(const int a_reactionIndex, const json& a_reactionJSON);                  
 
       /*!
 	@brief Check if a surface-reaction makes sense in terms of the species that have been defined.
