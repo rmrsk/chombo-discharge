@@ -470,9 +470,17 @@ protected:
 
   /*!
     @brief Coarsened fine-level EB grids. 
-    @details m_eblgCoFi[1] holds the coarsening of m_eblg[1].
+    @details m_eblgCoFi[i] holds the coarsening of m_eblg[i].
+    @note m_eblgCoFi[0] contains the null pointer. 
   */
   Vector<RefCountedPtr<EBLevelGrid>> m_eblgCoFi;
+
+  /*!
+    @brief Coarsened fine-level EB grids. 
+    @details m_eblgFiCo[i] holds the refinement of m_eblg[i].
+    @note m_eblgCoFi[m_finestLevel] contains the null pointer. 
+  */
+  Vector<RefCountedPtr<EBLevelGrid>> m_eblgFiCo;
 
   /*!
     @brief Weird but true thing that indexces neighboring boxes
