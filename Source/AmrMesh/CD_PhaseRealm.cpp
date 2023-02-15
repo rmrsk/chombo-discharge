@@ -271,7 +271,7 @@ PhaseRealm::defineEBLevelGrid(const int a_lmin)
 
   m_eblg.resize(1 + m_finestLevel);
   m_eblgCoFi.resize(1 + m_finestLevel);
-  m_eblgFiCo.resize(1 + m_finestLevel);  
+  m_eblgFiCo.resize(1 + m_finestLevel);
   m_ebisl.resize(1 + m_finestLevel);
 
   for (int lvl = a_lmin; lvl <= m_finestLevel; lvl++) {
@@ -302,9 +302,8 @@ PhaseRealm::defineEBLevelGrid(const int a_lmin)
       m_eblgCoFi[lvl] = RefCountedPtr<EBLevelGrid>(nullptr);
     }
 
-
     // Define the refined grids
-    if(lvl < m_finestLevel) {
+    if (lvl < m_finestLevel) {
       m_eblgFiCo[lvl] = RefCountedPtr<EBLevelGrid>(new EBLevelGrid());
 
       refine(*m_eblgFiCo[lvl], *m_eblg[lvl], m_refinementRatios[lvl]);
@@ -312,7 +311,7 @@ PhaseRealm::defineEBLevelGrid(const int a_lmin)
     }
     else {
       m_eblgFiCo[lvl] = RefCountedPtr<EBLevelGrid>(nullptr);
-    }    
+    }
   }
 }
 void

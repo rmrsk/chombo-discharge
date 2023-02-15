@@ -38,24 +38,20 @@ public:
     @param[in] a_eblgs            Grids
     @param[in] a_eblgsCoFi        Coarsened fine grids
     @param[in] a_eblgsFiCo        Refined coarse grids
-    @param[in] a_validCells       Valid cell mask
     @param[in] a_refRat           Refinement factory between levels
     @param[in] a_dx               Grid resolutions.
     @πaram[in] a_probLo           Lower-left corner of physical domain.
-    @param[in] a_ghost            Number of ghost cells in data holders.
     @param[in] a_finestLevel      Finest grid level.
     @param[in] a_radius           Deposition radius
   */
-  EBAMRSurfaceDeposition(const Vector<RefCountedPtr<EBLevelGrid>>&              a_eblgs,
-                         const Vector<RefCountedPtr<EBLevelGrid>>&              a_eblgsCoFi,
-                         const Vector<RefCountedPtr<EBLevelGrid>>&              a_eblgsFiCo,
-                         const Vector<RefCountedPtr<LevelData<BaseFab<bool>>>>& a_validCells,
-                         const Vector<int>&                                     a_refRat,
-                         const Vector<Real>&                                    a_dx,
-                         const RealVect&                                        a_probLo,
-                         const IntVect&                                         a_ghost,
-                         const int                                              a_finestLevel,
-                         const int                                              a_radius) noexcept;
+  EBAMRSurfaceDeposition(const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgs,
+                         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsCoFi,
+                         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsFiCo,
+                         const Vector<int>&                        a_refRat,
+                         const Vector<Real>&                       a_dx,
+                         const RealVect&                           a_probLo,
+                         const int                                 a_finestLevel,
+                         const int                                 a_radius) noexcept;
 
   /*!
     @brief Destructor
@@ -67,25 +63,21 @@ public:
     @param[in] a_eblgs            Grids
     @param[in] a_eblgsCoFi        Coarsened fine grids
     @param[in] a_eblgsFiCo        Refined coarse grids
-    @param[in] a_validCells       Valid cell mask
     @param[in] a_refRat           Refinement factory between levels
     @param[in] a_dx               Grid resolutions.
     @πaram[in] a_probLo           Lower-left corner of physical domain.
-    @param[in] a_ghost            Number of ghost cells in data holders.
     @param[in] a_finestLevel      Finest grid level.
     @param[in] a_radius           Deposition radius
   */
   inline void
-  define(const Vector<RefCountedPtr<EBLevelGrid>>&              a_eblgs,
-         const Vector<RefCountedPtr<EBLevelGrid>>&              a_eblgsCoFi,
-         const Vector<RefCountedPtr<EBLevelGrid>>&              a_eblgsFiCo,
-         const Vector<RefCountedPtr<LevelData<BaseFab<bool>>>>& a_validCells,
-         const Vector<int>&                                     a_refRat,
-         const Vector<Real>&                                    a_dx,
-         const RealVect&                                        a_probLo,
-         const IntVect&                                         a_ghost,
-         const int                                              a_finestLevel,
-         const int                                              a_radius) noexcept;
+  define(const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgs,
+         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsCoFi,
+         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsFiCo,
+         const Vector<int>&                        a_refRat,
+         const Vector<Real>&                       a_dx,
+         const RealVect&                           a_probLo,
+         const int                                 a_finestLevel,
+         const int                                 a_radius) noexcept;
 
   /*!
     @brief Deposit function. Deposits particle on surface.
@@ -127,11 +119,6 @@ protected:
   RealVect m_probLo;
 
   /*!
-    @brief Number of ghost cells in data
-  */
-  IntVect m_ghost;
-
-  /*!
     @brief Finest grid level
   */
   int m_finestLevel;
@@ -159,11 +146,6 @@ protected:
   Vector<RefCountedPtr<EBLevelGrid>> m_eblgsFiCo;
 
   /*!
-    @brief Valid cells on each level
-  */
-  Vector<RefCountedPtr<LevelData<BaseFab<bool>>>> m_validCells;
-
-  /*!
     @brief Refinement ratios between levels
   */
   Vector<int> m_refRat;
@@ -174,8 +156,43 @@ protected:
   Vector<Real> m_dx;
 
   /*!
-    @brief Deposition weights for each irregular cell. Note that 
+    @brief Deposition weights for each irregular cell. This contains 1.0/sum(alpha * dx^(D-1)) and the cells 
   */
+  Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_depositionStencils;
+
+  /*!
+    @brief Level copier for adding data from valid+ghost -> valid. 
+    @details Needed when adding ghost-deposited data back into valid cells
+  */
+  mutable Vector<Copier> m_levelCopiers;
+
+  /*!
+    @brief Define copiers
+  */
+  inline void
+  defineLevelMotion() noexcept;
+
+  /*!
+   @brief Define deposition weights
+  */
+  inline void
+  defineDepositionStencils() noexcept;
+
+  /*!
+    @brief Add the invalid coarse data (i.e., underneath the fine grid) to the fine level. 
+    @details This does conservative interpolation to the fine grid
+    @param[inout] a_meshData EB surface data
+  */
+  inline void
+  addInvalidCoarseDataToFineData(EBAMRIVData& a_meshData) const noexcept;
+
+  /*!
+    @brief Add the ghosted fine-level data to the coarse data. 
+    @details This does conservative coarsening of the fine-grid ghosted data to the coarse grid.
+    @param[inout] a_meshData EB surface data
+  */
+  inline void
+  addFineGhostDataToValidCoarData(EBAMRIVData& a_meshData) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
