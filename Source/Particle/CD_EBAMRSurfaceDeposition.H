@@ -69,7 +69,7 @@ public:
     @param[in] a_finestLevel      Finest grid level.
     @param[in] a_radius           Deposition radius
   */
-  inline void
+  void
   define(const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgs,
          const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsCoFi,
          const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsFiCo,

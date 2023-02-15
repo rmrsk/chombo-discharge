@@ -553,6 +553,11 @@ protected:
   mutable EBAMRParticleMesh m_particleMesh;
 
   /*!
+    @brief For doing particle deposition onto surfaces
+  */
+  mutable EBAMRSurfaceDeposition m_surfaceDeposition;
+
+  /*!
     @brief Data recentering utility (center to centroid)
   */
   RefCountedPtr<IrregAmrStencil<CentroidInterpolationStencil>> m_centroidInterpolationStencil;

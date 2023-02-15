@@ -47,7 +47,7 @@ EBAMRSurfaceDeposition::~EBAMRSurfaceDeposition() noexcept
   CH_TIME("EBAMRSurfaceDeposition::~EBAMRSurfaceDeposition");
 }
 
-inline void
+void
 EBAMRSurfaceDeposition::define(const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgs,
                                const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsCoFi,
                                const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsFiCo,
@@ -63,7 +63,7 @@ EBAMRSurfaceDeposition::define(const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgs
   }
 
   m_debug       = false;
-  m_verbose     = false;
+  m_verbose     = true;
   m_eblgs       = a_eblgs;
   m_eblgsCoFi   = a_eblgsCoFi;
   m_eblgsFiCo   = a_eblgsFiCo;
@@ -172,14 +172,6 @@ EBAMRSurfaceDeposition::defineDepositionStencils() noexcept
       const EBGraph& ebGraph = ebisBox.getEBGraph();
 
       BaseIVFAB<VoFStencil>& stencils = (*m_depositionStencils[lvl])[dit()];
-
-      // Build a local representation of the coarse-fine interface around this patch.
-      DenseIntVectSet  cfivs(grow(box, m_radius), 1);
-      NeighborIterator nit(dbl);
-      for (nit.begin(dit()); nit.ok(); ++nit) {
-        cfivs -= dbl[nit()];
-      }
-      cfivs -= box;
 
       // Build stencils.
       const IntVectSet& ivs     = stencils.getIVS();

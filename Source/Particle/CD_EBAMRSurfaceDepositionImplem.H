@@ -45,10 +45,9 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
     const EBISLayout&        ebisl = m_eblgs[lvl]->getEBISL();
 
     for (DataIterator dit(dbl); dit.ok(); ++dit) {
-      const Box                    cellBox    = dbl[dit()];
-      const EBISBox&               ebisbox    = ebisl[dit()];
-      const BaseFab<bool>&         validCells = (*m_validCells[lvl])[dit()];
-      const BaseIVFAB<VoFStencil>& stencils   = (*m_depositionStencils[lvl])[dit()];
+      const Box                    cellBox  = dbl[dit()];
+      const EBISBox&               ebisbox  = ebisl[dit()];
+      const BaseIVFAB<VoFStencil>& stencils = (*m_depositionStencils[lvl])[dit()];
 
       BaseIVFAB<Real>& meshData  = (*a_meshData[lvl])[dit()];
       const List<P>&   particles = a_particles[lvl][dit()].listItems();
@@ -60,7 +59,6 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
 
         // If these fail the particle is not in a valid cell.
         CH_assert(ebisbox.isIrregular(iv));
-        CH_assert(validCells(iv, 0));
 
         const VoFStencil& stencil = stencils(VolIndex(iv, 0), 0);
 
