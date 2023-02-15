@@ -31,7 +31,7 @@ IrregAddOp::linearIn(BaseIVFAB<Real>& a_data, void* a_buffer, const Box& a_regio
   clone.linearIn(a_buffer, a_region, a_comps);
 
   // Increment a_data with the buffer.
-  VoFIterator vofit(a_data.getIVS(), a_data.getEBGraph());
+  VoFIterator vofit(a_data.getIVS() & a_region, a_data.getEBGraph());
 
   const int srcBegin = a_comps.begin();
   const int dstBegin = a_comps.begin();
