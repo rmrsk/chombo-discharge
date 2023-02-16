@@ -161,6 +161,12 @@ protected:
   Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_depositionStencils;
 
   /*!
+    @brief Stencils for interpolating coarse-grid data to the fine grid. 
+    @details This is defined on the coarse grid but reaches into the fine grid. 
+  */
+  Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_coarseFineInterpStencils;
+
+  /*!
     @brief Data on each level. 
     @details Allocating this separately because we define Copiers that need a specific amount of ghost cells.
   */
@@ -199,6 +205,12 @@ protected:
   */
   void
   defineDepositionStencils() noexcept;
+
+  /*!
+    @brief Define stencils for interpolating coarse-grid data to the fine grid
+  */
+  void
+  defineCoarseFineInterpolationStencils() noexcept;
 
   /*!
     @brief Add the invalid coarse data (i.e., underneath the fine grid) to the fine level. 

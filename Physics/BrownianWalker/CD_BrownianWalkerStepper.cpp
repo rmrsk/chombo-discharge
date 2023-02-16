@@ -19,6 +19,7 @@
 #include <CD_BrownianWalkerStepper.H>
 #include <CD_BrownianWalkerSpecies.H>
 #include <CD_PolyUtils.H>
+#include <CD_PointParticle.H>
 #include <CD_Random.H>
 #include <CD_ParallelOps.H>
 #include <CD_NamespaceHeader.H>
@@ -102,6 +103,18 @@ BrownianWalkerStepper::initialData()
   m_solver->setParticleMobility(m_mobility);
 
   m_solver->interpolateVelocities();
+
+#if 1 // Debug code
+  MayDay::Warning("CD_BrownianWalkerStepper.cpp -- remove debug code and add mass conservation test");
+
+  EBAMRIVData                      meshData;
+  ParticleContainer<PointParticle> testParticles;
+
+  m_amr->allocate(meshData, m_realm, m_phase, 1);
+  m_amr->allocate(testParticles, m_realm);
+
+  m_amr->depositParticles<PointParticle, &PointParticle::weight>(meshData, m_realm, m_phase, testParticles);
+#endif
 }
 
 void
