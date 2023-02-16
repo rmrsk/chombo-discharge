@@ -1063,6 +1063,16 @@ PhaseRealm::getParticleMesh() const
   return m_particleMesh;
 }
 
+EBAMRSurfaceDeposition&
+PhaseRealm::getSurfaceDeposition() const
+{
+  if (!this->queryOperator(s_particle_mesh)) {
+    MayDay::Error("PhaseRealm::getSurfaceDepostion - operator not registered!");
+  }
+
+  return m_surfaceDeposition;
+}
+
 const EBAMRFAB&
 PhaseRealm::getLevelset() const
 {

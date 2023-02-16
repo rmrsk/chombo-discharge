@@ -343,7 +343,7 @@ EBAMRSurfaceDeposition::addInvalidCoarseDataToFineData(EBAMRIVData& a_meshData) 
   }
 }
 
-inline void
+void
 EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData(EBAMRIVData& a_meshData) const noexcept
 {
   CH_TIME("EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData");

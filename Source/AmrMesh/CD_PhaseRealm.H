@@ -282,6 +282,12 @@ public:
   getParticleMesh() const;
 
   /*!
+    @brief Get the surface deposition operator
+  */
+  EBAMRSurfaceDeposition&
+  getSurfaceDeposition() const;
+
+  /*!
     @brief Get coarsening operators
   */
   Vector<RefCountedPtr<EBCoarAve>>&
