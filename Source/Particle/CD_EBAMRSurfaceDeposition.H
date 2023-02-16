@@ -161,6 +161,12 @@ protected:
   Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_depositionStencils;
 
   /*!
+    @brief Data on each level. 
+    @details Allocating this separately because we define Copiers that need a specific amount of ghost cells.
+  */
+  mutable EBAMRIVData m_data;
+
+  /*!
     @brief Data defined on a refinement of the coarse grid. 
   */
   mutable EBAMRIVData m_refinedCoarData;

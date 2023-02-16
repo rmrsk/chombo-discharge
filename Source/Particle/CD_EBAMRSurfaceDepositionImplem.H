@@ -33,14 +33,8 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
 
   CH_assert(a_meshData.getRealm() == a_particles.getRealm());
 
-  DataOps::setValue(a_meshData, 0.0);
-
   // Deposit on this level
   for (int lvl = 0; lvl <= m_finestLevel; lvl++) {
-    CH_assert(!(a_meshData[lvl].isNull()));
-    CH_assert(a_meshData[lvl]->nComp() == 1);
-    CH_assert(a_meshData[lvl]->ghostVect() >= m_radius * IntVect::Unit);
-
     const DisjointBoxLayout& dbl   = m_ebGrids[lvl]->getDBL();
     const EBISLayout&        ebisl = m_ebGrids[lvl]->getEBISL();
 
@@ -49,8 +43,10 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
       const EBISBox&               ebisbox  = ebisl[dit()];
       const BaseIVFAB<VoFStencil>& stencils = (*m_depositionStencils[lvl])[dit()];
 
-      BaseIVFAB<Real>& meshData  = (*a_meshData[lvl])[dit()];
+      BaseIVFAB<Real>& meshData  = (*m_data[lvl])[dit()];
       const List<P>&   particles = a_particles[lvl][dit()].listItems();
+
+      meshData.setVal(0.0);
 
       for (ListIterator<P> lit(particles); lit.ok(); ++lit) {
         const P& p = lit();
@@ -73,12 +69,20 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
     }
 
     // Exchange ghost data. This adds the ghosted data into to the valid region.
-    a_meshData[lvl]->exchange(Interval(0, 0), m_copierLevel[lvl], IrregAddOp());
+    m_data[lvl]->exchange(Interval(0, 0), m_copierLevel[lvl], IrregAddOp());
   }
 
   // Monkey with coarse-fine interfaces.
-  this->addInvalidCoarseDataToFineData(a_meshData);
-  this->addFineGhostDataToValidCoarData(a_meshData);
+  this->addInvalidCoarseDataToFineData(m_data);
+  this->addFineGhostDataToValidCoarData(m_data);
+
+  // Copy our buffers to the input data.
+  for (int lvl = 0; lvl <= m_finestLevel; lvl++) {
+    CH_assert(!(a_meshData[lvl].isNull()));
+    CH_assert(a_meshData[lvl]->nComp() == 1);
+
+    m_data[lvl]->copyTo(*a_meshData[lvl]);
+  }
 }
 
 template <class P, Real (P::*particleScalarField)()>

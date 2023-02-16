@@ -78,6 +78,7 @@ EBAMRSurfaceDeposition::define(const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGri
   m_dx                   = a_dx;
   m_probLo               = a_probLo;
   m_finestLevel          = a_finestLevel;
+  m_radius               = a_radius;
 
   CH_assert(m_finestLevel >= 0);
   CH_assert(m_radius >= 0);
@@ -113,7 +114,7 @@ EBAMRSurfaceDeposition::define(const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGri
   m_isDefined = true;
 }
 
-inline void
+void
 EBAMRSurfaceDeposition::defineBuffers() noexcept
 {
   CH_TIME("EBAMRSurfaceDeposition::defineBuffers");
@@ -121,11 +122,31 @@ EBAMRSurfaceDeposition::defineBuffers() noexcept
     pout() << "EBAMRSurfaceDeposition::defineBuffers" << endl;
   }
 
-  constexpr int nComp  = 1;
-  constexpr int nGhost = 0;
+  constexpr int nComp = 1;
 
+  m_data.resize(1 + m_finestLevel);
   m_refinedCoarData.resize(1 + m_finestLevel);
 
+  // Define data on this level
+  for (int lvl = 0; lvl <= m_finestLevel; lvl++) {
+    const DisjointBoxLayout& dbl    = m_ebGrids[lvl]->getDBL();
+    const EBISLayout&        ebisl  = m_ebGrids[lvl]->getEBISL();
+    const ProblemDomain&     domain = m_ebGrids[lvl]->getDomain();
+
+    LayoutData<IntVectSet> irregCells(dbl);
+
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      const Box      box     = dbl[dit()];
+      const EBISBox& ebisbox = ebisl[dit()];
+
+      irregCells[dit()] = ebisbox.getIrregIVS(grow(box, m_radius) & domain);
+    }
+
+    m_data[lvl] = RefCountedPtr<LevelData<BaseIVFAB<Real>>>(
+      new LevelData<BaseIVFAB<Real>>(dbl, nComp, m_radius * IntVect::Unit, BaseIVFactory<Real>(ebisl, irregCells)));
+  }
+
+  // Define refined coarse data
   for (int lvl = 1; lvl <= m_finestLevel; lvl++) {
     const DisjointBoxLayout& refinedCoarDBL   = m_ebGridsRefinedCoar[lvl]->getDBL();
     const EBISLayout&        refinedCoarEBISL = m_ebGridsRefinedCoar[lvl]->getEBISL();
@@ -142,12 +163,12 @@ EBAMRSurfaceDeposition::defineBuffers() noexcept
     m_refinedCoarData[lvl] = RefCountedPtr<LevelData<BaseIVFAB<Real>>>(
       new LevelData<BaseIVFAB<Real>>(refinedCoarDBL,
                                      nComp,
-                                     nGhost * IntVect::Unit,
+                                     IntVect::Zero,
                                      BaseIVFactory<Real>(refinedCoarEBISL, irregCells)));
   }
 }
 
-inline void
+void
 EBAMRSurfaceDeposition::defineDataMotion() noexcept
 {
   CH_TIME("EBAMRSurfaceDeposition::defineDataMotion");
@@ -166,7 +187,6 @@ EBAMRSurfaceDeposition::defineDataMotion() noexcept
     const ProblemDomain&     domain = eblg.getDomain();
     const DisjointBoxLayout& dbl    = eblg.getDBL();
 
-    // Define Copier. Note that the below code is basically the same as ghostDefine().
     const bool doExchange = true;
 
     // Define Copier as going from valid -> valid+ghost.
@@ -183,7 +203,7 @@ EBAMRSurfaceDeposition::defineDataMotion() noexcept
   }
 }
 
-inline void
+void
 EBAMRSurfaceDeposition::defineDepositionStencils() noexcept
 {
   CH_TIME("EBAMRSurfaceDeposition::defineDepositionStencils");
@@ -283,23 +303,27 @@ EBAMRSurfaceDeposition::addInvalidCoarseDataToFineData(EBAMRIVData& a_meshData) 
 
   // TLDR: We want to ADD an interpolation of the coarse-grid data to the fine grid.
   for (int lvl = 1; lvl <= m_finestLevel; lvl++) {
-    const DisjointBoxLayout& dblCoar = m_ebGrids[lvl - 1]->getDBL();
-
     const Real dxCoar   = m_dx[lvl - 1];
     const Real dxFine   = m_dx[lvl];
     const Real dxFactor = std::pow(dxCoar / dxFine, SpaceDim - 1);
+
+    const DisjointBoxLayout& dblFine = m_ebGridsRefinedCoar[lvl]->getDBL();
+    const DisjointBoxLayout& dblCoar = m_ebGrids[lvl - 1]->getDBL();
 
     const EBISLayout& ebislFine = m_ebGridsRefinedCoar[lvl]->getEBISL();
     const EBISLayout& ebislCoar = m_ebGrids[lvl - 1]->getEBISL();
 
     for (DataIterator dit(dblCoar); dit.ok(); ++dit) {
-      const Box coarBox = dblCoar[dit()];
+      const Box boxFine = dblFine[dit()];
+      const Box boxCoar = dblCoar[dit()];
+
+      CH_assert(refine(boxCoar, m_refRat[lvl - 1]) == boxFine);
 
       const EBISBox& ebisBoxCoar = ebislCoar[dit()];
       const EBISBox& ebisBoxFine = ebislFine[dit()];
 
       const EBGraph&   ebGraphCoar = ebisBoxCoar.getEBGraph();
-      const IntVectSet irregCoar   = ebisBoxCoar.getIrregIVS(coarBox);
+      const IntVectSet irregCoar   = ebisBoxCoar.getIrregIVS(dblCoar[dit()]);
 
       BaseIVFAB<Real>&       fineData = (*m_refinedCoarData[lvl])[dit()];
       const BaseIVFAB<Real>& coarData = (*a_meshData[lvl - 1])[dit()];
@@ -310,24 +334,31 @@ EBAMRSurfaceDeposition::addInvalidCoarseDataToFineData(EBAMRIVData& a_meshData) 
       for (VoFIterator vofit(irregCoar, ebGraphCoar); vofit.ok(); ++vofit) {
         const VolIndex& coarVoF = vofit();
 
-        const Vector<VolIndex> fineVoFs = ebislCoar.refine(coarVoF, m_refRat[lvl - 1], dit());
+        const Vector<VolIndex> refinedCoarVoFs = ebislCoar.refine(coarVoF, m_refRat[lvl - 1], dit());
 
-        Real fineArea = 0.0;
-        for (int i = 0; i < fineVoFs.size(); i++) {
-          fineArea += ebisBoxFine.bndryArea(fineVoFs[i]);
+        Vector<VolIndex> fineIrregVoFs;
+        for (int i = 0; i < refinedCoarVoFs.size(); i++) {
+          if (ebisBoxFine.isIrregular(refinedCoarVoFs[i].gridIndex())) {
+            fineIrregVoFs.push_back(refinedCoarVoFs[i]);
+          }
         }
 
-        if (fineArea > std::numeric_limits<Real>::min()) {
-          for (int i = 0; i < fineVoFs.size(); i++) {
-            fineData(fineVoFs[i], 0) = 0.0;
+        Real fineArea = 0.0;
+        for (int i = 0; i < fineIrregVoFs.size(); i++) {
+          fineArea += ebisBoxFine.bndryArea(fineIrregVoFs[i]);
+        }
+
+        if (fineArea < std::numeric_limits<Real>::min()) {
+          for (int i = 0; i < fineIrregVoFs.size(); i++) {
+            fineData(fineIrregVoFs[i], 0) = 0.0;
           }
         }
         else {
           const Real coarArea = ebisBoxCoar.bndryArea(coarVoF);
           const Real fineVal  = coarArea * coarData(coarVoF, 0) * dxFactor / fineArea;
 
-          for (int i = 0; i < fineVoFs.size(); i++) {
-            fineData(fineVoFs[i], 0) = fineVal;
+          for (int i = 0; i < fineIrregVoFs.size(); i++) {
+            fineData(fineIrregVoFs[i], 0) = fineVal;
           }
         }
       }
