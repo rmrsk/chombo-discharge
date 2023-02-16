@@ -470,15 +470,13 @@ protected:
 
   /*!
     @brief Coarsened fine-level EB grids. 
-    @details m_eblgCoFi[i] holds the coarsening of m_eblg[i].
-    @note m_eblgCoFi[0] contains the null pointer. 
+    @details m_eblgCoFi[lvl] holds the grids on level lvl that are a coarsening of the grids on lvl+1
   */
   Vector<RefCountedPtr<EBLevelGrid>> m_eblgCoFi;
 
   /*!
     @brief Coarsened fine-level EB grids. 
-    @details m_eblgFiCo[i] holds the refinement of m_eblg[i].
-    @note m_eblgCoFi[m_finestLevel] contains the null pointer. 
+    @details m_eblgFiCo[lvl] holds the refinement of the grids on level lvl-1
   */
   Vector<RefCountedPtr<EBLevelGrid>> m_eblgFiCo;
 

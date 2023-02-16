@@ -41,8 +41,8 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
     CH_assert(a_meshData[lvl]->nComp() == 1);
     CH_assert(a_meshData[lvl]->ghostVect() >= m_radius * IntVect::Unit);
 
-    const DisjointBoxLayout& dbl   = m_eblgs[lvl]->getDBL();
-    const EBISLayout&        ebisl = m_eblgs[lvl]->getEBISL();
+    const DisjointBoxLayout& dbl   = m_ebGrids[lvl]->getDBL();
+    const EBISLayout&        ebisl = m_ebGrids[lvl]->getEBISL();
 
     for (DataIterator dit(dbl); dit.ok(); ++dit) {
       const Box                    cellBox  = dbl[dit()];
@@ -72,8 +72,8 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
       }
     }
 
-    // Exchange ghost data. This adds the ghosted data to the valid region.
-    a_meshData[lvl]->exchange(Interval(0, 0), m_levelCopiers[lvl], IrregAddOp());
+    // Exchange ghost data. This adds the ghosted data into to the valid region.
+    a_meshData[lvl]->exchange(Interval(0, 0), m_copierLevel[lvl], IrregAddOp());
   }
 
   // Monkey with coarse-fine interfaces.

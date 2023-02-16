@@ -35,18 +35,18 @@ public:
 
   /*!
     @brief Full constructor. Calls the define function.
-    @param[in] a_eblgs            Grids
-    @param[in] a_eblgsCoFi        Coarsened fine grids
-    @param[in] a_eblgsFiCo        Refined coarse grids
-    @param[in] a_refRat           Refinement factory between levels
-    @param[in] a_dx               Grid resolutions.
-    @πaram[in] a_probLo           Lower-left corner of physical domain.
-    @param[in] a_finestLevel      Finest grid level.
-    @param[in] a_radius           Deposition radius
+    @param[in] a_ebGrids              Grids
+    @param[in] a_ebGridsCoarsenedFine Coarsened fine grids
+    @param[in] a_ebGridsRefinedCoar   Refined coarse grids
+    @param[in] a_refRat               Refinement factory between levels
+    @param[in] a_dx                   Grid resolutions.
+    @πaram[in] a_probLo               Lower-left corner of physical domain.
+    @param[in] a_finestLevel          Finest grid level.
+    @param[in] a_radius               Deposition radius
   */
-  EBAMRSurfaceDeposition(const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgs,
-                         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsCoFi,
-                         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsFiCo,
+  EBAMRSurfaceDeposition(const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGrids,
+                         const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGridsCoarsenedFine,
+                         const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGridsRefinedCoar,
                          const Vector<int>&                        a_refRat,
                          const Vector<Real>&                       a_dx,
                          const RealVect&                           a_probLo,
@@ -60,19 +60,19 @@ public:
 
   /*!
     @brief Define function. Puts objects in usable state. 
-    @param[in] a_eblgs            Grids
-    @param[in] a_eblgsCoFi        Coarsened fine grids
-    @param[in] a_eblgsFiCo        Refined coarse grids
-    @param[in] a_refRat           Refinement factory between levels
-    @param[in] a_dx               Grid resolutions.
-    @πaram[in] a_probLo           Lower-left corner of physical domain.
-    @param[in] a_finestLevel      Finest grid level.
-    @param[in] a_radius           Deposition radius
+    @param[in] a_ebGrids              Grids
+    @param[in] a_ebGridsCoarsenedFine Coarsened fine grids
+    @param[in] a_ebGridsRefinedCoar   Refined coarse grids
+    @param[in] a_refRat               Refinement factory between levels
+    @param[in] a_dx                   Grid resolutions.
+    @πaram[in] a_probLo               Lower-left corner of physical domain.
+    @param[in] a_finestLevel          Finest grid level.
+    @param[in] a_radius               Deposition radius
   */
   void
-  define(const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgs,
-         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsCoFi,
-         const Vector<RefCountedPtr<EBLevelGrid>>& a_eblgsFiCo,
+  define(const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGrids,
+         const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGridsCoarsenedFine,
+         const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGridsRefinedCoar,
          const Vector<int>&                        a_refRat,
          const Vector<Real>&                       a_dx,
          const RealVect&                           a_probLo,
@@ -131,19 +131,19 @@ protected:
   /*!
     @brief Grids on each level
   */
-  Vector<RefCountedPtr<EBLevelGrid>> m_eblgs;
+  Vector<RefCountedPtr<EBLevelGrid>> m_ebGrids;
 
   /*!
     @brief Coarsened grids. 
-    @note m_eblgsCoFi[i] contains the coarsening of m_eblgs[i] and m_eblgsCoFi[0] contains the nullpointer
+    @note m_ebGridsCoarsenedFine[i] contains the coarsening of m_ebGrids[i] and m_ebGridsCoarsenedFine[0] contains the nullpointer
   */
-  Vector<RefCountedPtr<EBLevelGrid>> m_eblgsCoFi;
+  Vector<RefCountedPtr<EBLevelGrid>> m_ebGridsCoarsenedFine;
 
   /*!
     @brief Refined grids. 
-    @note m_eblgsCoFi[i] contains the refinement of m_eblgs[i] and m_eblgsCoFi[m_finestLevel-1] contains the nullpointer
+    @note m_ebGridsCoarsenedFine[i] contains the refinement of m_ebGrids[i] and m_ebGridsCoarsenedFine[m_finestLevel-1] contains the nullpointer
   */
-  Vector<RefCountedPtr<EBLevelGrid>> m_eblgsFiCo;
+  Vector<RefCountedPtr<EBLevelGrid>> m_ebGridsRefinedCoar;
 
   /*!
     @brief Refinement ratios between levels
@@ -161,16 +161,32 @@ protected:
   Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_depositionStencils;
 
   /*!
+    @brief Data defined on a refinement of the coarse grid. 
+  */
+  mutable EBAMRIVData m_refinedCoarData;
+
+  /*!
     @brief Level copier for adding data from valid+ghost -> valid. 
     @details Needed when adding ghost-deposited data back into valid cells
   */
-  mutable Vector<Copier> m_levelCopiers;
+  Vector<Copier> m_copierLevel;
+
+  /*!
+    @brief Copier for copying data from the refined coarse level to the fine level.
+  */
+  Vector<Copier> m_copierRefinedCoarToFineNoGhosts;
+
+  /*!
+    @brief Define buffer data
+  */
+  inline void
+  defineBuffers() noexcept;
 
   /*!
     @brief Define copiers
   */
   inline void
-  defineLevelMotion() noexcept;
+  defineDataMotion() noexcept;
 
   /*!
    @brief Define deposition weights
