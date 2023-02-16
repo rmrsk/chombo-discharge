@@ -273,7 +273,7 @@ EBAMRSurfaceDeposition::defineDepositionStencils() noexcept
   }
 }
 
-inline void
+void
 EBAMRSurfaceDeposition::addInvalidCoarseDataToFineData(EBAMRIVData& a_meshData) const noexcept
 {
   CH_TIME("EBAMRSurfaceDeposition::addInvalidCoarseDataToFineData");

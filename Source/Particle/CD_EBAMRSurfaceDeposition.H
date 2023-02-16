@@ -179,19 +179,19 @@ protected:
   /*!
     @brief Define buffer data
   */
-  inline void
+  void
   defineBuffers() noexcept;
 
   /*!
     @brief Define copiers
   */
-  inline void
+  void
   defineDataMotion() noexcept;
 
   /*!
    @brief Define deposition weights
   */
-  inline void
+  void
   defineDepositionStencils() noexcept;
 
   /*!
@@ -199,7 +199,7 @@ protected:
     @details This does conservative interpolation to the fine grid
     @param[inout] a_meshData EB surface data
   */
-  inline void
+  void
   addInvalidCoarseDataToFineData(EBAMRIVData& a_meshData) const noexcept;
 
   /*!
@@ -207,7 +207,7 @@ protected:
     @details This does conservative coarsening of the fine-grid ghosted data to the coarse grid.
     @param[inout] a_meshData EB surface data
   */
-  inline void
+  void
   addFineGhostDataToValidCoarData(EBAMRIVData& a_meshData) const noexcept;
 };
 
