@@ -16,6 +16,7 @@
 #include <BinFab.H>
 
 // Our includes
+#include <CD_DischargeIO.H>
 #include <CD_BrownianWalkerStepper.H>
 #include <CD_BrownianWalkerSpecies.H>
 #include <CD_PolyUtils.H>
@@ -108,13 +109,16 @@ BrownianWalkerStepper::initialData()
   MayDay::Warning("CD_BrownianWalkerStepper.cpp -- remove debug code and add mass conservation test");
 
   EBAMRIVData                      meshData;
+  EBAMRCellData                    data;
   ParticleContainer<PointParticle> testParticles;
 
   m_amr->allocate(meshData, m_realm, m_phase, 1);
+  m_amr->allocate(data, m_realm, m_phase, 1);
   m_amr->allocate(testParticles, m_realm);
 
   const RealVect probLo = m_amr->getProbLo();
 
+  Real totalParticleMass = 0.0;
   for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
     const DisjointBoxLayout& dbl   = m_amr->getGrids(m_realm)[lvl];
     const EBISLayout&        ebisl = m_amr->getEBISLayout(m_realm, m_phase)[lvl];
@@ -130,8 +134,42 @@ BrownianWalkerStepper::initialData()
         const IntVect& iv = vof.gridIndex();
 
         if (validCells(iv, 0)) {
-          const RealVect pos = probLo + Location::position(Location::Cell::Boundary, vof, ebisl[dit()], dx);
+          const RealVect pos = probLo + Location::position(Location::Cell::Centroid, vof, ebisl[dit()], dx);
           particles.add(PointParticle(pos, 1.0));
+
+          totalParticleMass += 1.0;
+        }
+      };
+
+      BoxLoops::loop(vofit, kernel);
+    }
+  }
+  totalParticleMass = ParallelOps::sum(totalParticleMass);
+  if (procID() == 0) {
+    std::cout << "total particle mass = " << totalParticleMass << "\n";
+  }
+
+  m_amr->depositParticles<PointParticle, &PointParticle::weight>(meshData, m_realm, m_phase, testParticles);
+
+  // Sum up the fluid mass
+  Real totalFluidMass = 0.0;
+
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    const DisjointBoxLayout& dbl   = m_amr->getGrids(m_realm)[lvl];
+    const EBISLayout&        ebisl = m_amr->getEBISLayout(m_realm, m_phase)[lvl];
+    const Real               dx    = m_amr->getDx()[lvl];
+
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      const List<PointParticle>& particles  = testParticles[lvl][dit()].listItems();
+      const EBISBox&             ebisbox    = ebisl[dit()];
+      VoFIterator&               vofit      = (*m_amr->getVofIterator(m_realm, m_phase)[lvl])[dit()];
+      const BaseFab<bool>&       validCells = (*m_amr->getValidCells(m_realm)[lvl])[dit()];
+
+      auto kernel = [&](const VolIndex& vof) -> void {
+        const IntVect& iv = vof.gridIndex();
+
+        if (validCells(iv, 0)) {
+          totalFluidMass += (*meshData[lvl])[dit()](vof, 0) * ebisbox.bndryArea(vof) * std::pow(dx, SpaceDim - 1);
         }
       };
 
@@ -139,7 +177,32 @@ BrownianWalkerStepper::initialData()
     }
   }
 
-  m_amr->depositParticles<PointParticle, &PointParticle::weight>(meshData, m_realm, m_phase, testParticles);
+  totalFluidMass = ParallelOps::sum(totalFluidMass);
+  if (procID() == 0) {
+    std::cout << "total fluid mass = " << totalFluidMass << "\n";
+  }
+
+  DataOps::setValue(data, 0.0);
+  DataOps::incr(data, meshData, 1.0);
+
+  Vector<std::string>           varNames;
+  Vector<LevelData<EBCellFAB>*> rawData;
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    rawData.push_back(&(*data[lvl]));
+  }
+  varNames.push_back("deposition density");
+  DischargeIO::writeEBHDF5("deposition.hdf5",
+                           varNames,
+                           m_amr->getGrids(m_realm),
+                           rawData,
+                           m_amr->getDomains(),
+                           m_amr->getDx(),
+                           m_amr->getRefinementRatios(),
+                           0.0,
+                           0.0,
+                           m_amr->getProbLo(),
+                           1 + m_amr->getFinestLevel(),
+                           0);
 #endif
 }
 

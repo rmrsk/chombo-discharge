@@ -230,7 +230,6 @@ EBAMRSurfaceDeposition::defineDataMotion() noexcept
       m_copierCoarsenedFineToCoar[lvl].ghostDefine(m_ebGridsCoarsenedFine[lvl]->getDBL(),
                                                    m_ebGrids[lvl]->getDBL(),
                                                    m_ebGrids[lvl]->getDomain(),
-                                                   m_radius * IntVect::Unit,
                                                    m_radius * IntVect::Unit);
     }
   }
@@ -548,10 +547,13 @@ EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData() const noexcept
       const IntVectSet& ghostsFine = stencils.getIVS();
       const EBGraph&    graphFine  = stencils.getEBGraph();
 
-      BaseIVFAB<Real>&       coarData = (*m_coarsenedFineData[lvl - 1])[dit()];
-      const BaseIVFAB<Real>& fineData = (*m_data[lvl])[dit()];
-
+      BaseIVFAB<Real>& coarData = (*m_coarsenedFineData[lvl - 1])[dit()];
+      BaseIVFAB<Real>& fineData = (*m_data[lvl])[dit()];
+#if 1 // Debug
+      coarData.setVal(std::numeric_limits<Real>::max());
+#else
       coarData.setVal(0.0);
+#endif
 
       for (VoFIterator vofit(ghostsFine, graphFine); vofit.ok(); ++vofit) {
         const VolIndex&   fineGhost = vofit();
@@ -570,14 +572,19 @@ EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData() const noexcept
 
     const Interval interv(0, 0);
 
+#if 1
+    // I don't think coarsenedFineData copies into the correct region! This could be in the Copier, in IrregAddOp, or a conceptual error in
+    // how we've designed the valid/ghost data transfer stuff.
+    MayDay::Warning("debug testing in EBAMRSurfaceDeposition");
+    m_coarsenedFineData[lvl - 1]->copyTo(*m_data[lvl - 1]);
+#else
     m_coarsenedFineData[lvl - 1]->copyTo(interv,
                                          *m_data[lvl - 1],
                                          interv,
                                          m_copierCoarsenedFineToCoar[lvl],
                                          IrregAddOp());
+#endif
   }
-
-  MayDay::Warning("EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData -- not implemented");
 }
 
 #include <CD_NamespaceFooter.H>
