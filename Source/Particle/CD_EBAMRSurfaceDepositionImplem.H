@@ -73,8 +73,8 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
   }
 
   // Monkey with coarse-fine interfaces.
-  this->addInvalidCoarseDataToFineData(m_data);
-  this->addFineGhostDataToValidCoarData(m_data);
+  this->addInvalidCoarseDataToFineData();
+  this->addFineGhostDataToValidCoarData();
 
   // Copy our buffers to the input data.
   for (int lvl = 0; lvl <= m_finestLevel; lvl++) {

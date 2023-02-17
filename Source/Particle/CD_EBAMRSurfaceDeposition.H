@@ -162,9 +162,15 @@ protected:
 
   /*!
     @brief Stencils for interpolating coarse-grid data to the fine grid. 
-    @details This is defined on the coarse grid but reaches into the fine grid. 
+    @details This is defined on the coarse grid but reaches into the refined coarse grid. 
   */
-  Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_coarseFineInterpStencils;
+  Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_coarseToFineStencils;
+
+  /*!
+    @brief Stencils for conservatively coarsening fine-grid data (in ghost cells) to the coarse grid.
+    @details Defined on the fine grid but reaches into the refined coarse grid.
+  */
+  Vector<RefCountedPtr<LayoutData<BaseIVFAB<VoFStencil>>>> m_fineToCoarseStencils;
 
   /*!
     @brief Data on each level. 
@@ -178,6 +184,11 @@ protected:
   mutable EBAMRIVData m_refinedCoarData;
 
   /*!
+    @brief Coarsening of the fine-grid data
+  */
+  mutable EBAMRIVData m_coarsenedFineData;
+
+  /*!
     @brief Level copier for adding data from valid+ghost -> valid. 
     @details Needed when adding ghost-deposited data back into valid cells
   */
@@ -187,6 +198,11 @@ protected:
     @brief Copier for copying data from the refined coarse level to the fine level.
   */
   Vector<Copier> m_copierRefinedCoarToFineNoGhosts;
+
+  /*!
+    @brief Copier for copying data from the coarsened fine level to the coarse leve
+  */
+  Vector<Copier> m_copierCoarsenedFineToCoar;
 
   /*!
     @brief Define buffer data
@@ -210,23 +226,28 @@ protected:
     @brief Define stencils for interpolating coarse-grid data to the fine grid
   */
   void
-  defineCoarseFineInterpolationStencils() noexcept;
+  defineCoarseToFineStencils() noexcept;
+
+  /*!
+    @brief Define stencils for coarsening data in fine-grid ghost cells to the coarse grid.
+  */
+  void
+  defineFineToCoarseStencils() noexcept;
 
   /*!
     @brief Add the invalid coarse data (i.e., underneath the fine grid) to the fine level. 
-    @details This does conservative interpolation to the fine grid
+    @details This does conservative interpolation to the fine grid. This all takes place on our buffer storage.
     @param[inout] a_meshData EB surface data
   */
   void
-  addInvalidCoarseDataToFineData(EBAMRIVData& a_meshData) const noexcept;
+  addInvalidCoarseDataToFineData() const noexcept;
 
   /*!
     @brief Add the ghosted fine-level data to the coarse data. 
-    @details This does conservative coarsening of the fine-grid ghosted data to the coarse grid.
-    @param[inout] a_meshData EB surface data
+    @details This does conservative coarsening of the fine-grid ghosted data to the coarse grid. This all takes place on our buffer storage.
   */
   void
-  addFineGhostDataToValidCoarData(EBAMRIVData& a_meshData) const noexcept;
+  addFineGhostDataToValidCoarData() const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
