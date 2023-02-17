@@ -69,7 +69,7 @@ public:
     @param[in] a_finestLevel          Finest grid level.
     @param[in] a_radius               Deposition radius
   */
-  void
+  virtual void
   define(const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGrids,
          const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGridsCoarsenedFine,
          const Vector<RefCountedPtr<EBLevelGrid>>& a_ebGridsRefinedCoar,
@@ -200,38 +200,38 @@ protected:
   Vector<Copier> m_copierRefinedCoarToFineNoGhosts;
 
   /*!
-    @brief Copier for copying data from the coarsened fine level to the coarse leve
+    @brief Copier for copying data from the coarsened fine level to the coarse level.
   */
   Vector<Copier> m_copierCoarsenedFineToCoar;
 
   /*!
-    @brief Define buffer data
+    @brief Define buffer data.
   */
-  void
+  virtual void
   defineBuffers() noexcept;
 
   /*!
     @brief Define copiers
   */
-  void
+  virtual void
   defineDataMotion() noexcept;
 
   /*!
    @brief Define deposition weights
   */
-  void
+  virtual void
   defineDepositionStencils() noexcept;
 
   /*!
     @brief Define stencils for interpolating coarse-grid data to the fine grid
   */
-  void
+  virtual void
   defineCoarseToFineStencils() noexcept;
 
   /*!
     @brief Define stencils for coarsening data in fine-grid ghost cells to the coarse grid.
   */
-  void
+  virtual void
   defineFineToCoarseStencils() noexcept;
 
   /*!
@@ -239,14 +239,14 @@ protected:
     @details This does conservative interpolation to the fine grid. This all takes place on our buffer storage.
     @param[inout] a_meshData EB surface data
   */
-  void
+  virtual void
   addInvalidCoarseDataToFineData() const noexcept;
 
   /*!
     @brief Add the ghosted fine-level data to the coarse data. 
     @details This does conservative coarsening of the fine-grid ghosted data to the coarse grid. This all takes place on our buffer storage.
   */
-  void
+  virtual void
   addFineGhostDataToValidCoarData() const noexcept;
 };
 

@@ -53,8 +53,10 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
 
         const IntVect iv = ParticleOps::getParticleCellIndex(p.position(), m_probLo, m_dx[lvl]);
 
-        // If these fail the particle is not in a valid cell.
-        CH_assert(ebisbox.isIrregular(iv));
+        // If this fails the particle is not in a valid cell.
+        if (!ebisbox.isIrregular(iv)) {
+          MayDay::Error("CD_EBAMRSurfaceDeposition::deposit -- particle is not in a cut-cell!");
+        }
 
         const VoFStencil& stencil = stencils(VolIndex(iv, 0), 0);
 
@@ -68,15 +70,16 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
       }
     }
 
-    // Exchange ghost data. This adds the ghosted data into to the valid region.
+    // Above, we will have deposited over patch boundaries. Add the deposted data into the neighboring patches.
     m_data[lvl]->exchange(Interval(0, 0), m_copierLevel[lvl], IrregAddOp());
   }
 
-  // Monkey with coarse-fine interfaces.
+  // Ensure conservation across coarse-fine interface. This involves interpolation of the data going from
+  // the coarse level to the fine level, and coarsening of the data from the fine level to coarse level.
   this->addInvalidCoarseDataToFineData();
   this->addFineGhostDataToValidCoarData();
 
-  // Copy our buffers to the input data.
+  // Finally, copy our buffers to the input data.
   for (int lvl = 0; lvl <= m_finestLevel; lvl++) {
     CH_assert(!(a_meshData[lvl].isNull()));
     CH_assert(a_meshData[lvl]->nComp() == 1);
@@ -94,7 +97,61 @@ EBAMRSurfaceDeposition::deposit(EBAMRIVData& a_meshData, const ParticleContainer
     pout() << "EBAMRSurfaceDeposition::deposit<P, Real P::*func>" << endl;
   }
 
-  MayDay::Error("EBAMRSurfaceDeposition::deposit -- this version is not supported (yet)");
+  CH_assert(a_meshData.getRealm() == a_particles.getRealm());
+
+  // Deposit on this level
+  for (int lvl = 0; lvl <= m_finestLevel; lvl++) {
+    const DisjointBoxLayout& dbl   = m_ebGrids[lvl]->getDBL();
+    const EBISLayout&        ebisl = m_ebGrids[lvl]->getEBISL();
+
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      const Box                    cellBox  = dbl[dit()];
+      const EBISBox&               ebisbox  = ebisl[dit()];
+      const BaseIVFAB<VoFStencil>& stencils = (*m_depositionStencils[lvl])[dit()];
+
+      BaseIVFAB<Real>& meshData  = (*m_data[lvl])[dit()];
+      const List<P>&   particles = a_particles[lvl][dit()].listItems();
+
+      meshData.setVal(0.0);
+
+      for (ListIterator<P> lit(particles); lit.ok(); ++lit) {
+        const P& p = lit();
+
+        const IntVect iv = ParticleOps::getParticleCellIndex(p.position(), m_probLo, m_dx[lvl]);
+
+        // If this fails the particle is not in a valid cell.
+        if (!ebisbox.isIrregular(iv)) {
+          MayDay::Error("CD_EBAMRSurfaceDeposition::deposit -- particle is not in a cut-cell!");
+        }
+
+        const VoFStencil& stencil = stencils(VolIndex(iv, 0), 0);
+
+        for (int i = 0; i < stencil.size(); i++) {
+          const VolIndex& stencilVoF       = stencil.vof(i);
+          const Real&     stencilWeight    = stencil.weight(i);
+          const Real      depositionWeight = stencilWeight * (p.*particleScalarField)();
+
+          meshData(stencilVoF, 0) += depositionWeight;
+        }
+      }
+    }
+
+    // Above, we will have deposited over patch boundaries. Add the deposted data into the neighboring patches.
+    m_data[lvl]->exchange(Interval(0, 0), m_copierLevel[lvl], IrregAddOp());
+  }
+
+  // Ensure conservation across coarse-fine interface. This involves interpolation of the data going from
+  // the coarse level to the fine level, and coarsening of the data from the fine level to coarse level.
+  this->addInvalidCoarseDataToFineData();
+  this->addFineGhostDataToValidCoarData();
+
+  // Finally, copy our buffers to the input data.
+  for (int lvl = 0; lvl <= m_finestLevel; lvl++) {
+    CH_assert(!(a_meshData[lvl].isNull()));
+    CH_assert(a_meshData[lvl]->nComp() == 1);
+
+    m_data[lvl]->copyTo(*a_meshData[lvl]);
+  }
 }
 
 #include <CD_NamespaceFooter.H>

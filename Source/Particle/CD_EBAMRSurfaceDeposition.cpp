@@ -124,6 +124,11 @@ EBAMRSurfaceDeposition::defineBuffers() noexcept
     pout() << "EBAMRSurfaceDeposition::defineBuffers" << endl;
   }
 
+  // TLDR: This defines the buffer data that is required for
+  //       1. Depositing particles on each AMR level
+  //       2. Moving mass deposited beneath an AMR level into the next finer level
+  //       3. Moving mass deposited across a refinement boundary into the coarse level.
+
   constexpr int nComp = 1;
 
   m_data.resize(1 + m_finestLevel);
@@ -201,6 +206,8 @@ EBAMRSurfaceDeposition::defineDataMotion() noexcept
     pout() << "EBAMRSurfaceDeposition::defineDataMotion" << endl;
   }
 
+  // TLDR: Define copiers for moving data between AMR levels and refinement/coarsenings of AMR levels.
+
   m_copierLevel.resize(1 + m_finestLevel);
   m_copierRefinedCoarToFineNoGhosts.resize(1 + m_finestLevel);
   m_copierCoarsenedFineToCoar.resize(1 + m_finestLevel);
@@ -218,7 +225,7 @@ EBAMRSurfaceDeposition::defineDataMotion() noexcept
     // Define Copier as going from valid -> valid+ghost.
     m_copierLevel[lvl].define(dbl, dbl, domain, m_radius * IntVect::Unit, doExchange);
 
-    // Define Copier as going from valid+ghost -> valid.
+    // Reverse so that this goes from valid+ghost -> valid.
     m_copierLevel[lvl].reverse();
 
     if (hasCoar) {
@@ -226,6 +233,7 @@ EBAMRSurfaceDeposition::defineDataMotion() noexcept
 
       m_copierRefinedCoarToFineNoGhosts[lvl].define(refinedCoarDBL, dbl, domain);
     }
+
     if (hasFine) {
       m_copierCoarsenedFineToCoar[lvl].ghostDefine(m_ebGridsCoarsenedFine[lvl]->getDBL(),
                                                    m_ebGrids[lvl]->getDBL(),
@@ -538,22 +546,19 @@ EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData() const noexcept
     pout() << "EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData" << endl;
   }
 
-  for (int lvl = 1; lvl <= m_finestLevel; lvl++) {
-    const DisjointBoxLayout& dblFine = m_ebGrids[lvl]->getDBL();
+  for (int lvl = 0; lvl < m_finestLevel; lvl++) {
+    const DisjointBoxLayout& dblFine = m_ebGrids[lvl + 1]->getDBL();
 
     for (DataIterator dit(dblFine); dit.ok(); ++dit) {
-      const BaseIVFAB<VoFStencil>& stencils = (*m_fineToCoarseStencils[lvl])[dit()];
+      const BaseIVFAB<VoFStencil>& stencils = (*m_fineToCoarseStencils[lvl + 1])[dit()];
 
       const IntVectSet& ghostsFine = stencils.getIVS();
       const EBGraph&    graphFine  = stencils.getEBGraph();
 
-      BaseIVFAB<Real>& coarData = (*m_coarsenedFineData[lvl - 1])[dit()];
-      BaseIVFAB<Real>& fineData = (*m_data[lvl])[dit()];
-#if 1 // Debug
-      coarData.setVal(std::numeric_limits<Real>::max());
-#else
+      BaseIVFAB<Real>&       coarData = (*m_coarsenedFineData[lvl])[dit()];
+      const BaseIVFAB<Real>& fineData = (*m_data[lvl + 1])[dit()];
+
       coarData.setVal(0.0);
-#endif
 
       for (VoFIterator vofit(ghostsFine, graphFine); vofit.ok(); ++vofit) {
         const VolIndex&   fineGhost = vofit();
@@ -572,18 +577,7 @@ EBAMRSurfaceDeposition::addFineGhostDataToValidCoarData() const noexcept
 
     const Interval interv(0, 0);
 
-#if 1
-    // I don't think coarsenedFineData copies into the correct region! This could be in the Copier, in IrregAddOp, or a conceptual error in
-    // how we've designed the valid/ghost data transfer stuff.
-    MayDay::Warning("debug testing in EBAMRSurfaceDeposition");
-    m_coarsenedFineData[lvl - 1]->copyTo(*m_data[lvl - 1]);
-#else
-    m_coarsenedFineData[lvl - 1]->copyTo(interv,
-                                         *m_data[lvl - 1],
-                                         interv,
-                                         m_copierCoarsenedFineToCoar[lvl],
-                                         IrregAddOp());
-#endif
+    m_coarsenedFineData[lvl]->copyTo(interv, *m_data[lvl], interv, m_copierCoarsenedFineToCoar[lvl], IrregAddOp());
   }
 }
 
