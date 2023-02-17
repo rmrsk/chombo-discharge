@@ -113,6 +113,32 @@ BrownianWalkerStepper::initialData()
   m_amr->allocate(meshData, m_realm, m_phase, 1);
   m_amr->allocate(testParticles, m_realm);
 
+  const RealVect probLo = m_amr->getProbLo();
+
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    const DisjointBoxLayout& dbl   = m_amr->getGrids(m_realm)[lvl];
+    const EBISLayout&        ebisl = m_amr->getEBISLayout(m_realm, m_phase)[lvl];
+    const Real               dx    = m_amr->getDx()[lvl];
+
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      List<PointParticle>& particles = testParticles[lvl][dit()].listItems();
+
+      VoFIterator&         vofit      = (*m_amr->getVofIterator(m_realm, m_phase)[lvl])[dit()];
+      const BaseFab<bool>& validCells = (*m_amr->getValidCells(m_realm)[lvl])[dit()];
+
+      auto kernel = [&](const VolIndex& vof) -> void {
+        const IntVect& iv = vof.gridIndex();
+
+        if (validCells(iv, 0)) {
+          const RealVect pos = probLo + Location::position(Location::Cell::Boundary, vof, ebisl[dit()], dx);
+          particles.add(PointParticle(pos, 1.0));
+        }
+      };
+
+      BoxLoops::loop(vofit, kernel);
+    }
+  }
+
   m_amr->depositParticles<PointParticle, &PointParticle::weight>(meshData, m_realm, m_phase, testParticles);
 #endif
 }
