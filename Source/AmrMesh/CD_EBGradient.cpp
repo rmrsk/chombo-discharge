@@ -42,8 +42,6 @@ EBGradient::EBGradient(const EBLevelGrid& a_eblg,
 {
   CH_TIME("EBGradient::EBGradient");
 
-  std::cout << "need to fix fine ghost cell usage (could be reaching into cells we don't have!)!" << std::endl;
-
   this->define(a_eblg, a_eblgFine, a_eblgFiCo, a_hasFine, a_dx, a_refRat, a_order, a_weighting, a_ghostVector);
 }
 
@@ -269,7 +267,7 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
   CH_TIMERS("EBGradient::computeAMRGradient");
   CH_TIMER("EBGradient::buffer_def", t1);
   CH_TIMER("EBGradient::copy_and_exchange", t2);
-  CH_TIMER("EBGradient::calculate", t3);
+  CH_TIMER("EBGradient::ebcf_calculate", t3);
 
   CH_assert(m_isDefined);
   CH_assert(a_gradient.nComp() == SpaceDim);
@@ -289,12 +287,11 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
     const EBISLayout& ebislFiCo = m_eblgFiCo.getEBISL();
 
     CH_START(t1)
-    LevelData<EBCellFAB> phiFiCo(dblFiCo, 1, 2 * IntVect::Unit, EBCellFactory(ebislFiCo));
+    LevelData<EBCellFAB> phiFiCo(dblFiCo, 1, m_ghostVector, EBCellFactory(ebislFiCo));
     CH_STOP(t1);
 
     CH_START(t2);
     a_phiFine.copyTo(phiFiCo);
-    phiFiCo.exchange();
     CH_STOP(t2);
 
     CH_START(t3);
@@ -311,7 +308,7 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
         const VoFStencil& stencilFine = stencilsFine(vof, m_comp);
 
         for (int dir = 0; dir < SpaceDim; dir++) {
-          gradient(vof, dir) = 1.234E5;
+          gradient(vof, dir) = 0.0;
         }
 
         for (int i = 0; i < stencilCoar.size(); i++) {
@@ -319,7 +316,7 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
           const Real&     coarWeight = stencilCoar.weight(i);
           const int&      coarVar    = stencilCoar.variable(i);
 
-          //          gradient(vof, coarVar) += coarWeight * phi(coarVoF, m_comp);
+          gradient(vof, coarVar) += coarWeight * phi(coarVoF, m_comp);
         }
 
         for (int i = 0; i < stencilFine.size(); i++) {
@@ -327,7 +324,7 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
           const Real&     fineWeight = stencilFine.weight(i);
           const int&      fineVar    = stencilFine.variable(i);
 
-          //          gradient(vof, fineVar) += fineWeight * phiFine(fineVoF, m_comp);
+          gradient(vof, fineVar) += fineWeight * phiFine(fineVoF, m_comp);
         }
       };
 
@@ -482,7 +479,7 @@ EBGradient::defineMasks(LevelData<FArrayBox>& a_coarMaskCF, LevelData<FArrayBox>
   Copier copierInvalid;
 
   copierCF.ghostDefine(dblCoFi, dblCoar, domainCoar, IntVect::Unit);
-  copierInvalid.ghostDefine(dblCoFi, dblCoar, domainCoar, IntVect::Zero);
+  copierInvalid.ghostDefine(dblCoFi, dblCoar, domainCoar, IntVect::Zero, IntVect::Unit);
 
   coFiMaskCF.copyTo(interv, a_coarMaskCF, interv, copierCF, LDaddOp<FArrayBox>());
   coFiMaskInvalid.copyTo(interv, a_coarMaskInvalid, interv, copierInvalid, LDaddOp<FArrayBox>());
@@ -587,18 +584,7 @@ EBGradient::defineIteratorsEBCF(const LevelData<FArrayBox>& a_coarMaskCF,
       // Iterate through the coarse-fine region and check if the finite difference stencil reaches into a cut-cell.
       auto kernel = [&](const IntVect& ivCoar) -> void {
         if (coarseFineRegion(ivCoar, m_comp) > zero) {
-          //          const bool hasStencil = this->isFiniteDifferenceStencilValid(ivCoar, ebisBox, invalidRegion);
-
-          bool hasStencil = true;
-          for (int dir = 0; dir < SpaceDim; dir++) {
-            for (SideIterator sit; sit.ok(); ++sit) {
-              const IntVect otherIV = ivCoar + sign(sit()) * BASISV(dir);
-
-              if (invalidRegion(otherIV, 0) && ebisBox.isIrregular(otherIV)) {
-                hasStencil = false;
-              }
-            }
-          }
+          const bool hasStencil = this->isFiniteDifferenceStencilValid(ivCoar, ebisBox, invalidRegion);
 
           // Ok, found a stencil that won't work.
           if (!hasStencil) {
@@ -667,7 +653,7 @@ EBGradient::defineStencilsEBCF(const LevelData<FArrayBox>& a_coarMaskInvalid) no
     DenseIntVectSet validRegionFine(grownBoxFine, false);
 
     auto regularKernel = [&](const IntVect& iv) -> void {
-      if (coarMaskInvalid(iv, m_comp) > 0.5) {
+      if (coarMaskInvalid(iv, m_comp) > 0.0) {
         validRegionCoar -= iv;
         validRegionFine |= refine(Box(iv, iv), m_refRat);
       }
