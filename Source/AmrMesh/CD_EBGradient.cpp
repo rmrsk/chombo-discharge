@@ -311,7 +311,7 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
         const VoFStencil& stencilFine = stencilsFine(vof, m_comp);
 
         for (int dir = 0; dir < SpaceDim; dir++) {
-          gradient(vof, dir) = 0.0;
+          gradient(vof, dir) = 1.234E5;
         }
 
         for (int i = 0; i < stencilCoar.size(); i++) {
@@ -319,7 +319,7 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
           const Real&     coarWeight = stencilCoar.weight(i);
           const int&      coarVar    = stencilCoar.variable(i);
 
-          gradient(vof, coarVar) += coarWeight * phi(coarVoF, m_comp);
+          //          gradient(vof, coarVar) += coarWeight * phi(coarVoF, m_comp);
         }
 
         for (int i = 0; i < stencilFine.size(); i++) {
@@ -327,7 +327,7 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
           const Real&     fineWeight = stencilFine.weight(i);
           const int&      fineVar    = stencilFine.variable(i);
 
-          gradient(vof, fineVar) += fineWeight * phiFine(fineVoF, m_comp);
+          //          gradient(vof, fineVar) += fineWeight * phiFine(fineVoF, m_comp);
         }
       };
 
@@ -468,7 +468,7 @@ EBGradient::defineMasks(LevelData<FArrayBox>& a_coarMaskCF, LevelData<FArrayBox>
   }
 
   // Define the input masks. After this, coarMaskCF will have a value of 1 in all cells that abut the fine level. Likewise, coarMaskInvalid
-  // will have a value of 1 in all cells that are covered by a finer level.
+  // will have a value of 1 in all cells that are covered by a finer level, including one layer of ghost cells.
   a_coarMaskCF.define(dblCoar, m_nComp, IntVect::Zero);      // Does not need ghost cells
   a_coarMaskInvalid.define(dblCoar, m_nComp, IntVect::Unit); // Needs one ghost cell.
 
@@ -564,6 +564,8 @@ EBGradient::defineIteratorsEBCF(const LevelData<FArrayBox>& a_coarMaskCF,
 
   LayoutData<IntVectSet> sets(dbl);
 
+  int localHasEBCF = 0;
+
   for (DataIterator dit(dbl); dit.ok(); ++dit) {
     const Box      cellBox = dbl[dit()];
     const EBISBox& ebisBox = ebisl[dit()];
@@ -576,25 +578,33 @@ EBGradient::defineIteratorsEBCF(const LevelData<FArrayBox>& a_coarMaskCF,
     const FArrayBox& coarseFineRegion = a_coarMaskCF[dit()];
     const FArrayBox& invalidRegion    = a_coarMaskInvalid[dit()];
 
-    bool addedBox = false;
-
     // Determine cells where we need to drop order.
     IntVectSet& ebcfIVS = sets[dit()];
+    ebcfIVS.makeEmpty();
+
     if (isIrregular) {
 
       // Iterate through the coarse-fine region and check if the finite difference stencil reaches into a cut-cell.
       auto kernel = [&](const IntVect& ivCoar) -> void {
         if (coarseFineRegion(ivCoar, m_comp) > zero) {
-          const bool hasStencil = this->isFiniteDifferenceStencilValid(ivCoar, ebisBox, invalidRegion);
+          //          const bool hasStencil = this->isFiniteDifferenceStencilValid(ivCoar, ebisBox, invalidRegion);
+
+          bool hasStencil = true;
+          for (int dir = 0; dir < SpaceDim; dir++) {
+            for (SideIterator sit; sit.ok(); ++sit) {
+              const IntVect otherIV = ivCoar + sign(sit()) * BASISV(dir);
+
+              if (invalidRegion(otherIV, 0) && ebisBox.isIrregular(otherIV)) {
+                hasStencil = false;
+              }
+            }
+          }
 
           // Ok, found a stencil that won't work.
           if (!hasStencil) {
             ebcfIVS |= ivCoar;
 
-            if (addedBox == false) { // One of the cells needs a better stencil so we allocate data in this box.
-              ebcfBoxes.push_back(cellBox);
-              addedBox = true;
-            }
+            localHasEBCF = 1;
           }
         }
       };
@@ -610,14 +620,7 @@ EBGradient::defineIteratorsEBCF(const LevelData<FArrayBox>& a_coarMaskCF,
   }
 
   // All ranks bware: An EBCF situation has gotten out of hand.
-  if (ParallelOps::sum((int)ebcfBoxes.size()) > 0) {
-    m_hasEBCF = true;
-  }
-  else {
-    m_hasEBCF = false;
-  }
-
-  m_hasEBCF = true;
+  m_hasEBCF = ParallelOps::sum(localHasEBCF) > 0;
 }
 
 void
@@ -664,7 +667,7 @@ EBGradient::defineStencilsEBCF(const LevelData<FArrayBox>& a_coarMaskInvalid) no
     DenseIntVectSet validRegionFine(grownBoxFine, false);
 
     auto regularKernel = [&](const IntVect& iv) -> void {
-      if (coarMaskInvalid(iv, m_comp) == 0.0) {
+      if (coarMaskInvalid(iv, m_comp) > 0.5) {
         validRegionCoar -= iv;
         validRegionFine |= refine(Box(iv, iv), m_refRat);
       }
