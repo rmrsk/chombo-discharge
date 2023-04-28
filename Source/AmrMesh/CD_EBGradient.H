@@ -210,48 +210,26 @@ protected:
   IntVect m_ghostVector;
 
   /*!
-    @brief Coarse-grid buffers
-  */
-  DisjointBoxLayout m_bufferDblCoar;
-
-  /*!
-    @brief Fine-grid buffers
-  */
-  DisjointBoxLayout m_bufferDblFine;
-
-  /*!
-    @brief Coarse EBISLayout buffer
-  */
-  EBISLayout m_bufferEBISLCoar;
-
-  /*!
-    @brief Fine EBISLayout buffer
-  */
-  EBISLayout m_bufferEBISLFine;
-
-  /*!
     @brief Stencils for boundaries and cut-cells
     @note Lives on the coarse layout. 
   */
   LayoutData<BaseIVFAB<VoFStencil>> m_levelStencils;
 
   /*!
+    @brief Part of EBCF gradient stencil which reaches into the coarse level. 
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_ebcfStencilsCoar;
+
+  /*!
+    @brief Part of EBCF gradient stencil which reaches into the coarse level. 
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_ebcfStencilsFine;
+
+  /*!
     @brief AggStencils for boundaries and cut-cells. Provides faster application of m_levelStencils.
     @note Lives on the coarse layout and only has one component. 
   */
   LayoutData<RefCountedPtr<AggStencil<EBCellFAB, EBCellFAB>>> m_aggLevelStencils[SpaceDim];
-
-  /*!
-    @brief Part of EBCF gradient stencil which reaches into the coarse level. 
-    @note Lives on the buffer layout. 
-  */
-  LayoutData<BaseIVFAB<VoFStencil>> m_bufferStencilsCoar;
-
-  /*!
-    @brief Part of EBCF gradient stencil which reaches into the fine level. 
-    @note Lives on the buffer layout. 
-  */
-  LayoutData<BaseIVFAB<VoFStencil>> m_bufferStencilsFine;
 
   /*!
     @brief Iterator for boundary cells (either domain or EB)
@@ -264,35 +242,6 @@ protected:
     @note Lives on the coarse layout. 
   */
   mutable LayoutData<VoFIterator> m_ebcfIterator;
-
-  /*!
-    @brief Iterator for EBCF cells. Lives on the buffer layout. 
-  */
-  mutable LayoutData<VoFIterator> m_bufferIterator;
-
-  /*!
-    @brief Buffer for putting coarse-grid data on the buffer layout. 
-    @note Lives on the buffer layout. 
-  */
-  mutable LevelData<EBCellFAB> m_bufferCoar;
-
-  /*!
-    @brief Buffer for putting fine-grid data on the buffer layout.
-    @note Lives on the buffer layout. 
-  */
-  mutable LevelData<EBCellFAB> m_bufferFine;
-
-  /*!
-    @brief Storage for corrected gradient. 
-    @note Lives on the coarse layout. 
-  */
-  mutable LevelData<BaseIVFAB<Real>> m_ebcfGradient;
-
-  /*!
-    @brief Storage for corrected gradient. 
-    @note Lives on the buffer layout. 
-  */
-  mutable LevelData<BaseIVFAB<Real>> m_bufferGradient;
 
   /*!
     @brief Define level stencils. 
@@ -309,21 +258,6 @@ protected:
   defineMasks(LevelData<FArrayBox>& a_coarMaskCF, LevelData<FArrayBox>& a_coarMaskInvalid) noexcept;
 
   /*!
-    @brief Define buffers. 
-    @details Defines masks and buffers on the buffer grids. This will e.g. copy the masks from the coarse grids to the buffer grids,
-    and also define relevant iterators and storage on the buffer grids. 
-    @param[out] a_bufferCoarMaskCF      A copy of a_coarMaskCF to the buffer grids. 
-    @param[out] a_bufferCoarMaskInvalid A copy of a_coarMaskInvalid to the buffer grids. 
-    @param[in]  a_coarMaskCF            Mask for CF region on the coarse layout. 
-    @param[in]  a_coarMaskInvalid       Mask for invalid regions on the coarse layout. 
-  */
-  virtual void
-  defineBuffers(LevelData<FArrayBox>&       a_bufferCoarMaskCF,
-                LevelData<FArrayBox>&       a_bufferCoarMaskInvalid,
-                const LevelData<FArrayBox>& a_coarMaskCF,
-                const LevelData<FArrayBox>& a_coarMaskInvalid) noexcept;
-
-  /*!
     @brief Define iterators and cells that need modified stencils
     @param[in]  a_coarMaskCF            Mask for CF region on the coarse layout. 
     @param[in]  a_coarMaskInvalid       Mask for invalid regions on the coarse layout. 
@@ -336,7 +270,7 @@ protected:
     @param[in] a_bufferCoarMaskInvalid Map of coarse cells that are covered by finer cells. 
   */
   virtual void
-  defineStencilsEBCF(const LevelData<FArrayBox>& a_bufferCoarMaskInvalid) noexcept;
+  defineStencilsEBCF(const LevelData<FArrayBox>& a_coarMaskInvalid) noexcept;
 
   /*!
     @brief Get a finite difference stencil, assuming that the data is cell-centered
