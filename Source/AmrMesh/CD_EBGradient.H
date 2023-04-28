@@ -62,6 +62,7 @@ public:
     @param[in] a_eblg         Grids
     @param[in] a_eblgFine     Fine grids
     @param[in] a_eblgFiCo     Refinement of coarse grids
+    @param[in] a_hasFine      Has fine level or not
     @param[in] a_dx           Resolution
     @param[in] a_refRat       Refinement ratio
     @param[in] a_order        Interpolation order for modified gradients. 
@@ -71,6 +72,7 @@ public:
   EBGradient(const EBLevelGrid& a_eblg,
              const EBLevelGrid& a_eblgFine,
              const EBLevelGrid& a_eblgFiCo,
+             const bool         a_hasFine,
              const Real         a_dx,
              const int          a_refRat,
              const int          a_order,
@@ -87,6 +89,7 @@ public:
     @param[in] a_eblg         Grids
     @param[in] a_eblgFine     Fine grids
     @param[in] a_eblgFiCo     Refinement of coarse grids
+    @param[in] a_hasFine      Has fine level or not
     @param[in] a_dx           Resolution
     @param[in] a_refRat       Refinement ratio
     @param[in] a_order        Interpolation order for modified gradients. 
@@ -97,6 +100,7 @@ public:
   define(const EBLevelGrid& a_eblg,
          const EBLevelGrid& a_eblgFine,
          const EBLevelGrid& a_eblgFiCo,
+         const bool         a_hasFine,
          const Real         a_dx,
          const int          a_refRat,
          const int          a_order,
