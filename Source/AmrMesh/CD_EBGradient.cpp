@@ -83,9 +83,9 @@ EBGradient::define(const EBLevelGrid& a_eblg,
   // Define the level stencils. These are regular finite-difference stencils.
   this->defineLevelStencils();
 
-  bool      forceNoEBCF = false;
+  bool      makeEBCF = false;
   ParmParse pp("EBGradient");
-  pp.query("force_no_ebcf", forceNoEBCF);
+  pp.query("ebcf", makeEBCF);
 
   // If there's finer level there might also be an EBCF crossing. Those can be tricky to deal with because
   // the stencil on this level (i.e., the coarse level) might reach underneath the finer level and obtain bogus data.
@@ -94,7 +94,7 @@ EBGradient::define(const EBLevelGrid& a_eblg,
   // where we can't find good stencils. If we do find such cells, we trigger m_hasEBCF which will define
   // a new set of grids where we run a least squares procedure. THOSE stencils are "dual-level" stencils
   // that ONLY reach into valid regions (i.e., not covered by a finer grid level).
-  if (m_hasFine && !forceNoEBCF) {
+  if (m_hasFine && makeEBCF) {
 
     // Masks with transient lifetimes.
     LevelData<FArrayBox> coarMaskCF;
