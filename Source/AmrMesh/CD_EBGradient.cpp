@@ -66,6 +66,7 @@ EBGradient::define(const EBLevelGrid& a_eblg,
   m_refRat       = a_refRat;
   m_order        = a_order;
   m_weighting    = a_weighting;
+  m_ghostVector  = a_ghostVector;
   m_hasEBCF      = false;
 
   if (a_eblgFine.isDefined()) {
@@ -108,6 +109,9 @@ EBGradient::define(const EBLevelGrid& a_eblg,
     }
   }
 
+  // Define optimized stencils.
+  this->makeAggStencils();
+
   m_isDefined = true;
 }
 
@@ -124,9 +128,10 @@ EBGradient::computeLevelGradient(LevelData<EBCellFAB>& a_gradient, const LevelDa
   CH_assert(m_isDefined);
   CH_assert(a_gradient.nComp() == SpaceDim);
   CH_assert(a_phi.nComp() == 1);
+  CH_assert(a_phi.ghostVect() == m_ghostVector);
+  CH_assert(a_gradient.ghostVect() == m_ghostVector);
 
   // TLDR: This routine computes the level gradient, i.e. using finite difference stencils isolated to this level.
-
   const DisjointBoxLayout& dbl   = m_eblg.getDBL();
   const EBISLayout&        ebisl = m_eblg.getEBISL();
 
@@ -172,8 +177,12 @@ EBGradient::computeLevelGradient(LevelData<EBCellFAB>& a_gradient, const LevelDa
       BoxLoops::loop(dbl[dit()], regularKernel);
       CH_STOP(t1);
 
+      // Irregular cells done using AggStencil. Which is faster.
       CH_START(t2);
-      BoxLoops::loop(m_levelIterator[dit()], irregularKernel);
+      for (int dir = 0; dir < SpaceDim; dir++) {
+        EBCellFAB alias(Interval(dir, dir), grad);
+        m_aggLevelStencils[dir][dit()]->apply(alias, phi, 0, 0, 1, false);
+      }
       CH_STOP(t2);
     }
 
@@ -1135,6 +1144,62 @@ EBGradient::getLeastSquaresStencil(VoFStencil&            a_stencilCoar,
   }
 
   return foundStencil;
+}
+
+void
+EBGradient::makeAggStencils() noexcept
+{
+  CH_TIMERS("EBGradient::makeAggStencils");
+  CH_TIMER("EBGradient::makeAggStencils::define_buffers", t1);
+  CH_TIMER("EBGradient::makeAggStencils::dbl_define", t2);
+  CH_TIMER("EBGradient::makeAggStencils::populate_stencil", t3);
+  CH_TIMER("EBGradient::makeAggStencils::define_aggstencil", t4);
+
+  // Make some proxies for the input/output data holders
+  const DisjointBoxLayout& dbl   = m_eblg.getDBL();
+  const EBISLayout&        ebisl = m_eblg.getEBISL();
+
+  CH_START(t1);
+  LevelData<EBCellFAB> proxy(dbl, 1, m_ghostVector, EBCellFactory(ebisl));
+  CH_STOP(t1);
+
+  for (int dir = 0; dir < SpaceDim; dir++) {
+    CH_START(t2);
+    m_aggLevelStencils[dir].define(dbl);
+    CH_STOP(t2);
+
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      const BaseIVFAB<VoFStencil>& rawStencils = m_levelStencils[dit()];
+
+      // Populate stencils
+      CH_START(t3);
+      Vector<RefCountedPtr<BaseIndex>>   dstBaseIndex;
+      Vector<RefCountedPtr<BaseStencil>> dstBaseStencil;
+
+      auto kernel = [&](const VolIndex& vof) -> void {
+        const VoFStencil& gradStencil = rawStencils(vof, m_comp);
+
+        // Extract the stencil in the dir-direction only.
+        VoFStencil derivDirStencil;
+        for (int i = 0; i < gradStencil.size(); i++) {
+          if (gradStencil.variable(i) == dir) {
+            derivDirStencil.add(gradStencil.vof(i), gradStencil.weight(i));
+          }
+        }
+
+        dstBaseIndex.push_back(RefCountedPtr<BaseIndex>(new VolIndex(vof)));
+        dstBaseStencil.push_back(RefCountedPtr<BaseStencil>(new VoFStencil(derivDirStencil)));
+      };
+
+      BoxLoops::loop(m_levelIterator[dit()], kernel);
+      CH_STOP(t3);
+
+      CH_START(t4);
+      m_aggLevelStencils[dir][dit()] = RefCountedPtr<AggStencil<EBCellFAB, EBCellFAB>>(
+        new AggStencil<EBCellFAB, EBCellFAB>(dstBaseIndex, dstBaseStencil, proxy[dit()], proxy[dit()]));
+      CH_STOP(t4);
+    }
+  }
 }
 
 #include <CD_NamespaceFooter.H>

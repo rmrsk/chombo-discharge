@@ -12,11 +12,9 @@
 #ifndef CD_EBGradient_H
 #define CD_EBGradient_H
 
-// Std includes
-#include <map>
-
 // Chombo includes
 #include <EBLevelGrid.H>
+#include <AggStencil.H>
 
 // Our includes
 #include <CD_Location.H>
@@ -207,6 +205,11 @@ protected:
   int m_refRat;
 
   /*!
+    @brief Number of ghost cells in incoming data holders
+  */
+  IntVect m_ghostVector;
+
+  /*!
     @brief Coarse-grid buffers
   */
   DisjointBoxLayout m_bufferDblCoar;
@@ -231,6 +234,12 @@ protected:
     @note Lives on the coarse layout. 
   */
   LayoutData<BaseIVFAB<VoFStencil>> m_levelStencils;
+
+  /*!
+    @brief AggStencils for boundaries and cut-cells. Provides faster application of m_levelStencils.
+    @note Lives on the coarse layout and only has one component. 
+  */
+  LayoutData<RefCountedPtr<AggStencil<EBCellFAB, EBCellFAB>>> m_aggLevelStencils[SpaceDim];
 
   /*!
     @brief Part of EBCF gradient stencil which reaches into the coarse level. 
@@ -386,6 +395,12 @@ protected:
   isFiniteDifferenceStencilValid(const IntVect&   a_ivCoar,
                                  const EBISBox&   a_ebisBox,
                                  const FArrayBox& a_invalidRegion) const noexcept;
+
+  /*!
+    @brief Turn raw stencils into optimized AggStencils
+  */
+  virtual void
+  makeAggStencils() noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
