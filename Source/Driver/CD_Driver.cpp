@@ -2150,15 +2150,16 @@ Driver::writePlotFile(const std::string a_filename)
   }
   numOutputComp += this->getNumberOfPlotVariables();
 
-  // If there's nothing to write, return.
   if (numOutputComp > 0) {
+
+    // Users get to restrict the maximum plot depth.
     const int finestLevel   = m_amr->getFinestLevel();
     const int maxPlotLevel  = (m_maxPlotLevel < 0) ? finestLevel : std::min(m_maxPlotLevel, finestLevel);
     const int numPlotLevels = maxPlotLevel + 1;
 
     Vector<std::string> plotVariableNames(0);
 
-    // Allocate storage
+    // Scratch storage used for output.
     EBAMRCellData output;
     m_amr->allocate(output, m_realm, phase::gas, numOutputComp);
     DataOps::setValue(output, 0.0);
@@ -2181,9 +2182,16 @@ Driver::writePlotFile(const std::string a_filename)
     DischargeIO::writeEBHDF5Header(handle, numPlotLevels, m_amr->getProbLo(), plotVariableNames);
 
     for (int lvl = 0; lvl <= maxPlotLevel; lvl++) {
+      int comp = icomp; // Should be set to once the other two functions are implemented.
+#if 0                   // This is what the code should look like!
+      m_timestepper->writePlotData(output[lvl], plotVariableNames, comp, lvl);
+      if (!(m_cellTagger.isNull())) {
+        m_cellTagger->writePlotData(*output[lvl], plotVariableNames, comp, lvl);
+      }
+#endif
 
       // Internal data that Driver wants to plot.
-      int comp = icomp;
+
       this->writePlotData(*output[lvl], comp, lvl);
 
       // Interpolate ghost cells. This might be important if we use multiple Realms.
