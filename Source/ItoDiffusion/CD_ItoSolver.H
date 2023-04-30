@@ -97,13 +97,6 @@ public:
   parseRuntimeOptions();
 
   /*!
-    @brief Get output plot names
-    @return Returns a string of all variables that this solver can add to plot files. 
-  */
-  virtual Vector<std::string>
-  getPlotVariableNames() const;
-
-  /*!
     @brief Get the EB-particle intersection algorithm
   */
   virtual EBIntersection
@@ -455,6 +448,23 @@ public:
   getNumberOfPlotVariables() const;
 
   /*!
+    @brief Get output plot names
+    @return Returns a string of all variables that this solver can add to plot files. 
+  */
+  virtual Vector<std::string>
+  getPlotVariableNames() const;
+
+  /*!
+    @brief Write plot data
+    @param[inout] a_output Output data holder.
+    @param[inout] a_icomp  Starting component where this solver begins writing the output. 
+    @param[in]    a_level  Grid level
+    @note This will write the plot data in this solver to a_output, starting on a_comp
+  */
+  virtual void
+  writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) noexcept;  
+
+  /*!
     @brief Get number of particles in a specified particle container
     @param[in] a_whichContainer Which container to count particles in. 
     @param[in] a_localOnly      Only report local particles (i.e. not reduced over MPI ranks)
@@ -507,14 +517,6 @@ public:
   virtual void
   setTime(const int a_step, const Real a_time, const Real a_dt);
 
-  /*!
-    @brief Write plot data
-    @param[inout] a_output Output data holder.
-    @param[inout] a_icomp  Starting component where this solver begins writing the output. 
-    @note This will write the plot data in this solver to a_output, starting on a_comp
-  */
-  virtual void
-  writePlotData(EBAMRCellData& a_output, int& a_comp);
 
 #ifdef CH_USE_HDF5
   /*!
@@ -1485,16 +1487,6 @@ protected:
   */
   void
   makeSuperparticles(List<ItoParticle>& a_particles, const int a_particlesPerCell);
-
-  /*!
-    @brief Write data to output. Convenience function which just copies data from one data holder to the output data holder. 
-    @param[inout] a_output            Output data holder.
-    @param[inout] a_icomp             Starting component where this solver begins writing the output. 
-    @param[in]    a_data              Data to write. 
-    @param[in]    a_interpToCentroids If true, a_data will be interpolated to cell centroids before writing to a_output. 
-  */
-  virtual void
-  writeData(EBAMRCellData& a_output, int& a_comp, const EBAMRCellData& a_data, const bool a_interpToCentroids) const;
 
   /*!
     @brief Directly interpolate mobilities. Interpolates for all particles in the specified grid patch. 

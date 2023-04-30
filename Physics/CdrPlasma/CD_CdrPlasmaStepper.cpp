@@ -4508,56 +4508,86 @@ CdrPlasmaStepper::getNumberOfPlotVariables() const
   return numVars;
 }
 
-void
-CdrPlasmaStepper::writePlotData(EBAMRCellData& a_output, Vector<std::string>& a_plotVariableNames, int& a_icomp) const
-{
-  CH_TIME("CdrPlasmaStepper::writePlotData(EBAMRCellData, Vector<std::string>, int)");
+Vector<std::string>
+CdrPlasmaStepper::getPlotVariableNames() const {
+  CH_TIME("CdrPlasmaStepper::getPlotVariableNames");
   if (m_verbosity > 3) {
-    pout() << "CdrPlasmaStepper::writePlotData(EBAMRCellData, Vector<std::string>, int)" << endl;
+    pout() << "CdrPlasmaStepper::getPlotVariableNames" << endl;
   }
 
+  Vector<std::string> plotVars;
+
+  plotVars.append(m_fieldSolver->getPlotVariableNames());
+  plotVars.append(m_sigma->getPlotVariableNames());
+  
+  for (auto solverIt = m_cdr->iterator(); solverIt.ok(); ++solverIt) {
+    RefCountedPtr<CdrSolver>& solver = solverIt();
+    plotVars.append(solver->getPlotVariableNames());
+  }
+
+  for (auto solverIt = m_rte->iterator(); solverIt.ok(); ++solverIt) {
+    RefCountedPtr<RtSolver>& solver = solverIt();
+    plotVars.append(solver->getPlotVariableNames());
+  }
+
+  plotVars.push_back("x-J");
+  plotVars.push_back("y-J");
+  if (SpaceDim == 3) {
+    plotVars.push_back("z-J");
+  }
+
+  // CdrPlasmaPhysics outputs its variable.
+  plotVars.append(m_physics->getPlotVariableNames());  
+}
+
+void
+CdrPlasmaStepper::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const 
+{
+  CH_TIME("CdrPlasmaStepper::writePlotData");
+  if (m_verbosity > 3) {
+    pout() << "CdrPlasmaStepper::writePlotData" << endl;
+  }
+
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());
+
   // Poisson solver copies over its output data
-  a_plotVariableNames.append(m_fieldSolver->getPlotVariableNames());
-  m_fieldSolver->writePlotData(a_output, a_icomp);
+  m_fieldSolver->writePlotData(a_output, a_icomp, a_level);
 
   // Surface charge solver writes
-  a_plotVariableNames.append(m_sigma->getPlotVariableNames());
-  m_sigma->writePlotData(a_output, a_icomp);
+  m_sigma->writePlotData(a_output, a_icomp, a_level);
 
   // CDR solvers output their data
   for (auto solverIt = m_cdr->iterator(); solverIt.ok(); ++solverIt) {
     RefCountedPtr<CdrSolver>& solver = solverIt();
-    a_plotVariableNames.append(solver->getPlotVariableNames());
-    solver->writePlotData(a_output, a_icomp);
+    solver->writePlotData(a_output, a_icomp, a_level);
   }
 
   // RTE solvers output their data
   for (auto solverIt = m_rte->iterator(); solverIt.ok(); ++solverIt) {
     RefCountedPtr<RtSolver>& solver = solverIt();
-    a_plotVariableNames.append(solver->getPlotVariableNames());
-    solver->writePlotData(a_output, a_icomp);
+    solver->writePlotData(a_output, a_icomp, a_level);
   }
 
   // CdrPlasmaStepper adds the current to the output file.
-  this->writeJ(a_output, a_icomp);
-  a_plotVariableNames.push_back("x-J");
-  a_plotVariableNames.push_back("y-J");
-  if (SpaceDim == 3) {
-    a_plotVariableNames.push_back("z-J");
-  }
+  this->writeJ(a_output, a_icomp, a_level);
 
   // CdrPlasmaPhysics outputs its variable.
-  a_plotVariableNames.append(m_physics->getPlotVariableNames());
-  this->writePhysics(a_output, a_icomp);
+  this->writePhysics(a_output, a_icomp, a_level);
 }
 
 void
-CdrPlasmaStepper::writeJ(EBAMRCellData& a_output, int& a_icomp) const
+CdrPlasmaStepper::writeJ(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const
 {
-  CH_TIME("CdrPlasmaStepper::writeJ(EBAMRCellData, int)");
+  CH_TIME("CdrPlasmaStepper::writeJ");
   if (m_verbosity > 3) {
-    pout() << "CdrPlasmaStepper::writeJ(EBAMRCellData, int)" << endl;
+    pout() << "CdrPlasmaStepper::writeJ" << endl;
   }
+
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());  
+
+  MayDay::Warning("CdrPlasma::writeJ - create level write routines for J");
 
   // Allocates storage for computing J.
   EBAMRCellData scratch;
@@ -4569,25 +4599,29 @@ CdrPlasmaStepper::writeJ(EBAMRCellData& a_output, int& a_icomp) const
   // Add the current density to the a_output data holder, starting on component a_icomp.
   const Interval srcInterv(0, SpaceDim - 1);
   const Interval dstInterv(a_icomp, a_icomp + SpaceDim - 1);
-  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
-    scratch[lvl]->localCopyTo(srcInterv, *a_output[lvl], dstInterv);
-  }
+  scratch[a_level]->localCopyTo(srcInterv, a_output, dstInterv);
 
   // Need to inform the outside world about the change in starting component.
   a_icomp += SpaceDim;
 }
 
 void
-CdrPlasmaStepper::writePhysics(EBAMRCellData& a_output, int& a_icomp) const
+CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const
 {
-  CH_TIME("CdrPlasmaStepper::writePhysics(EBAMRCellData, int)");
+  CH_TIME("CdrPlasmaStepper::writePhysics");
   if (m_verbosity > 3) {
     pout() << "CdrPlasmaStepper::writePhysics(EBAMRCellData, int)" << endl;
   }
 
+  MayDay::Warning("CdrPlasma::writePhysics - create level write routines");  
+
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());
+
   // Number of output variables from CdrPlasmaPhysics
   const int numVars = m_physics->getNumberOfPlotVariables();
 
+#if 0
   if (numVars > 0) {
 
     const int numCdrSpecies = m_physics->getNumCdrSpecies();
@@ -4741,8 +4775,10 @@ CdrPlasmaStepper::writePhysics(EBAMRCellData& a_output, int& a_icomp) const
     m_amr->arithmeticAverage(a_output, m_realm, phase::gas, interv);
 
     // Need to let the outside world know that we've written to some of the variables.
-    a_icomp += numVars;
   }
+#endif
+
+  a_icomp += numVars;  
 }
 
 void

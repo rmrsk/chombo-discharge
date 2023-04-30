@@ -438,11 +438,12 @@ public:
     @brief Write output data to a_output
     @param[inout] a_output Output data holder.
     @param[inout] a_icomp  Starting component where this solver begins writing the output. 
+    @param[in]    a_level  Grid level
     @note This will write the plot data in this solver to a_output, starting on a_comp
     @note This routine writes m_phi on centroids (and not cell-centers). 
   */
   virtual void
-  writePlotData(EBAMRCellData& a_output, int& a_icomp);
+  writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) noexcept;
 
   /*!
     @brief Write checkpoint data into HDF5 file. 
@@ -1281,10 +1282,11 @@ protected:
     @param[inout] a_output Output data holder.
     @param[inout] a_icomp  Starting component where this solver begins writing the output. 
     @param[in]    a_data   Data to write. 
+    @param[in]    a_level  Grid level
     @param[in]    a_interp If true, a_data will be interpolated to cell centroids before writing to a_output. 
   */
   virtual void
-  writeData(EBAMRCellData& a_output, int& a_comp, const EBAMRCellData& a_data, const bool a_interp);
+  writeData(LevelData<EBCellFAB>& a_output, int& a_comp, const LevelData<EBCellFAB>& a_data, const int a_level, const bool a_interp) noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
