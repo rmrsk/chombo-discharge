@@ -2084,7 +2084,7 @@ CdrSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int
                                *m_faceCenteredDiffusionCoefficient[a_level],
                                m_amr->getDomains()[a_level]);
 
-    // Do the previous because we need the ghost cells.
+    // Do the previous because we need the ghost cells too.
     if (a_level > 0) {
       DataOps::averageFaceToCell(*m_scratch[a_level - 1],
                                  *m_faceCenteredDiffusionCoefficient[a_level - 1],
