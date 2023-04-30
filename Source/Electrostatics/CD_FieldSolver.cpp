@@ -1371,7 +1371,7 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&    a_output,
   const Interval srcInterv(0, numComp - 1);
   const Interval dstInterv(a_comp, numComp - 1 + a_comp);
 
-  // Now do the copy.
+  // Now do the copy - make sure we include our newly interpolated ghost cells.
   CH_START(t6);
   Copier copier;
   copier.ghostDefine(scratchGas.disjointBoxLayout(),
