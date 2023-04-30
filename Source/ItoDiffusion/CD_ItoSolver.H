@@ -462,7 +462,7 @@ public:
     @note This will write the plot data in this solver to a_output, starting on a_comp
   */
   virtual void
-  writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) noexcept;  
+  writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) noexcept;
 
   /*!
     @brief Get number of particles in a specified particle container
@@ -516,7 +516,6 @@ public:
   */
   virtual void
   setTime(const int a_step, const Real a_time, const Real a_dt);
-
 
 #ifdef CH_USE_HDF5
   /*!

@@ -313,9 +313,10 @@ public:
     @brief Write plot data
     @param[inout] a_ouput Output data holder
     @param[inout] a_icomp Starting component where we begin to write data to a_output
+    @param[in]    a_level Grid level
   */
   virtual void
-  writePlotData(EBAMRCellData& a_output, int& a_icomp) override;
+  writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) override;
 
   /*!
     @brief Write checkpoint data into handle

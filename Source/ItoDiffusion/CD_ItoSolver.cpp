@@ -1352,7 +1352,7 @@ ItoSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int 
   // Plot various particle data holders.
   constexpr bool interpolateToCentroids = false;
 
-  MayDay::Error("ItoSolver::writePlotData -- need to due NGP deposition on each level");
+  MayDay::Error("ItoSolver::writePlotData -- for efficiency we need to due NGP deposition on each level");
 
   if (m_plotParticles) {
     this->depositParticles<ItoParticle, &ItoParticle::weight>(m_scratch,

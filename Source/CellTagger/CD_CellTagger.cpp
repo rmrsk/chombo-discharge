@@ -43,7 +43,8 @@ CellTagger::getNumberOfPlotVariables() const
 }
 
 Vector<std::string>
-CellTagger::getPlotVariableNames() const {
+CellTagger::getPlotVariableNames() const
+{
   CH_TIME("CellTagger::getPlotVariableNames)");
   if (m_verbosity > 5) {
     pout() << m_name + "::getPlotVariableNames" << endl;
@@ -222,8 +223,6 @@ CellTagger::parseVerbosity()
     pout() << m_name + "::parseVerbosity()" << endl;
   }
 }
-
-
 
 bool
 CellTagger::insideTagBox(const RealVect a_pos) const

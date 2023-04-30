@@ -143,7 +143,7 @@ namespace Physics {
 	@param[in]    a_level             Grid level
       */
       virtual void
-      writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const override;      
+      writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const override;
 
       /*!
 	@brief Compute the time step.

@@ -1657,38 +1657,44 @@ McPhoto::countOutcast(const AMRParticles<Photon>& a_photons) const
 }
 
 void
-McPhoto::writePlotData(EBAMRCellData& a_output, int& a_comp)
+McPhoto::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level)
 {
   CH_TIME("McPhoto::writePlotData");
   if (m_verbosity > 5) {
     pout() << m_name + "::writePlotData" << endl;
   }
 
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());
+
   if (m_plotPhi) {
-    this->writeData(a_output, a_comp, m_phi, false);
+    this->writeData(a_output, a_comp, *m_phi[a_level], a_level, false);
   }
   if (m_plotSource) {
-    this->writeData(a_output, a_comp, m_source, false);
+    this->writeData(a_output, a_comp, *m_source[a_level], a_level, false);
   }
+
+  MayDay::Warning("MCPhoto::writePlotData -- need to deposit level by level for efficiency");
+
   if (m_plotPhotons) {
     this->depositPhotons(m_scratch, m_photons, m_plotDeposition);
-    this->writeData(a_output, a_comp, m_scratch, false);
+    this->writeData(a_output, a_comp, *m_scratch[a_level], a_level, false);
   }
   if (m_plotBulkPhotons) {
     this->depositPhotons(m_scratch, m_bulkPhotons, m_plotDeposition);
-    this->writeData(a_output, a_comp, m_scratch, false);
+    this->writeData(a_output, a_comp, *m_scratch[a_level], a_level, false);
   }
   if (m_plotEBPhotons) {
     this->depositPhotons(m_scratch, m_ebPhotons, m_plotDeposition);
-    this->writeData(a_output, a_comp, m_scratch, false);
+    this->writeData(a_output, a_comp, *m_scratch[a_level], a_level, false);
   }
   if (m_plotDomainPhotons) {
     this->depositPhotons(m_scratch, m_domainPhotons, m_plotDeposition);
-    this->writeData(a_output, a_comp, m_scratch, false);
+    this->writeData(a_output, a_comp, *m_scratch[a_level], a_level, false);
   }
   if (m_plotSourcePhotons) {
     this->depositPhotons(m_scratch, m_sourcePhotons, m_plotDeposition);
-    this->writeData(a_output, a_comp, m_scratch, false);
+    this->writeData(a_output, a_comp, *m_scratch[a_level], a_level, false);
   }
 }
 

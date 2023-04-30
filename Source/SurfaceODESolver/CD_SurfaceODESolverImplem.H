@@ -800,7 +800,7 @@ SurfaceODESolver<N>::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, 
   }
 
   CH_assert(a_level >= 0);
-  CH_assert(a_level <= m_amr->getFinestLevel());  
+  CH_assert(a_level <= m_amr->getFinestLevel());
 
   // HDF5 doesn't do irregular data the way we want so we copy into EBCellFABs and
   // use that as output.
@@ -815,7 +815,7 @@ SurfaceODESolver<N>::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, 
     const Interval srcInterv(0, N - 1);
     const Interval dstInterv(a_comp, a_comp + N - 1);
 
-    scratch.copyTo(srcInterv, a_output, dstInterv);    
+    scratch.copyTo(srcInterv, a_output, dstInterv);
 
     a_comp += N;
   }

@@ -1286,7 +1286,11 @@ protected:
     @param[in]    a_interp If true, a_data will be interpolated to cell centroids before writing to a_output. 
   */
   virtual void
-  writeData(LevelData<EBCellFAB>& a_output, int& a_comp, const LevelData<EBCellFAB>& a_data, const int a_level, const bool a_interp) noexcept;
+  writeData(LevelData<EBCellFAB>&       a_output,
+            int&                        a_comp,
+            const LevelData<EBCellFAB>& a_data,
+            const int                   a_level,
+            const bool                  a_interp) noexcept;
 };
 
 #include <CD_NamespaceFooter.H>

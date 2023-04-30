@@ -4509,7 +4509,8 @@ CdrPlasmaStepper::getNumberOfPlotVariables() const
 }
 
 Vector<std::string>
-CdrPlasmaStepper::getPlotVariableNames() const {
+CdrPlasmaStepper::getPlotVariableNames() const
+{
   CH_TIME("CdrPlasmaStepper::getPlotVariableNames");
   if (m_verbosity > 3) {
     pout() << "CdrPlasmaStepper::getPlotVariableNames" << endl;
@@ -4519,7 +4520,7 @@ CdrPlasmaStepper::getPlotVariableNames() const {
 
   plotVars.append(m_fieldSolver->getPlotVariableNames());
   plotVars.append(m_sigma->getPlotVariableNames());
-  
+
   for (auto solverIt = m_cdr->iterator(); solverIt.ok(); ++solverIt) {
     RefCountedPtr<CdrSolver>& solver = solverIt();
     plotVars.append(solver->getPlotVariableNames());
@@ -4537,11 +4538,13 @@ CdrPlasmaStepper::getPlotVariableNames() const {
   }
 
   // CdrPlasmaPhysics outputs its variable.
-  plotVars.append(m_physics->getPlotVariableNames());  
+  plotVars.append(m_physics->getPlotVariableNames());
+
+  return plotVars;
 }
 
 void
-CdrPlasmaStepper::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const 
+CdrPlasmaStepper::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const
 {
   CH_TIME("CdrPlasmaStepper::writePlotData");
   if (m_verbosity > 3) {
@@ -4585,7 +4588,7 @@ CdrPlasmaStepper::writeJ(LevelData<EBCellFAB>& a_output, int& a_icomp, const int
   }
 
   CH_assert(a_level >= 0);
-  CH_assert(a_level <= m_amr->getFinestLevel());  
+  CH_assert(a_level <= m_amr->getFinestLevel());
 
   MayDay::Warning("CdrPlasma::writeJ - create level write routines for J");
 
@@ -4613,7 +4616,7 @@ CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, con
     pout() << "CdrPlasmaStepper::writePhysics(EBAMRCellData, int)" << endl;
   }
 
-  MayDay::Warning("CdrPlasma::writePhysics - create level write routines");  
+  MayDay::Warning("CdrPlasma::writePhysics - create level write routines");
 
   CH_assert(a_level >= 0);
   CH_assert(a_level <= m_amr->getFinestLevel());
@@ -4778,7 +4781,7 @@ CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, con
   }
 #endif
 
-  a_icomp += numVars;  
+  a_icomp += numVars;
 }
 
 void

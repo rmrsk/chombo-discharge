@@ -80,6 +80,12 @@ public:
   getNumberOfPlotVariables() const;
 
   /*!
+    @brief Get plot variable names. 
+  */
+  virtual Vector<std::string>
+  getPlotVariableNames() const;
+
+  /*!
     @brief Write plot data.
     @param[inout] a_output Output data holder
     @param[inout] a_icomp Starting variable in a_output where we begin appending data.
@@ -87,12 +93,6 @@ public:
   */
   virtual void
   writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const;
-
-  /*!
-    @brief Get plot variable names. 
-  */
-  virtual Vector<std::string>
-  getPlotVariableNames() const;
 
   /*!
     @brief Get tag buffer. 
