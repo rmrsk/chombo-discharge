@@ -256,6 +256,36 @@ AmrMesh::allocate(EBAMRCellData&           a_data,
 }
 
 void
+AmrMesh::allocate(LevelData<EBCellFAB>&    a_data,
+                  const std::string        a_realm,
+                  const phase::which_phase a_phase,
+                  const int                a_level,
+                  const int                a_nComp,
+                  const int                a_ghost) const
+{
+  CH_TIME("AmrMesh::allocate(LD<EBCellFAB>");
+  if (m_verbosity > 5) {
+    pout() << "AmrMesh::allocate(LD<EBCellFAB>)" << endl;
+  }
+
+  CH_assert(a_nComp > 0);
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_finestLevel);
+
+  if (!this->queryRealm(a_realm)) {
+    const std::string str = "AmrMesh::allocate(LD<EBCellFB>) - could not find realm '" + a_realm + "'";
+    MayDay::Abort(str.c_str());
+  }
+
+  const int ghost = (a_ghost < 0) ? m_numGhostCells : a_ghost;
+
+  const DisjointBoxLayout& dbl   = m_realms[a_realm]->getGrids()[a_level];
+  const EBISLayout&        ebisl = m_realms[a_realm]->getEBISLayout(a_phase)[a_level];
+
+  a_data.define(dbl, a_nComp, ghost * IntVect::Unit, EBCellFactory(ebisl));
+}
+
+void
 AmrMesh::allocate(EBAMRFluxData&           a_data,
                   const std::string        a_realm,
                   const phase::which_phase a_phase,
