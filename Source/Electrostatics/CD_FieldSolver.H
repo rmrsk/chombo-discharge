@@ -773,12 +773,12 @@ protected:
     @param[in]    a_interp Special flag which, if true, tells AmrMesh to interpolate the data to centroids (in irregular cells). 
   */
   virtual void
-  writeMultifluidData(LevelData<EBCellFAB>&       a_output,
-                      int&                        a_comp,
-                      const LevelData<MFCellFAB>& a_data,
-                      const phase::which_phase    a_phase,
-                      const int                   a_level,
-                      const bool                  a_interp) const noexcept;
+  writeMultifluidData(LevelData<EBCellFAB>&    a_output,
+                      int&                     a_comp,
+                      const MFAMRCellData&     a_data,
+                      const phase::which_phase a_phase,
+                      const int                a_level,
+                      const bool               a_interp) const noexcept;
 
   /*!
     @brief Write surface data to volume data holder. 

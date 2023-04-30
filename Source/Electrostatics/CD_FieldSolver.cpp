@@ -1146,38 +1146,45 @@ FieldSolver::writePlotData(LevelData<EBCellFAB>& a_output,
 
   // Add phi to output
   if (m_plotPotential) {
-    this->writeMultifluidData(a_output, a_comp, *m_potential[a_level], phase::gas, a_level, doInterp);
+    this->writeMultifluidData(a_output, a_comp, m_potential, phase::gas, a_level, doInterp);
   }
   if (m_plotRho) {
-    this->writeMultifluidData(a_output, a_comp, *m_rho[a_level], phase::gas, a_level, false);
+    this->writeMultifluidData(a_output, a_comp, m_rho, phase::gas, a_level, false);
   }
   if (m_plotSigma) {
     this->writeSurfaceData(a_output, a_comp, *m_sigma[a_level], a_level);
   }
   if (m_plotResidue) {
-    this->writeMultifluidData(a_output, a_comp, *m_residue[a_level], phase::gas, a_level, false);
+    this->writeMultifluidData(a_output, a_comp, m_residue, phase::gas, a_level, false);
   }
   if (m_plotPermittivity) {
-    this->writeMultifluidData(a_output, a_comp, *m_permittivityCell[a_level], phase::gas, a_level, false);
+    this->writeMultifluidData(a_output, a_comp, m_permittivityCell, phase::gas, a_level, false);
   }
   if (m_plotElectricField) {
-    this->writeMultifluidData(a_output, a_comp, *m_electricField[a_level], phase::gas, a_level, doInterp);
+    this->writeMultifluidData(a_output, a_comp, m_electricField, phase::gas, a_level, doInterp);
   }
   if (m_plotElectricFieldSolid) {
-    this->writeMultifluidData(a_output, a_comp, *m_electricField[a_level], phase::solid, a_level, doInterp);
+    this->writeMultifluidData(a_output, a_comp, m_electricField, phase::solid, a_level, doInterp);
   }
 }
 
 void
-FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&       a_output,
-                                 int&                        a_comp,
-                                 const LevelData<MFCellFAB>& a_data,
-                                 const phase::which_phase    a_phase,
-                                 const int                   a_level,
-                                 const bool                  a_interp) const noexcept
+FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&    a_output,
+                                 int&                     a_comp,
+                                 const MFAMRCellData&     a_data,
+                                 const phase::which_phase a_phase,
+                                 const int                a_level,
+                                 const bool               a_interp) const noexcept
 
 {
-  CH_TIME("FieldSolver::writeMultifluidData");
+  CH_TIMERS("FieldSolver::writeMultifluidData");
+  CH_TIMER("FieldSolver::writeMultifluidData::allocate", t1);
+  CH_TIMER("FieldSolver::writeMultifluidData::local_copy", t2);
+  CH_TIMER("FieldSolver::writeMultifluidData::interp_ghost", t3);
+  CH_TIMER("FieldSolver::writeMultifluidData::centroid_interp", t4);
+  CH_TIMER("FieldSolver::writeMultifluidData::set_data", t5);
+  CH_TIMER("FieldSolver::writeMultifluidData::define_copier", t6);
+  CH_TIMER("FieldSolver::writeMultifluidData::copy_to_output", t7);
   if (m_verbosity > 5) {
     pout() << "FieldSolver::writeMultifluidData" << endl;
   }
@@ -1194,51 +1201,112 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&       a_output,
 
   // Allocate some scratch data that we can use. We happen to know that the
   // output data is always on the gas phase realm.
-  const int numComp = a_data.nComp();
+  const int numComp = a_data[0]->nComp();
 
   LevelData<EBCellFAB> scratchGas;
   LevelData<EBCellFAB> scratchSolid;
+  LevelData<EBCellFAB> scratchGasCoar;
+  LevelData<EBCellFAB> scratchSolidCoar;
 
+  // Allocate the scratch storages.
+  CH_START(t1);
   if (reallyMultiPhase) {
     m_amr->allocate(scratchGas, m_realm, phase::gas, a_level, numComp);
     m_amr->allocate(scratchSolid, m_realm, phase::solid, a_level, numComp);
+
+    if (a_level > 0) {
+      m_amr->allocate(scratchGasCoar, m_realm, phase::gas, a_level - 1, numComp);
+      m_amr->allocate(scratchSolidCoar, m_realm, phase::solid, a_level - 1, numComp);
+    }
   }
   else {
     m_amr->allocate(scratchGas, m_realm, phase::gas, a_level, numComp);
-  }
 
-  // Copy into data holders and interpolate to centroids if we need to.
+    if (a_level > 0) {
+      m_amr->allocate(scratchGasCoar, m_realm, phase::gas, a_level - 1, numComp);
+    }
+  }
+  CH_STOP(t1);
+
+  // Copy into a_data into scratch storages.
+  CH_START(t2);
   if (reallyMultiPhase) {
     LevelData<EBCellFAB> aliasGas;
     LevelData<EBCellFAB> aliasSolid;
+    LevelData<EBCellFAB> aliasGasCoar;
+    LevelData<EBCellFAB> aliasSolidCoar;
 
-    MultifluidAlias::aliasMF(aliasGas, phase::gas, a_data);
-    MultifluidAlias::aliasMF(aliasSolid, phase::solid, a_data);
+    MultifluidAlias::aliasMF(aliasGas, phase::gas, *a_data[a_level]);
+    MultifluidAlias::aliasMF(aliasSolid, phase::solid, *a_data[a_level]);
 
     aliasGas.localCopyTo(scratchGas);
     aliasSolid.localCopyTo(scratchSolid);
+
+    if (a_level > 0) {
+      MultifluidAlias::aliasMF(aliasGasCoar, phase::gas, *a_data[a_level - 1]);
+      MultifluidAlias::aliasMF(aliasSolidCoar, phase::solid, *a_data[a_level - 1]);
+
+      aliasGasCoar.localCopyTo(scratchGasCoar);
+      aliasSolidCoar.localCopyTo(scratchSolidCoar);
+    }
   }
   else {
     LevelData<EBCellFAB> aliasGas;
+    LevelData<EBCellFAB> aliasGasCoar;
 
-    MultifluidAlias::aliasMF(aliasGas, phase::gas, a_data);
+    MultifluidAlias::aliasMF(aliasGas, phase::gas, *a_data[a_level]);
 
     aliasGas.localCopyTo(scratchGas);
+
+    if (a_level > 0) {
+      MultifluidAlias::aliasMF(aliasGasCoar, phase::gas, *a_data[a_level - 1]);
+
+      aliasGasCoar.localCopyTo(scratchGasCoar);
+    }
   }
+  CH_START(t2);
+
+  // Interpolate ghost cells on both phases.
+  CH_START(t3);
+  if (a_level > 0) {
+    for (int icomp = 0; icomp < numComp; icomp++) {
+      LevelData<EBCellFAB> data;
+      LevelData<EBCellFAB> coarData;
+
+      aliasLevelData<EBCellFAB>(data, &scratchGas, Interval(icomp, icomp));
+      aliasLevelData<EBCellFAB>(coarData, &scratchGasCoar, Interval(icomp, icomp));
+
+      m_amr->interpGhost(data, coarData, a_level, m_realm, phase::gas);
+    }
+
+    if (reallyMultiPhase) {
+      for (int icomp = 0; icomp < numComp; icomp++) {
+        LevelData<EBCellFAB> data;
+        LevelData<EBCellFAB> coarData;
+
+        aliasLevelData<EBCellFAB>(data, &scratchSolid, Interval(icomp, icomp));
+        aliasLevelData<EBCellFAB>(coarData, &scratchSolidCoar, Interval(icomp, icomp));
+
+        m_amr->interpGhost(data, coarData, a_level, m_realm, phase::solid);
+      }
+    }
+  }
+  CH_STOP(t3);
 
   // Put cell-centered data on centroid.
+  CH_START(t4);
   if (a_interp) {
+    m_amr->interpToCentroids(scratchGas, m_realm, phase::gas, a_level);
+
     if (reallyMultiPhase) {
-      m_amr->interpToCentroids(scratchGas, m_realm, phase::gas, a_level);
       m_amr->interpToCentroids(scratchSolid, m_realm, phase::solid, a_level);
     }
-    else {
-      m_amr->interpToCentroids(scratchGas, m_realm, phase::gas, a_level);
-    }
   }
+  CH_STOP(t4);
 
   // Go through all levels and grid patches and replace the covered gas-side scratch data with the regular solid-side scratch data. On cut-cells
   // we determine the data based on the a_phase input flag.
+  CH_START(t5);
   if (reallyMultiPhase) {
     const DisjointBoxLayout& dbl        = m_amr->getGrids(m_realm)[a_level];
     const EBISLayout&        ebislGas   = m_amr->getEBISLayout(m_realm, phase::gas)[a_level];
@@ -1297,12 +1365,25 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&       a_output,
       }
     }
   }
+  CH_START(t5);
 
   // Copy the single-phase data to the output data holder.
   const Interval srcInterv(0, numComp - 1);
   const Interval dstInterv(a_comp, numComp - 1 + a_comp);
 
-  scratchGas.copyTo(srcInterv, a_output, dstInterv);
+  // Now do the copy.
+  CH_START(t6);
+  Copier copier;
+  copier.ghostDefine(scratchGas.disjointBoxLayout(),
+                     a_output.disjointBoxLayout(),
+                     m_amr->getDomains()[a_level],
+                     scratchGas.ghostVect(),
+                     a_output.ghostVect());
+  CH_STOP(t6);
+
+  CH_START(t7);
+  scratchGas.copyTo(srcInterv, a_output, dstInterv, copier);
+  CH_STOP(t7);
 
   a_comp += numComp;
 }
