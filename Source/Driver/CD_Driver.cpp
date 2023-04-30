@@ -2145,9 +2145,9 @@ Driver::writePlotFile(const std::string a_filename)
 
   // Get total number of components for output
   int numOutputComp = m_timeStepper->getNumberOfPlotVariables();
-  if (!m_cellTagger.isNull()) {
-    numOutputComp += m_cellTagger->getNumberOfPlotVariables();
-  }
+  // if (!m_cellTagger.isNull()) {
+  //   numOutputComp += m_cellTagger->getNumberOfPlotVariables();
+  // }
   numOutputComp += this->getNumberOfPlotVariables();
 
   if (numOutputComp > 0) {
@@ -2157,18 +2157,7 @@ Driver::writePlotFile(const std::string a_filename)
     const int maxPlotLevel  = (m_maxPlotLevel < 0) ? finestLevel : std::min(m_maxPlotLevel, finestLevel);
     const int numPlotLevels = maxPlotLevel + 1;
 
-    Vector<std::string> plotVariableNames(0);
-
     // Scratch storage used for output.
-    EBAMRCellData output;
-    m_amr->allocate(output, m_realm, phase::gas, numOutputComp);
-    DataOps::setValue(output, 0.0);
-
-    int icomp = 0;
-    m_timeStepper->writePlotData(output, plotVariableNames, icomp);
-    if (!m_cellTagger.isNull()) {
-      m_cellTagger->writePlotData(output, plotVariableNames, icomp);
-    }
 
     // Write the fucking thing already.
 #ifdef CH_USE_HDF5
@@ -2176,25 +2165,30 @@ Driver::writePlotFile(const std::string a_filename)
       pout() << "Driver::writePlotFile - writing plot file..." << endl;
     }
 
-    plotVariableNames.append(this->getPlotVariableNames());
+    Vector<std::string> plotVariableNames;
+    plotVariableNames.append(m_timeStepper->getPlotVariableNames());
+    if (!(m_cellTagger.isNull())) {
+      plotVariableNames.append(m_cellTagger->getPlotVariableNames());
+    }
 
     HDF5Handle handle(a_filename.c_str(), HDF5Handle::CREATE);
     DischargeIO::writeEBHDF5Header(handle, numPlotLevels, m_amr->getProbLo(), plotVariableNames);
 
     for (int lvl = 0; lvl <= maxPlotLevel; lvl++) {
-      int comp = icomp; // Should be set to once the other two functions are implemented.
-#if 0                   // This is what the code should look like!
-      m_timestepper->writePlotData(output[lvl], plotVariableNames, comp, lvl);
+      LevelData<EBCellFAB> output;
+      m_amr->allocate(output, m_realm, phase::gas, lvl, numOutputComp);
+      DataOps::setValue(output, 0.0);
+
+      // Relevant components collect data for IO.
+      int comp = 0;
+      m_timeStepper->writePlotData(output, comp, lvl);
       if (!(m_cellTagger.isNull())) {
-        m_cellTagger->writePlotData(*output[lvl], plotVariableNames, comp, lvl);
+        m_cellTagger->writePlotData(output, comp, lvl);
       }
-#endif
+      this->writePlotData(output, comp, lvl);
 
-      // Internal data that Driver wants to plot.
-
-      this->writePlotData(*output[lvl], comp, lvl);
-
-      // Interpolate ghost cells. This might be important if we use multiple Realms.
+      // Interpolate ghost cells. This might be important if we use multiple Realms. Will have to redo this later.
+#if 0
       if (lvl > 0) {
         for (int icomp = 0; icomp < numOutputComp; icomp++) {
           EBAMRCellData singleComponentData = m_amr->slice(output, Interval(icomp, icomp));
@@ -2202,10 +2196,13 @@ Driver::writePlotFile(const std::string a_filename)
           m_amr->interpGhost(*singleComponentData[lvl], *singleComponentData[lvl - 1], lvl, m_realm, phase::gas);
         }
       }
+#else
+      MayDay::Warning("Driver::writePlotFile -- need to fix ghost cell interp");
+#endif
 
       const int refRat = (lvl < m_amr->getFinestLevel()) ? m_amr->getRefinementRatios()[lvl] : 1;
       DischargeIO::writeEBHDF5Level(handle,
-                                    *output[lvl],
+                                    output,
                                     m_amr->getDomains()[lvl],
                                     m_amr->getDx()[lvl],
                                     m_dt,

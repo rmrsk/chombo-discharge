@@ -1007,8 +1007,10 @@ FieldSolver::writePlotFile()
   m_amr->allocate(output, m_realm, phase::gas, numPlotVars);
 
   // Copy internal data to be plotted over to 'output'
-  int icomp = 0;
-  this->writePlotData(output, icomp, true);
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    int icomp = 0;
+    this->writePlotData(*output[lvl], icomp, lvl, true);
+  }
 
   // Filename
   char file_char[1000];
@@ -1125,180 +1127,167 @@ FieldSolver::postCheckpoint()
 }
 
 void
-FieldSolver::writePlotData(EBAMRCellData& a_output, int& a_comp, const bool a_forceNoInterp)
+FieldSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level, const bool a_forceNoInterp)
 {
-  CH_TIME("FieldSolver::writePlotData(EBAMRCellData, int, bool)");
+  CH_TIME("FieldSolver::writePlotData");
   if (m_verbosity > 5) {
-    pout() << "FieldSolver::writePlotData(EBAMRCellData, int, bool)" << endl;
+    pout() << "FieldSolver::writePlotData" << endl;
   }
+
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());
 
   // This routine always outputs data on the centroid. If the data was defined on the center we move it to the centroid (but not forcefully)
   const bool doInterp = (m_dataLocation == Location::Cell::Center) && !a_forceNoInterp;
 
   // Add phi to output
   if (m_plotPotential) {
-    this->writeMultifluidData(a_output, a_comp, m_potential, phase::gas, doInterp);
+    this->writeMultifluidData(a_output, a_comp, *m_potential[a_level], phase::gas, a_level, doInterp);
   }
   if (m_plotRho) {
-    this->writeMultifluidData(a_output, a_comp, m_rho, phase::gas, false);
+    this->writeMultifluidData(a_output, a_comp, *m_rho[a_level], phase::gas, a_level, false);
   }
   if (m_plotSigma) {
-    this->writeSurfaceData(a_output, a_comp, m_sigma);
+    this->writeSurfaceData(a_output, a_comp, *m_sigma[a_level], a_level);
   }
   if (m_plotResidue) {
-    this->writeMultifluidData(a_output, a_comp, m_residue, phase::gas, false);
+    this->writeMultifluidData(a_output, a_comp, *m_residue[a_level], phase::gas, a_level, false);
   }
   if (m_plotPermittivity) {
-    this->writeMultifluidData(a_output, a_comp, m_permittivityCell, phase::gas, false);
+    this->writeMultifluidData(a_output, a_comp, *m_permittivityCell[a_level], phase::gas, a_level, false);
   }
   if (m_plotElectricField) {
-    this->writeMultifluidData(a_output, a_comp, m_electricField, phase::gas, doInterp);
+    this->writeMultifluidData(a_output, a_comp, *m_electricField[a_level], phase::gas, a_level, doInterp);
   }
   if (m_plotElectricFieldSolid) {
-    this->writeMultifluidData(a_output, a_comp, m_electricField, phase::solid, doInterp);
+    this->writeMultifluidData(a_output, a_comp, *m_electricField[a_level], phase::solid, a_level, doInterp);
   }
 }
 
 void
-FieldSolver::writeMultifluidData(EBAMRCellData&           a_output,
-                                 int&                     a_comp,
-                                 const MFAMRCellData&     a_data,
-                                 const phase::which_phase a_phase,
-                                 const bool               a_interp) const
+FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&       a_output,
+                                 int&                        a_comp,
+                                 const LevelData<MFCellFAB>& a_data,
+                                 const phase::which_phase    a_phase,
+                                 const int                   a_level,
+                                 const bool                  a_interp) const
+
 {
-  CH_TIME("FieldSolver::writeMultifluidData(EBAMRCellData, int, MFAMRCellData, bool)");
+  CH_TIME("FieldSolver::writeMultifluidData");
   if (m_verbosity > 5) {
-    pout() << "FieldSolver::writeMultifluidData(EBAMRCellData, int, MFAMRCellData, bool)" << endl;
+    pout() << "FieldSolver::writeMultifluidData" << endl;
   }
+
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());
 
   // So the problem with the Chombo HDF5 I/O routines is that they are not really designed for multiphase. We happen to know that a_data can be multifluid data
   // which we want to put onto a single-phase data holder. There is ambiguity only in the cut-cells because the data there has multiple degrees of freedom. We also
   // happen to know that a_output is on the gas phase. Our issue is that we need to decide if the gas-side or solid-side data goes into the output data holder.
-
-  const int numComp = a_data[0]->nComp();
-
   const RefCountedPtr<EBIndexSpace>& ebisSol = m_multifluidIndexSpace->getEBIndexSpace(phase::solid);
 
   const bool reallyMultiPhase = !(ebisSol.isNull());
 
-  // Aliases of the input multifluid data.
-  EBAMRCellData aliasGas;
-  EBAMRCellData aliasSolid;
-  if (reallyMultiPhase) {
-    aliasGas   = m_amr->alias(phase::gas, a_data);
-    aliasSolid = m_amr->alias(phase::solid, a_data);
-  }
-  else {
-    aliasGas = m_amr->alias(phase::gas, a_data);
-  }
-
   // Allocate some scratch data that we can use. We happen to know that the
   // output data is always on the gas phase realm.
-  EBAMRCellData scratchSolid;
-  EBAMRCellData scratchGas;
+  const int numComp = a_data.nComp();
+
+  LevelData<EBCellFAB> scratchSolid;
+  LevelData<EBCellFAB> scratchGas;
+
   if (reallyMultiPhase) {
-    m_amr->allocate(scratchGas, m_realm, phase::gas, numComp);
-    m_amr->allocate(scratchSolid, m_realm, phase::solid, numComp);
+    m_amr->allocate(scratchGas, m_realm, phase::gas, a_level, numComp);
+    m_amr->allocate(scratchSolid, m_realm, phase::solid, a_level, numComp);
   }
   else {
-    m_amr->allocate(scratchGas, m_realm, phase::gas, numComp);
+    m_amr->allocate(scratchGas, m_realm, phase::gas, a_level, numComp);
   }
 
   // Copy into data holders and interpolate to centroids if we need to.
   if (reallyMultiPhase) {
-    DataOps::copy(scratchGas, aliasGas);
-    DataOps::copy(scratchSolid, aliasSolid);
-  }
-  else {
-    DataOps::copy(scratchGas, aliasGas);
-  }
+    LevelData<EBCellFAB> aliasGas;
+    LevelData<EBCellFAB> aliasSolid;
 
-  // Coarsen data.
-  if (reallyMultiPhase) {
-    m_amr->conservativeAverage(scratchGas, m_realm, phase::gas);
-    m_amr->conservativeAverage(scratchSolid, m_realm, phase::solid);
-  }
-  else {
-    m_amr->conservativeAverage(scratchGas, m_realm, phase::gas);
-  }
+    MultifluidAlias::aliasMF(aliasGas, phase::gas, a_data);
+    MultifluidAlias::aliasMF(aliasGas, phase::solid, a_data);
 
-  // Interpolate ghost cells.
-  if (reallyMultiPhase) {
-    m_amr->interpGhost(scratchGas, m_realm, phase::gas);
-    m_amr->interpGhost(scratchSolid, m_realm, phase::solid);
+    aliasGas.localCopyTo(scratchGas);
+    aliasSolid.localCopyTo(scratchSolid);
   }
   else {
-    m_amr->interpGhost(scratchGas, m_realm, phase::gas);
+    LevelData<EBCellFAB> aliasGas;
+
+    MultifluidAlias::aliasMF(aliasGas, phase::gas, a_data);
+
+    aliasGas.localCopyTo(scratchGas);
   }
 
   // Put cell-centered data on centroid.
   if (a_interp) {
     if (reallyMultiPhase) {
-      m_amr->interpToCentroids(scratchGas, m_realm, phase::gas);
-      m_amr->interpToCentroids(scratchSolid, m_realm, phase::solid);
+      m_amr->interpToCentroids(scratchGas, m_realm, phase::gas, a_level);
+      m_amr->interpToCentroids(scratchSolid, m_realm, phase::solid, a_level);
     }
     else {
-      m_amr->interpToCentroids(scratchGas, m_realm, phase::gas);
+      m_amr->interpToCentroids(scratchGas, m_realm, phase::gas, a_level);
     }
   }
 
   // Go through all levels and grid patches and replace the covered gas-side scratch data with the regular solid-side scratch data. On cut-cells
   // we determine the data based on the a_phase input flag.
   if (reallyMultiPhase) {
-    for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
-      const DisjointBoxLayout& dbl        = m_amr->getGrids(m_realm)[lvl];
-      const EBISLayout&        ebislGas   = m_amr->getEBISLayout(m_realm, phase::gas)[lvl];
-      const EBISLayout&        ebislSolid = m_amr->getEBISLayout(m_realm, phase::solid)[lvl];
+    const DisjointBoxLayout& dbl        = m_amr->getGrids(m_realm)[a_level];
+    const EBISLayout&        ebislGas   = m_amr->getEBISLayout(m_realm, phase::gas)[a_level];
+    const EBISLayout&        ebislSolid = m_amr->getEBISLayout(m_realm, phase::solid)[a_level];
 
-      for (DataIterator dit(dbl); dit.ok(); ++dit) {
-        const EBISBox& ebisBoxGas   = ebislGas[dit()];
-        const EBISBox& ebisBoxSolid = ebislSolid[dit()];
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      const EBISBox& ebisBoxGas   = ebislGas[dit()];
+      const EBISBox& ebisBoxSolid = ebislSolid[dit()];
 
-        const bool isGasRegular   = ebisBoxGas.isAllRegular();
-        const bool isGasCovered   = ebisBoxGas.isAllCovered();
-        const bool isGasIrregular = !isGasRegular && !isGasCovered;
+      const bool isGasRegular   = ebisBoxGas.isAllRegular();
+      const bool isGasCovered   = ebisBoxGas.isAllCovered();
+      const bool isGasIrregular = !isGasRegular && !isGasCovered;
 
-        const bool isSolidRegular   = ebisBoxSolid.isAllRegular();
-        const bool isSolidCovered   = ebisBoxSolid.isAllCovered();
-        const bool isSolidIrregular = !isSolidRegular && !isSolidCovered;
+      const bool isSolidRegular   = ebisBoxSolid.isAllRegular();
+      const bool isSolidCovered   = ebisBoxSolid.isAllCovered();
+      const bool isSolidIrregular = !isSolidRegular && !isSolidCovered;
 
-        FArrayBox&       fabGas   = (*scratchGas[lvl])[dit()].getFArrayBox();
-        const FArrayBox& fabSolid = (*scratchSolid[lvl])[dit()].getFArrayBox();
+      FArrayBox&       fabGas   = scratchGas[dit()].getFArrayBox();
+      const FArrayBox& fabSolid = scratchSolid[dit()].getFArrayBox();
 
-        // This is true if the current EBISBox covers a region that is either inside the gas phase
-        // or inside the solid phase.
-        const bool validData = !(isGasCovered && isSolidCovered);
-        if (validData) {
+      // This is true if the current EBISBox covers a region that is either inside the gas phase
+      // or inside the solid phase.
+      const bool validData = !(isGasCovered && isSolidCovered);
+      if (validData) {
 
-          if (isSolidRegular) {
-            // In this case we are purely inside the solid region -- take the data from the solid phase.
-            fabGas.copy(fabSolid);
-          }
-          else if (isGasIrregular && isSolidIrregular) {
-            // In this case we are looking at a grid patch that lies on the gas-solid boundary. We need to determine which cells
-            // go into the output region. We happen to know that all gas-side data is already filled, so we only need to grok
-            // the solid-side data.
+        if (isSolidRegular) {
+          // In this case we are purely inside the solid region -- take the data from the solid phase.
+          fabGas.copy(fabSolid);
+        }
+        else if (isGasIrregular && isSolidIrregular) {
+          // In this case we are looking at a grid patch that lies on the gas-solid boundary. We need to determine which cells
+          // go into the output region. We happen to know that all gas-side data is already filled, so we only need to grok
+          // the solid-side data.
 
-            for (int comp = 0; comp < numComp; comp++) {
+          for (int comp = 0; comp < numComp; comp++) {
 
-              auto kernel = [&](const IntVect& iv) -> void {
-                const bool coveredGas   = ebisBoxGas.isCovered(iv);
-                const bool irregGas     = ebisBoxGas.isIrregular(iv);
-                const bool regularSolid = ebisBoxSolid.isRegular(iv);
-                const bool irregSolid   = ebisBoxSolid.isIrregular(iv);
+            auto kernel = [&](const IntVect& iv) -> void {
+              const bool coveredGas   = ebisBoxGas.isCovered(iv);
+              const bool irregGas     = ebisBoxGas.isIrregular(iv);
+              const bool regularSolid = ebisBoxSolid.isRegular(iv);
+              const bool irregSolid   = ebisBoxSolid.isIrregular(iv);
 
-                if (regularSolid && coveredGas) {
+              if (regularSolid && coveredGas) {
+                fabGas(iv, comp) = fabSolid(iv, comp);
+              }
+              else if (irregGas && irregSolid) {
+                if (a_phase == phase::solid) {
                   fabGas(iv, comp) = fabSolid(iv, comp);
                 }
-                else if (irregGas && irregSolid) {
-                  if (a_phase == phase::solid) {
-                    fabGas(iv, comp) = fabSolid(iv, comp);
-                  }
-                }
-              };
+              }
+            };
 
-              BoxLoops::loop(dbl[dit()], kernel);
-            }
+            BoxLoops::loop(dbl[dit()], kernel);
           }
         }
       }
@@ -1309,42 +1298,35 @@ FieldSolver::writeMultifluidData(EBAMRCellData&           a_output,
   const Interval srcInterv(0, numComp - 1);
   const Interval dstInterv(a_comp, numComp - 1 + a_comp);
 
-  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
-    if (m_realm == a_output.getRealm()) {
-      scratchGas[lvl]->localCopyTo(srcInterv, *a_output[lvl], dstInterv);
-    }
-    else {
-      scratchGas[lvl]->copyTo(srcInterv, *a_output[lvl], dstInterv);
-    }
-  }
+  scratchGas.copyTo(srcInterv, a_output, dstInterv);
 
   a_comp += numComp;
 }
 
 void
-FieldSolver::writeSurfaceData(EBAMRCellData& a_output, int& a_comp, const EBAMRIVData& a_data)
+FieldSolver::writeSurfaceData(LevelData<EBCellFAB>&             a_output,
+                              int&                              a_comp,
+                              const LevelData<BaseIVFAB<Real>>& a_data,
+                              const int                         a_level) const noexcept
 {
-  CH_TIME("FieldSolver::writeSurfaceData(EBAMRCellData, int, EBAMRIVData)");
+  CH_TIME("FieldSolver::writeSurfaceData");
   if (m_verbosity > 5) {
-    pout() << "FieldSolver::writeSurfaceData(EBAMRCellData, int, EBAMRIVData)" << endl;
+    pout() << "FieldSolver::writeSurfaceData" << endl;
   }
 
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());
+  CH_assert(a_data.nComp() == 1);
+
   // Put a_data in volume format.
-  EBAMRCellData scratch;
-  m_amr->allocate(scratch, m_realm, phase::gas, 1);
+  LevelData<EBCellFAB> scratch;
+  m_amr->allocate(scratch, m_realm, phase::gas, a_level, 1);
 
   DataOps::setValue(scratch, 0.0);
   DataOps::incr(scratch, a_data, 1.0);
 
   // Copy to a_output
-  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
-    if (m_realm == a_output.getRealm()) {
-      scratch[lvl]->localCopyTo(Interval(0, 0), *a_output[lvl], Interval(a_comp, a_comp));
-    }
-    else {
-      scratch[lvl]->copyTo(Interval(0, 0), *a_output[lvl], Interval(a_comp, a_comp));
-    }
-  }
+  scratch.copyTo(Interval(0, 0), a_output, Interval(a_comp, a_comp));
 
   a_comp++;
 }

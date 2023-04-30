@@ -1379,6 +1379,19 @@ public:
   interpToCentroids(EBAMRCellData& a_data, const std::string a_realm, const phase::which_phase a_phase) const;
 
   /*!
+    @brief Interpolate data to centroids
+    @param[inout] a_data  Data to be interpolated
+    @param[in]    a_realm Realm name
+    @param[in]    a_phase Phase (gas or solid)
+    @param[in]    a_level Grid level
+  */
+  void
+  interpToCentroids(LevelData<EBCellFAB>&    a_data,
+                    const std::string        a_realm,
+                    const phase::which_phase a_phase,
+                    const int                a_level) const;
+
+  /*!
     @brief Sets multifluid index space. 
     @param[in] a_multiFluidIndexSpace Multifluid index space wrapper. 
   */

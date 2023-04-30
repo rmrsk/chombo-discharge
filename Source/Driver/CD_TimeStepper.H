@@ -146,11 +146,11 @@ public:
   /*!
     @brief Write plot data to output holder. 
     @param[inout] a_output            Output data holder.
-    @param[in]    a_plotVariableNames Plot variable names.
     @param[inout] a_icomp             Starting component in a_output to begin at. 
+    @param[in]    a_level             Grid level
   */
   virtual void
-  writePlotData(EBAMRCellData& a_output, Vector<std::string>& a_plotVariableNames, int& a_icomp) const = 0;
+  writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const = 0;
 
   /*!
     @brief Get the number of plot variables for this time stepper. 
@@ -159,6 +159,12 @@ public:
   */
   virtual int
   getNumberOfPlotVariables() const = 0;
+
+  /*!
+    @brief Get plot variable names
+  */
+  virtual Vector<std::string>
+  getPlotVariableNames() const = 0;
 
   /*!
     @brief Get computational loads to be checkpointed. 

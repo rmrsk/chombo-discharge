@@ -289,23 +289,37 @@ namespace Physics {
     }
 
     template <class T>
+    Vector<std::string>
+    FieldStepper<T>::getPlotVariableNames() const
+    {
+      CH_TIME("FieldStepper::getPlotVariableNames");
+      if (m_verbosity > 5) {
+        pout() << "FieldStepper<T>::getPlotVariableNames" << endl;
+      }
+
+      Vector<std::string> plotVars;
+
+      plotVars.append(m_fieldSolver->getPlotVariableNames());
+      plotVars.append(m_sigma->getPlotVariableNames());
+
+      return plotVars;
+    }
+
+    template <class T>
     void
-    FieldStepper<T>::writePlotData(EBAMRCellData&       a_output,
-                                   Vector<std::string>& a_plotVariableNames,
-                                   int&                 a_icomp) const
+    FieldStepper<T>::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const
     {
       CH_TIME("FieldStepper::writePlotData");
       if (m_verbosity > 5) {
         pout() << "FieldStepper<T>::writePlotData" << endl;
       }
 
-      // Append plot variable names.
-      a_plotVariableNames.append(m_fieldSolver->getPlotVariableNames());
-      a_plotVariableNames.append(m_sigma->getPlotVariableNames());
+      CH_assert(a_level >= 0);
+      CH_assert(a_level <= m_amr->getFinestLevel());
 
       // Write into plot data holder memory.
-      m_fieldSolver->writePlotData(a_output, a_icomp);
-      m_sigma->writePlotData(a_output, a_icomp);
+      m_fieldSolver->writePlotData(a_output, a_icomp, a_level);
+      m_sigma->writePlotData(a_output, a_icomp, a_level);
     }
 
     template <class T>
