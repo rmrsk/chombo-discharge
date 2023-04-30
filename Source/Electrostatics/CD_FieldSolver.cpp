@@ -1009,6 +1009,7 @@ FieldSolver::writePlotFile()
   // Copy internal data to be plotted over to 'output'
   for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
     int icomp = 0;
+
     this->writePlotData(*output[lvl], icomp, lvl, true);
   }
 
@@ -1127,7 +1128,10 @@ FieldSolver::postCheckpoint()
 }
 
 void
-FieldSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level, const bool a_forceNoInterp)
+FieldSolver::writePlotData(LevelData<EBCellFAB>& a_output,
+                           int&                  a_comp,
+                           const int             a_level,
+                           const bool            a_forceNoInterp) const noexcept
 {
   CH_TIME("FieldSolver::writePlotData");
   if (m_verbosity > 5) {
@@ -1170,7 +1174,7 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&       a_output,
                                  const LevelData<MFCellFAB>& a_data,
                                  const phase::which_phase    a_phase,
                                  const int                   a_level,
-                                 const bool                  a_interp) const
+                                 const bool                  a_interp) const noexcept
 
 {
   CH_TIME("FieldSolver::writeMultifluidData");
@@ -1192,8 +1196,8 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&       a_output,
   // output data is always on the gas phase realm.
   const int numComp = a_data.nComp();
 
-  LevelData<EBCellFAB> scratchSolid;
   LevelData<EBCellFAB> scratchGas;
+  LevelData<EBCellFAB> scratchSolid;
 
   if (reallyMultiPhase) {
     m_amr->allocate(scratchGas, m_realm, phase::gas, a_level, numComp);
@@ -1209,7 +1213,7 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&       a_output,
     LevelData<EBCellFAB> aliasSolid;
 
     MultifluidAlias::aliasMF(aliasGas, phase::gas, a_data);
-    MultifluidAlias::aliasMF(aliasGas, phase::solid, a_data);
+    MultifluidAlias::aliasMF(aliasSolid, phase::solid, a_data);
 
     aliasGas.localCopyTo(scratchGas);
     aliasSolid.localCopyTo(scratchSolid);
@@ -1316,19 +1320,20 @@ FieldSolver::writeSurfaceData(LevelData<EBCellFAB>&             a_output,
 
   CH_assert(a_level >= 0);
   CH_assert(a_level <= m_amr->getFinestLevel());
-  CH_assert(a_data.nComp() == 1);
+
+  const int numComp = a_data.nComp();
 
   // Put a_data in volume format.
   LevelData<EBCellFAB> scratch;
-  m_amr->allocate(scratch, m_realm, phase::gas, a_level, 1);
+  m_amr->allocate(scratch, m_realm, phase::gas, a_level, numComp);
 
   DataOps::setValue(scratch, 0.0);
   DataOps::incr(scratch, a_data, 1.0);
 
   // Copy to a_output
-  scratch.copyTo(Interval(0, 0), a_output, Interval(a_comp, a_comp));
+  scratch.copyTo(Interval(0, numComp - 1), a_output, Interval(a_comp, a_comp));
 
-  a_comp++;
+  a_comp += numComp;
 }
 
 int

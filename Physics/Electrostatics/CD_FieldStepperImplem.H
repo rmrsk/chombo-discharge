@@ -105,22 +105,22 @@ namespace Physics {
 
       // Instantiate the FieldSolver and set it up.
       m_fieldSolver = RefCountedPtr<FieldSolver>(new T());
-      m_fieldSolver->setVerbosity(m_verbosity);
       m_fieldSolver->parseOptions();
       m_fieldSolver->setAmr(m_amr);
       m_fieldSolver->setComputationalGeometry(m_computationalGeometry);
       m_fieldSolver->setVoltage(voltage);
       m_fieldSolver->setRealm(m_realm);
       m_fieldSolver->setTime(0, 0.0, 0.0);
+      m_fieldSolver->setVerbosity(m_verbosity);
 
       // Instantiate the surface charge solver and set it up.
       m_sigma = RefCountedPtr<SurfaceODESolver<1>>(new SurfaceODESolver<1>(m_amr));
-      m_sigma->setVerbosity(m_verbosity);
       m_sigma->setPhase(phase::gas);
       m_sigma->setRealm(m_realm);
       m_sigma->setName("Surface charge");
       m_sigma->parseOptions();
       m_sigma->setTime(0, 0.0, 0.0);
+      m_sigma->setVerbosity(m_verbosity);
     }
 
     template <class T>
