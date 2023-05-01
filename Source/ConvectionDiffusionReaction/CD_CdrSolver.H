@@ -1292,7 +1292,7 @@ protected:
             const EBAMRCellData&  a_data,
             const int             a_level,
             const bool            a_interpToCentroids,
-            const bool            a_interpGhost) noexcept;
+            const bool            a_interpGhost) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>

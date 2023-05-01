@@ -2126,7 +2126,7 @@ CdrSolver::writeData(LevelData<EBCellFAB>& a_output,
                      const EBAMRCellData&  a_data,
                      const int             a_level,
                      const bool            a_interpToCentroids,
-                     const bool            a_interpGhost) noexcept
+                     const bool            a_interpGhost) const noexcept
 
 {
   CH_TIMERS("CdrSolver::writeData");
@@ -2139,9 +2139,6 @@ CdrSolver::writeData(LevelData<EBCellFAB>& a_output,
   if (m_verbosity > 5) {
     pout() << m_name + "::writeData" << endl;
   }
-
-  // TLDR: This routine copies from a data holder to another data, but in a general way where components don't align (which prevents
-  //       us from using one-line methods). A special flag (a_interp) tells us to interpolate to cell centroids or not.
 
   // Number of components we are working with.
   const int numComp = a_data[a_level]->nComp();
