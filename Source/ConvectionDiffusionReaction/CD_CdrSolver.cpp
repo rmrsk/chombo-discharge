@@ -2055,7 +2055,7 @@ CdrSolver::writePlotFile()
 }
 
 void
-CdrSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) noexcept
+CdrSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const noexcept
 {
   CH_TIME("CdrSolver::writePlotData");
   if (m_verbosity > 5) {
@@ -2154,6 +2154,7 @@ CdrSolver::writeData(LevelData<EBCellFAB>& a_output,
 
   CH_START(t2);
   a_data[a_level]->localCopyTo(scratch);
+  scratch.exchange();
   CH_START(t2);
 
   // Interpolate ghost cells

@@ -294,7 +294,7 @@ RtSolver::getPlotVariableNames() const
 }
 
 void
-RtSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level)
+RtSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) const noexcept
 {
   CH_TIME("RtSolver::writePlotData");
   if (m_verbosity > 5) {
@@ -305,50 +305,86 @@ RtSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a
   CH_assert(a_level <= m_amr->getFinestLevel(););
 
   if (m_plotPhi) {
-    this->writeData(a_output, a_comp, *m_phi[a_level], a_level, true);
+    this->writeData(a_output, a_comp, m_phi, a_level, true, true);
   }
   if (m_plotSource) {
-    writeData(a_output, a_comp, *m_source[a_level], a_level, false);
+    this->writeData(a_output, a_comp, m_source, a_level, false, true);
   }
 }
 
 void
-RtSolver::writeData(LevelData<EBCellFAB>&       a_output,
-                    int&                        a_comp,
-                    const LevelData<EBCellFAB>& a_data,
-                    const int                   a_level,
-                    const bool                  a_interp) const noexcept
+RtSolver::writeData(LevelData<EBCellFAB>& a_output,
+                    int&                  a_comp,
+                    const EBAMRCellData&  a_data,
+                    const int             a_level,
+                    const bool            a_interpToCentroids,
+                    const bool            a_interpGhost) const noexcept
+
 {
-  CH_TIME("RtSolver::writeData");
+  CH_TIMERS("RtSolver::writeData");
+  CH_TIMER("RtSolver::writeData::allocate", t1);
+  CH_TIMER("RtSolver::writeData::local_copy", t2);
+  CH_TIMER("RtSolver::writeData::interp_ghost", t3);
+  CH_TIMER("RtSolver::writeData::interp_centroid", t4);
+  CH_TIMER("RtSolver::writeData::define_copier", t5);
+  CH_TIMER("RtSolver::writeData::final_copy", t6);
   if (m_verbosity > 5) {
     pout() << m_name + "::writeData" << endl;
   }
 
-  CH_assert(a_level >= 0);
-  CH_assert(a_level <= m_amr->getFinestLevel(););
+  // Number of components we are working with.
+  const int numComp = a_data[a_level]->nComp();
 
-  // TLDR: This routine takes the data-to-be-plotted in a_data and puts it in a_output. Normally we could just do
-  //       a copy but in the case where we want to have the solution on the centroids then we need to interpolate,
-  //       and so we copy to a scratch data holder first.
+  // Component ranges that we copy to/from.
+  const Interval srcInterv(0, numComp - 1);
+  const Interval dstInterv(a_comp, a_comp + numComp - 1);
 
-  const int numComp = a_data.nComp();
-
-  const Interval srcInterval(0, numComp - 1);
-  const Interval dstInterval(a_comp, a_comp + numComp - 1);
-
-  // Copy data onto scratch
+  CH_START(t1);
   LevelData<EBCellFAB> scratch;
   m_amr->allocate(scratch, m_realm, m_phase, a_level, numComp);
-  a_data.localCopyTo(scratch);
+  CH_STOP(t1);
 
-  // Interp if we should
-  if (a_interp) {
-    m_amr->interpToCentroids(scratch, m_realm, phase::gas, a_level);
+  CH_START(t2);
+  a_data[a_level]->localCopyTo(scratch);
+  scratch.exchange();
+  CH_START(t2);
+
+  // Interpolate ghost cells
+  CH_START(t3);
+  if (a_level > 0 && a_interpGhost) {
+
+    for (int icomp = 0; icomp < numComp; icomp++) {
+      LevelData<EBCellFAB> coarData;
+
+      aliasLevelData<EBCellFAB>(coarData, &(*a_data[a_level - 1]), Interval(icomp, icomp));
+
+      m_amr->interpGhost(scratch, coarData, a_level, m_realm, m_phase);
+    }
   }
+  CH_STOP(t3);
 
-  scratch.copyTo(srcInterval, a_output, dstInterval);
+  CH_START(t4);
+  if (a_interpToCentroids) {
+    m_amr->interpToCentroids(scratch, m_realm, m_phase, a_level);
+  }
+  CH_STOP(t4);
 
-  DataOps::setCoveredValue(a_output, a_comp, 0.0);
+  // Need a more general copy method because we can't call DataOps::copy (because realms might not be the same) and
+  // we can't call EBAMRData<T>::copy either (because components don't align). So -- general type of copy here.
+  CH_START(t5);
+  Copier copier;
+  copier.ghostDefine(scratch.disjointBoxLayout(),
+                     a_output.disjointBoxLayout(),
+                     m_amr->getDomains()[a_level],
+                     scratch.ghostVect(),
+                     a_output.ghostVect());
+  CH_STOP(t5);
+
+  DataOps::setCoveredValue(scratch, 0.0);
+
+  CH_START(t6);
+  scratch.copyTo(srcInterv, a_output, dstInterv, copier);
+  CH_STOP(t6);
 
   a_comp += numComp;
 }
