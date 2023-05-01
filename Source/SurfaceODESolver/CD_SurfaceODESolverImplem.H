@@ -817,6 +817,8 @@ SurfaceODESolver<N>::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, 
 
     scratch.copyTo(srcInterv, a_output, dstInterv);
 
+    a_output.exchange(dstInterv);
+
     a_comp += N;
   }
 
@@ -829,6 +831,8 @@ SurfaceODESolver<N>::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, 
     const Interval dstInterv(a_comp, a_comp + N - 1);
 
     scratch.copyTo(srcInterv, a_output, dstInterv);
+
+    a_output.exchange(dstInterv);
 
     a_comp += N;
   }

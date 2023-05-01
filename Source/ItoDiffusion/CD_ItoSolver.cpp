@@ -1300,7 +1300,7 @@ ItoSolver::getPlotVariableNames() const
 }
 
 void
-ItoSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) noexcept
+ItoSolver::writePlotData(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) const noexcept
 {
   CH_TIMERS("ItoSolver::writePlotData");
   CH_TIMER("ItoSolver::writePlotData::mesh_data", t1);
@@ -1413,7 +1413,6 @@ ItoSolver::writeData(LevelData<EBCellFAB>& a_output,
                      const int             a_level,
                      const bool            a_interpToCentroids,
                      const bool            a_interpGhost) const noexcept
-
 {
   CH_TIMERS("ItoSolver::writeData");
   CH_TIMER("ItoSolver::writeData::allocate", t1);
