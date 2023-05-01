@@ -263,6 +263,30 @@ public:
   depositParticles(const WhichContainer a_container);
 
   /*!
+    @brief Do an NGP deposit on a specific grid level. Used for IO.
+    @param[out] a_output Contains NGP deposition of particles. Ignores cut-cells.
+    @param[in] a_particles Particles
+    @param[in] a_level Grid level
+  */
+  template <class P, const Real& (P ::*particleScalarField)() const>
+  void
+  depositParticlesNGP(LevelData<EBCellFAB>&       a_output,
+                      const ParticleContainer<P>& a_particles,
+                      const int                   a_level) const noexcept;
+
+  /*!
+    @brief Do an NGP deposit on a specific grid level. Used for IO.
+    @param[out] a_output Contains NGP deposition of particles. Ignores cut-cells.
+    @param[in] a_particles Particles
+    @param[in] a_level Grid level
+  */
+  template <class P, Real (P ::*particleScalarField)() const>
+  void
+  depositParticlesNGP(LevelData<EBCellFAB>&       a_output,
+                      const ParticleContainer<P>& a_particles,
+                      const int                   a_level) const noexcept;
+
+  /*!
     @brief Generic deposition function which deposits a particle field onto the mesh using a specified deposition method. 
     @details The template parameters indicate the particle type and quantity to be deposited. The second template parameter must be a pointer to a member function in 
     the particle class with signature 'const Real& P::function() const'. E.g. 'const Real& P::mass() const' which is the default quantity to be deposited. 
@@ -1502,6 +1526,23 @@ protected:
   */
   virtual void
   interpolateMobilitiesVelocity(const int a_level, const DataIndex& a_dit);
+
+  /*!
+    @brief Write data to output. Convenience function. 
+    @param[inout] a_output Output data holder.
+    @param[inout] a_icomp  Starting component where this solver begins writing the output. 
+    @param[in]    a_data   Data to write. 
+    @param[in]    a_level  Grid level
+    @param[in]    a_interpToCentroids If true, a_data will be interpolated to cell centroids before writing to a_output. 
+    @param[in]    a_interpGhost If true, interpolate ghost cells
+  */
+  virtual void
+  writeData(LevelData<EBCellFAB>& a_output,
+            int&                  a_comp,
+            const EBAMRCellData&  a_data,
+            const int             a_level,
+            const bool            a_interpToCentroids,
+            const bool            a_interpGhost) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
