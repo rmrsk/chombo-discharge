@@ -256,12 +256,10 @@ Driver::getGeometryTags()
     m_geomTags[lvl] |= condTags;
 
     // Evaluate angles between cut-cells and refine based on that.
+    // Need one ghost cell because we fetch normal vectors from neighboring cut-cells.
     DisjointBoxLayout irregGrids = ebisGas->getIrregGrids(curDomain);
     EBISLayout        ebisl;
-    ebisGas->fillEBISLayout(ebisl,
-                            irregGrids,
-                            curDomain,
-                            1); // Need one ghost cell because we fetch normal vectors from neighboring cut-cells.
+    ebisGas->fillEBISLayout(ebisl, irregGrids, curDomain, 1);
 
     const RealVect probLo = m_amr->getProbLo();
 
@@ -2186,6 +2184,7 @@ Driver::writePlotFile(const std::string a_filename)
       // Interpolate ghost cells. This might be important if we use multiple because iso-surfaces might show up as broken
       // if we don't use it.
       MayDay::Warning("Driver::writePlotFile -- need to make sure ghost cells are update in timestepper/taggers");
+      MayDay::Warning("Driver::writePlotFile -- start on ItoSolver and work alphabetically from there");
 
       // Do the HDF5 write.
 #ifdef CH_USE_HDF5
