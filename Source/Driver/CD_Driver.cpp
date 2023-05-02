@@ -2163,7 +2163,6 @@ Driver::writePlotFile(const std::string a_filename)
     plotVariableNames.append(this->getPlotVariableNames());
 
     // Write HDF5 header.
-    MayDay::Warning("Driver::writePlotFile -- should we preallocate the extra components?");
 #ifdef CH_USE_HDF5
     HDF5Handle handle(a_filename.c_str(), HDF5Handle::CREATE);
     DischargeIO::writeEBHDF5Header(handle, numPlotLevels, m_amr->getProbLo(), plotVariableNames);
