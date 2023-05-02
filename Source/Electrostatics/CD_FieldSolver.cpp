@@ -1249,6 +1249,9 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&    a_output,
       aliasGasCoar.localCopyTo(scratchGasCoar);
       aliasSolidCoar.localCopyTo(scratchSolidCoar);
     }
+
+    scratchGas.exchange();
+    scratchSolid.exchange();    
   }
   else {
     LevelData<EBCellFAB> aliasGas;
@@ -1263,6 +1266,8 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&    a_output,
 
       aliasGasCoar.localCopyTo(scratchGasCoar);
     }
+
+    scratchGas.exchange();
   }
   CH_START(t2);
 
@@ -1382,6 +1387,7 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&    a_output,
   CH_STOP(t6);
 
   CH_START(t7);
+  scratchGas.exchange();
   scratchGas.copyTo(srcInterv, a_output, dstInterv, copier);
   CH_STOP(t7);
 
