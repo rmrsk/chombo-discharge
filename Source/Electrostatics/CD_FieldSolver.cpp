@@ -1251,7 +1251,7 @@ FieldSolver::writeMultifluidData(LevelData<EBCellFAB>&    a_output,
     }
 
     scratchGas.exchange();
-    scratchSolid.exchange();    
+    scratchSolid.exchange();
   }
   else {
     LevelData<EBCellFAB> aliasGas;

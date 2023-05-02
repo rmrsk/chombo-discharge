@@ -563,6 +563,11 @@ namespace Physics {
       Real m_inceptionK;
 
       /*!
+	@brief Profile calculation or not
+      */
+      bool m_profile;
+
+      /*!
 	@brief If true, used fixed integration step for inception integration
       */
       bool m_useFixedInceptionStep;
@@ -817,6 +822,20 @@ namespace Physics {
                        const std::function<Real(const Real E, const RealVect x)>& a_func) const noexcept;
 
       /*!
+	@brief Evaluate a function f = f(E,x) in a volume. 
+	@param[out] a_data    Mesh data
+	@param[in]  a_voltage Voltage multiplier
+	@param[in]  a_func    Function to evaluate
+	@param[in]  a_level   Grid level
+	@note For plotting the emission rate in transient simulations. 
+      */
+      virtual void
+      evaluateFunction(LevelData<EBCellFAB>&                                      a_data,
+                       const Real&                                                a_voltage,
+                       const std::function<Real(const Real E, const RealVect x)>& a_func,
+                       const int                                                  a_level) const noexcept;
+
+      /*!
 	@brief Interpolate between K values to find voltage giving K_inception and store values in m_inceptionVoltage. 
 	@details This is the volumetric version.
       */
@@ -874,15 +893,13 @@ namespace Physics {
       writePlotDataStationary(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const noexcept;
 
       /*!
-	@brief Write plot data for the 'stationary' mode
+	@brief Write plot data for the 'transient' mode
 	@param[inout] a_output            Output data holder.
 	@param[in]    a_plotVariableNames Plot variable names.
 	@param[inout] a_icomp             Starting component in a_output to begin at. 
       */
       virtual void
-      writePlotDataTransient(EBAMRCellData&       a_output,
-                             Vector<std::string>& a_plotVariableNames,
-                             int&                 a_icomp) const noexcept;
+      writePlotDataTransient(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const noexcept;
 
       /*!
 	@brief Check if particle is outside grid boundaries
@@ -958,7 +975,6 @@ namespace Physics {
       inline void
       parsePlotVariables() noexcept;
 
-      
       /*!
 	@brief Write data to output. Convenience function used for IO.
 	@param[inout] a_output Output data holder.

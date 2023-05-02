@@ -127,7 +127,7 @@ ItoKMCTagger<S>::getPlotVariableNames() const noexcept
 
   Vector<std::string> plotVars;
 
-  if(m_plotData) {
+  if (m_plotData) {
     for (int i = 0; i < m_numTagFields; i++) {
       plotVars.push_back("Tag field-" + std::to_string(i));
     }

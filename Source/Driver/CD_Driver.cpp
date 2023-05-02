@@ -2163,6 +2163,7 @@ Driver::writePlotFile(const std::string a_filename)
     plotVariableNames.append(this->getPlotVariableNames());
 
     // Write HDF5 header.
+    MayDay::Warning("Driver::writePlotFile -- should we preallocate the extra components?");
 #ifdef CH_USE_HDF5
     HDF5Handle handle(a_filename.c_str(), HDF5Handle::CREATE);
     DischargeIO::writeEBHDF5Header(handle, numPlotLevels, m_amr->getProbLo(), plotVariableNames);
@@ -2180,12 +2181,6 @@ Driver::writePlotFile(const std::string a_filename)
         m_cellTagger->writePlotData(outputData, comp, lvl);
       }
       this->writePlotData(outputData, comp, lvl);
-
-      // Interpolate ghost cells. This might be important if we use multiple because iso-surfaces might show up as broken
-      // if we don't use it.
-      MayDay::Warning("Driver::writePlotFile -- need to make sure ghost cells are update in timestepper/taggers");
-      MayDay::Warning(
-        "Driver::writePlotFile -- start on AdvectionDiffusionStepper and do them alphabetically from there");
 
       // Do the HDF5 write.
 #ifdef CH_USE_HDF5

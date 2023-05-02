@@ -1549,8 +1549,6 @@ ItoKMCStepper<I, C, R, F>::postRegrid() noexcept
   }
 }
 
-
-
 template <typename I, typename C, typename R, typename F>
 void
 ItoKMCStepper<I, C, R, F>::setVoltage(const std::function<Real(const Real a_time)>& a_voltage) noexcept
