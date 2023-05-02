@@ -905,30 +905,32 @@ StreamerInceptionStepper<P, F, C>::writePlotDataStationary(LevelData<EBCellFAB>&
   }
 
   if (m_plotAlpha) {
-    EBAMRCellData alpha;
-    m_amr->allocate(alpha, m_realm, m_phase, 1);
+    LevelData<EBCellFAB> alpha;
+    m_amr->allocate(alpha, m_realm, m_phase, a_level, 1);
 
     for (size_t i = 0; i < m_voltageSweeps.size(); i++) {
-      this->evaluateFunction(alpha, m_voltageSweeps[i], m_alpha);
+      this->evaluateFunction(alpha, m_voltageSweeps[i], m_alpha, a_level);
 
-      m_amr->conservativeAverage(alpha, m_realm, m_phase);
-      m_amr->interpGhost(alpha, m_realm, m_phase);
+      // Do a copy, but note that this does not include ghost cells across the CF interface since
+      // we are only computing for a single grid level.
+      alpha.copyTo(Interval(0, 0), a_output, Interval(a_icomp, a_icomp));
 
-      this->writeData(a_output, a_icomp, alpha, a_level, false, true);
+      a_icomp++;
     }
   }
 
   if (m_plotEta) {
-    EBAMRCellData eta;
-    m_amr->allocate(eta, m_realm, m_phase, 1);
+    LevelData<EBCellFAB> eta;
+    m_amr->allocate(eta, m_realm, m_phase, a_level, 1);
 
     for (size_t i = 0; i < m_voltageSweeps.size(); i++) {
-      this->evaluateFunction(eta, m_voltageSweeps[i], m_eta);
+      this->evaluateFunction(eta, m_voltageSweeps[i], m_eta, a_level);
 
-      m_amr->conservativeAverage(eta, m_realm, m_phase);
-      m_amr->interpGhost(eta, m_realm, m_phase);
+      // Do a copy, but note that this does not include ghost cells across the CF interface since
+      // we are only computing for a single grid level.
+      eta.copyTo(Interval(0, 0), a_output, Interval(a_icomp, a_icomp));
 
-      this->writeData(a_output, a_icomp, eta, a_level, false, true);
+      a_icomp++;
     }
   }
 }
