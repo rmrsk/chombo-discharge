@@ -137,9 +137,6 @@ CdrPlasmaTagger::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, con
   CH_assert(a_level >= 0);
   CH_assert(a_level <= m_amr->getFinestLevel());
 
-  MayDay::Warning("CdrPlasmaTagger::writePlotData -- should compute tracers on each level");
-
-  // Update the tracer fields.
   this->computeTracers();
 
   // Go through the fields and add them to file.

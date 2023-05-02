@@ -2201,6 +2201,8 @@ Driver::writePlotFile(const std::string a_filename)
                                     m_numPlotGhost);
 #endif
     }
+
+    handle.close();
   }
   else {
     const std::string msg1 = "Driver::writePlotFile - skipping file '";
