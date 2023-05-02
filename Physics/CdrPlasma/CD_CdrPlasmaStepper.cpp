@@ -393,8 +393,18 @@ CdrPlasmaStepper::allocateInternals()
   }
 
   m_amr->allocate(m_currentDensity, m_realm, phase::gas, SpaceDim);
-
   DataOps::setValue(m_currentDensity, 0.0);
+
+  const int numPhysPlotVars = m_physics->getNumberOfPlotVariables();
+
+  if (numPhysPlotVars > 0) {
+    m_amr->allocate(m_physicsPlotVars, m_realm, phase::gas, numPhysPlotVars);
+
+    DataOps::setValue(m_physicsPlotVars, 0.0);
+  }
+  else {
+    m_amr->allocatePointer(m_physicsPlotVars, m_realm);
+  }
 }
 
 void
@@ -4564,21 +4574,21 @@ CdrPlasmaStepper::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, co
 
   // CDR solvers output their data
   for (auto solverIt = m_cdr->iterator(); solverIt.ok(); ++solverIt) {
-    RefCountedPtr<CdrSolver>& solver = solverIt();
-    solver->writePlotData(a_output, a_icomp, a_level);
+    solverIt()->writePlotData(a_output, a_icomp, a_level);
   }
 
   // RTE solvers output their data
   for (auto solverIt = m_rte->iterator(); solverIt.ok(); ++solverIt) {
-    RefCountedPtr<RtSolver>& solver = solverIt();
-    solver->writePlotData(a_output, a_icomp, a_level);
+    solverIt()->writePlotData(a_output, a_icomp, a_level);
   }
 
   // CdrPlasmaStepper adds the current to the output file.
   this->writeData(a_output, a_icomp, m_currentDensity, a_level, false, true);
 
   // CdrPlasmaPhysics outputs its variable.
-  this->writePhysics(a_output, a_icomp, a_level);
+  if (m_physics->getNumberOfPlotVariables() > 0) {
+    this->writeData(a_output, a_icomp, m_physicsPlotVars, a_level, false, true);
+  }
 }
 
 void
@@ -4600,6 +4610,10 @@ CdrPlasmaStepper::writeData(LevelData<EBCellFAB>& a_output,
   if (m_verbosity > 5) {
     pout() << "CdrPlasmaStepper::writeData" << endl;
   }
+
+  CH_assert(a_level >= 0);
+  CH_assert(a_level <= m_amr->getFinestLevel());
+  CH_assert(a_data[a_level]->nComp() > 0);
 
   // Number of components we are working with.
   const int numComp = a_data[a_level]->nComp();
@@ -4623,11 +4637,13 @@ CdrPlasmaStepper::writeData(LevelData<EBCellFAB>& a_output,
   if (a_level > 0 && a_interpGhost) {
 
     for (int icomp = 0; icomp < numComp; icomp++) {
+      LevelData<EBCellFAB> fineData;
       LevelData<EBCellFAB> coarData;
 
+      aliasLevelData<EBCellFAB>(fineData, &(*a_data[a_level]), Interval(icomp, icomp));
       aliasLevelData<EBCellFAB>(coarData, &(*a_data[a_level - 1]), Interval(icomp, icomp));
 
-      m_amr->interpGhost(scratch, coarData, a_level, m_realm, m_phase);
+      m_amr->interpGhost(fineData, coarData, a_level, m_realm, m_phase);
     }
   }
   CH_STOP(t3);
@@ -4662,7 +4678,7 @@ void
 CdrPlasmaStepper::writeJ(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const
 {
   CH_TIMERS("CdrPlasmaStepper::writeJ");
-  CH_TIMER("CdrPlasmaStepper::writeJ::allocate",t1);
+  CH_TIMER("CdrPlasmaStepper::writeJ::allocate", t1);
   if (m_verbosity > 3) {
     pout() << "CdrPlasmaStepper::writeJ" << endl;
   }
@@ -4687,14 +4703,12 @@ CdrPlasmaStepper::writeJ(LevelData<EBCellFAB>& a_output, int& a_icomp, const int
 }
 
 void
-CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const
+CdrPlasmaStepper::computePhysicsPlotVars(EBAMRCellData& a_plotVars) const noexcept
 {
-  CH_TIME("CdrPlasmaStepper::writePhysics");
+  CH_TIME("CdrPlasmaStepper::computePhysicsPlotVars");
   if (m_verbosity > 3) {
-    pout() << "CdrPlasmaStepper::writePhysics(EBAMRCellData, int)" << endl;
+    pout() << "CdrPlasmaStepper::computePhysicsPlotVars" << endl;
   }
-
-  MayDay::Warning("CdrPlasma::writePhysics - create level write routines");
 
   CH_assert(a_level >= 0);
   CH_assert(a_level <= m_amr->getFinestLevel());
@@ -4702,7 +4716,6 @@ CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, con
   // Number of output variables from CdrPlasmaPhysics
   const int numVars = m_physics->getNumberOfPlotVariables();
 
-#if 0
   if (numVars > 0) {
 
     const int numCdrSpecies = m_physics->getNumCdrSpecies();
@@ -4770,8 +4783,8 @@ CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, con
         VoFIterator& vofit = (*m_amr->getVofIterator(m_realm, m_phase)[lvl])[dit()];
 
         // Output data holder.
-        EBCellFAB&     output      = (*a_output[lvl])[dit()];
-        BaseFab<Real>& regularData = (*a_output[lvl])[dit()].getSingleValuedFAB();
+        EBCellFAB&     output      = (*a_plotVars[lvl])[dit()];
+        BaseFab<Real>& regularData = (*a_plotVars[lvl])[dit()].getSingleValuedFAB();
 
         // Regular kernel.
         auto regularKernel = [&](const IntVect& iv) -> void {
@@ -4806,7 +4819,7 @@ CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, con
                                                                     1.0);
 
           for (int icomp = 0; icomp < numVars; icomp++) {
-            regularData(iv, a_icomp + icomp) = plotVars[icomp];
+            regularData(iv, icomp) = plotVars[icomp];
           }
         };
 
@@ -4841,7 +4854,7 @@ CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, con
                                                                     ebisBox.volFrac(vof));
 
           for (int icomp = 0; icomp < numVars; icomp++) {
-            output(vof, a_icomp + icomp) = plotVars[icomp];
+            output(vof, icomp) = plotVars[icomp];
           }
         };
 
@@ -4852,14 +4865,9 @@ CdrPlasmaStepper::writePhysics(LevelData<EBCellFAB>& a_output, int& a_icomp, con
     }
 
     // I want to coarsen and interpolate this data because it might otherwise contain bogus values.
-    const Interval interv(a_icomp, a_icomp + numVars - 1);
-    m_amr->arithmeticAverage(a_output, m_realm, phase::gas, interv);
-
-    // Need to let the outside world know that we've written to some of the variables.
+    const Interval interv(0, numVars - 1);
+    m_amr->arithmeticAverage(a_plotVars, m_realm, phase::gas, interv);
   }
-#endif
-
-  a_icomp += numVars;
 }
 
 void

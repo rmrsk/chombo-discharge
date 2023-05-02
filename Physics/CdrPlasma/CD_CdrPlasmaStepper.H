@@ -1321,6 +1321,11 @@ namespace Physics {
       EBAMRCellData m_currentDensity;
 
       /*!
+	@brief Storage for physics-observables
+      */
+      EBAMRCellData m_physicsPlotVars;
+
+      /*!
 	@brief Set the potential
       */
       std::function<Real(const Real a_time)> m_voltage;
@@ -1450,14 +1455,10 @@ namespace Physics {
       writeJ(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) const;
 
       /*!
-	@brief Write physics data to output data holder. 
-	@details This will fetch plot variables from m_physics and put them in the data holder. 
-	@param[inout] a_output Output data holder.
-	@param[inout] a_icomp  Starting component in a_output to begin at. On output this is incremented by the number of plot variables from m_physics. 
-	@param[in]    a_level  Grid level
+	@brief Calculate the user-supplied plot variables
       */
       virtual void
-      writePhysics(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) const;
+      computePhysicsPlotVars(EBAMRCellData& a_physicsPlotVars) const noexcept;
 
       /*!
 	@brief Write data to output. Convenience function. 

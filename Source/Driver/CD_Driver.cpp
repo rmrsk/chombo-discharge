@@ -2184,7 +2184,8 @@ Driver::writePlotFile(const std::string a_filename)
       // Interpolate ghost cells. This might be important if we use multiple because iso-surfaces might show up as broken
       // if we don't use it.
       MayDay::Warning("Driver::writePlotFile -- need to make sure ghost cells are update in timestepper/taggers");
-      MayDay::Warning("Driver::writePlotFile -- start on AdvectionDiffusionStepper and do them alphabetically from there");
+      MayDay::Warning(
+        "Driver::writePlotFile -- start on AdvectionDiffusionStepper and do them alphabetically from there");
 
       // Do the HDF5 write.
 #ifdef CH_USE_HDF5
