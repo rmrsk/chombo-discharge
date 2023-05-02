@@ -392,7 +392,9 @@ CdrPlasmaStepper::allocateInternals()
     pout() << "CdrPlasmaStepper::allocateInternals" << endl;
   }
 
-  /// Do nothing
+  m_amr->allocate(m_currentDensity, m_realm, phase::gas, SpaceDim);
+
+  DataOps::setValue(m_currentDensity, 0.0);
 }
 
 void
@@ -4573,24 +4575,100 @@ CdrPlasmaStepper::writePlotData(LevelData<EBCellFAB>& a_output, int& a_icomp, co
   }
 
   // CdrPlasmaStepper adds the current to the output file.
-  this->writeJ(a_output, a_icomp, a_level);
+  this->writeData(a_output, a_icomp, m_currentDensity, a_level, false, true);
 
   // CdrPlasmaPhysics outputs its variable.
   this->writePhysics(a_output, a_icomp, a_level);
 }
 
 void
+CdrPlasmaStepper::writeData(LevelData<EBCellFAB>& a_output,
+                            int&                  a_comp,
+                            const EBAMRCellData&  a_data,
+                            const int             a_level,
+                            const bool            a_interpToCentroids,
+                            const bool            a_interpGhost) const noexcept
+
+{
+  CH_TIMERS("CdrPlasmaStepper::writeData");
+  CH_TIMER("CdrPlasmaStepper::writeData::allocate", t1);
+  CH_TIMER("CdrPlasmaStepper::writeData::local_copy", t2);
+  CH_TIMER("CdrPlasmaStepper::writeData::interp_ghost", t3);
+  CH_TIMER("CdrPlasmaStepper::writeData::interp_centroid", t4);
+  CH_TIMER("CdrPlasmaStepper::writeData::define_copier", t5);
+  CH_TIMER("CdrPlasmaStepper::writeData::final_copy", t6);
+  if (m_verbosity > 5) {
+    pout() << "CdrPlasmaStepper::writeData" << endl;
+  }
+
+  // Number of components we are working with.
+  const int numComp = a_data[a_level]->nComp();
+
+  // Component ranges that we copy to/from.
+  const Interval srcInterv(0, numComp - 1);
+  const Interval dstInterv(a_comp, a_comp + numComp - 1);
+
+  CH_START(t1);
+  LevelData<EBCellFAB> scratch;
+  m_amr->allocate(scratch, m_realm, m_phase, a_level, numComp);
+  CH_STOP(t1);
+
+  CH_START(t2);
+  a_data[a_level]->localCopyTo(scratch);
+  scratch.exchange();
+  CH_START(t2);
+
+  // Interpolate ghost cells
+  CH_START(t3);
+  if (a_level > 0 && a_interpGhost) {
+
+    for (int icomp = 0; icomp < numComp; icomp++) {
+      LevelData<EBCellFAB> coarData;
+
+      aliasLevelData<EBCellFAB>(coarData, &(*a_data[a_level - 1]), Interval(icomp, icomp));
+
+      m_amr->interpGhost(scratch, coarData, a_level, m_realm, m_phase);
+    }
+  }
+  CH_STOP(t3);
+
+  CH_START(t4);
+  if (a_interpToCentroids) {
+    m_amr->interpToCentroids(scratch, m_realm, m_phase, a_level);
+  }
+  CH_STOP(t4);
+
+  // Need a more general copy method because we can't call DataOps::copy (because realms might not be the same) and
+  // we can't call EBAMRData<T>::copy either (because components don't align). So -- general type of copy here.
+  CH_START(t5);
+  Copier copier;
+  copier.ghostDefine(scratch.disjointBoxLayout(),
+                     a_output.disjointBoxLayout(),
+                     m_amr->getDomains()[a_level],
+                     scratch.ghostVect(),
+                     a_output.ghostVect());
+  CH_STOP(t5);
+
+  DataOps::setCoveredValue(scratch, 0.0);
+
+  CH_START(t6);
+  scratch.copyTo(srcInterv, a_output, dstInterv, copier);
+  CH_STOP(t6);
+
+  a_comp += numComp;
+}
+
+void
 CdrPlasmaStepper::writeJ(LevelData<EBCellFAB>& a_output, int& a_icomp, const int a_level) const
 {
-  CH_TIME("CdrPlasmaStepper::writeJ");
+  CH_TIMERS("CdrPlasmaStepper::writeJ");
+  CH_TIMER("CdrPlasmaStepper::writeJ::allocate",t1);
   if (m_verbosity > 3) {
     pout() << "CdrPlasmaStepper::writeJ" << endl;
   }
 
   CH_assert(a_level >= 0);
   CH_assert(a_level <= m_amr->getFinestLevel());
-
-  MayDay::Warning("CdrPlasma::writeJ - create level write routines for J");
 
   // Allocates storage for computing J.
   EBAMRCellData scratch;

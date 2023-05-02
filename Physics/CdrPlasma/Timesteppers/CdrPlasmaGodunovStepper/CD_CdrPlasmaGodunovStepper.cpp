@@ -353,6 +353,10 @@ CdrPlasmaGodunovStepper::advance(const Real a_dt)
   CdrPlasmaGodunovStepper::computeCdrDiffusionCoefficients(m_time + a_dt);
   m_timer->stopEvent("Diffu-coeffs");
 
+  m_timer->startEvent("Compute J");
+  this->computeJ(m_currentDensity);
+  m_timer->stopEvent("Compute J");
+
   if (m_profile) {
     m_timer->eventReport(pout(), false);
   }
@@ -590,6 +594,8 @@ CdrPlasmaGodunovStepper::allocateInternals()
 
   // TLDR: Since the advancement method requires some temporary variables (for holding various things at BCs, for example),
   //       we have organized the transient memory into classes. Here, we allocate those classes.
+
+  CdrPlasmaStepper::allocateInternals();
 
   // Number of CDR solvers and RTE solvers that we have.
   const int numCdrSpecies = m_physics->getNumCdrSpecies();

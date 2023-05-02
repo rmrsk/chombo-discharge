@@ -1316,6 +1316,11 @@ namespace Physics {
       RefCountedPtr<SurfaceODESolver<1>> m_sigma;
 
       /*!
+	@brief Storage for the current
+      */
+      EBAMRCellData m_currentDensity;
+
+      /*!
 	@brief Set the potential
       */
       std::function<Real(const Real a_time)> m_voltage;
@@ -1453,6 +1458,23 @@ namespace Physics {
       */
       virtual void
       writePhysics(LevelData<EBCellFAB>& a_output, int& a_comp, const int a_level) const;
+
+      /*!
+	@brief Write data to output. Convenience function. 
+	@param[inout] a_output Output data holder.
+	@param[inout] a_icomp  Starting component where this solver begins writing the output. 
+	@param[in]    a_data   Data to write. 
+	@param[in]    a_level  Grid level
+	@param[in]    a_interpToCentroids If true, a_data will be interpolated to cell centroids before writing to a_output. 
+	@param[in]    a_interpGhost If true, interpolate ghost cells
+      */
+      virtual void
+      writeData(LevelData<EBCellFAB>& a_output,
+                int&                  a_comp,
+                const EBAMRCellData&  a_data,
+                const int             a_level,
+                const bool            a_interpToCentroids,
+                const bool            a_interpGhost) const noexcept;
     };
   } // namespace CdrPlasma
 } // namespace Physics
