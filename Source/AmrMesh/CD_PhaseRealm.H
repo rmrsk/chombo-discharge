@@ -39,6 +39,7 @@
 #include <CD_EBAMRParticleMesh.H>
 #include <CD_EBAMRSurfaceDeposition.H>
 #include <CD_EBCoarseToFineInterp.H>
+#include <CD_EBGhostCellInterpolator.H>
 #include <CD_NonConservativeDivergenceStencil.H>
 #include <CD_EbCentroidInterpolationStencil.H>
 #include <CD_CentroidInterpolationStencil.H>
@@ -517,12 +518,12 @@ protected:
   mutable Vector<RefCountedPtr<EBMultigridInterpolator>> m_multigridInterpolator;
 
   /*!
-    @brief Regridding utility (for filling new grid patches)
+    @brief Ghost cell interpolation utility
   */
   mutable Vector<RefCountedPtr<AggEBPWLFillPatch>> m_pwlFillPatch;
 
   /*!
-    @brief Ghost cell interpolation utility
+    @brief Regridding utility (for filling new grid patches)
   */
   mutable Vector<RefCountedPtr<EBCoarseToFineInterp>> m_ebFineInterp;
 
