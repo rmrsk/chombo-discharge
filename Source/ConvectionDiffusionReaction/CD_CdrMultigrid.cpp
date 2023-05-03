@@ -44,6 +44,7 @@ CdrMultigrid::registerOperators()
   CdrSolver::registerOperators();
 
   m_amr->registerOperator(s_eb_multigrid, m_realm, m_phase);
+  m_amr->registerOperator(s_eb_flux_reg, m_realm, m_phase);
 }
 
 void
