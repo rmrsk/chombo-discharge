@@ -118,6 +118,12 @@ public:
               const Type                  a_interpType) const noexcept;
 
 protected:
+
+  /*!
+    @brief Is defined or not
+  */
+  bool m_isDefined;
+
   /*!
     @brief Fine grids
   */
@@ -132,11 +138,6 @@ protected:
     @brief Coarsened fine grids. 
   */
   EBLevelGrid m_eblgCoFi;
-
-  /*!
-    @brief Is defined or not
-  */
-  bool m_isDefined;
 
   /*!
     @brief Minimum number of ghost cells in input data. 
@@ -155,16 +156,65 @@ protected:
   int m_ghostCF;
 
   /*!
-    @brief Define buffer storage
+    @brief Non-EB ghost cells to be interpolated
   */
-  virtual void
-  defineBuffer() const noexcept;
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, Box>> m_regularGhostCells;
 
   /*!
-    @brief Delete buffer storage
+    @brief Fine-grid ghost cells on the coarse-fine interface that overlap an irregular coarse cell. 
+  */
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_fineIrregCells;
+
+  /*!
+    @brief Coarse-grid cells on the caorse-side of the interface that are irregular cells.
+  */
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_coarIrregCells;
+
+  /*!
+    @brief Buffer data
+  */
+  mutable LevelData<EBCellFAB>* m_grownCoarData;
+
+  /*!
+    @brief Define ghost regions to be interpolated
   */
   virtual void
-  undefineBuffer() const noexcept;
+  defineGhostRegions() noexcept;
+
+  /*!
+    @brief Regular interpolation, as if the EB was not there. 
+  */
+  virtual void
+  interpolate(EBCellFAB&       a_phiFine,
+              const EBCellFAB& a_phiCoar,
+              const DataIndex& a_dit,
+              const int        a_fineVar,
+              const int        a_coarVar,
+              const Type       a_interpType) const noexcept;
+
+  /*!
+    @brief minmod slope function. 
+    @param[in] dwl Left slope
+    @param[in] dwr Right slope
+  */
+  inline Real
+  minmod(const Real& dwl, const Real& dwr) const noexcept;
+
+  /*!
+    @brief Superbee slope limiter. 
+    @param[in] dwl Left slope
+    @param[in] dwr Right slope
+  */
+  inline Real
+  superbee(const Real& dwl, const Real& dwr) const noexcept;
+
+  /*!
+    @brief Monotonized central difference slope limiter.
+    @param[in] dwl Left slope
+    @param[in] dwr Right slope
+  */
+  inline Real
+  monotonizedCentral(const Real& dwl, const Real& dwr) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
