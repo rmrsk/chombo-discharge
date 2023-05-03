@@ -120,7 +120,7 @@ EBGhostCellInterpolator::defineGhostRegions() noexcept
         const Box coarGhostBox = coarsen(fineGhostBox, m_refRat);
 
         const IntVectSet coarIVS = coarEBISBox.getIrregIVS(coarGhostBox);
-        const IntVectSet fineIVS = refine(coarIVS, m_refRat);
+        const IntVectSet fineIVS = refine(coarIVS, m_refRat) & cfivs;
 
         coarIrregIVS |= coarIVS;
         fineIrregIVS |= fineIVS;
@@ -147,12 +147,10 @@ EBGhostCellInterpolator::interpolate(LevelData<EBCellFAB>&       a_phiFine,
   CH_assert(a_phiCoar.nComp() > a_variables.end());
 
   // Define buffer that we need. Need two ghost cells for doing the coarse-side slopes.
-  const int numCoarGhostCells = 2;
-
   const DisjointBoxLayout& coFiGrids = m_eblgCoFi.getDBL();
   const EBISLayout&        coFiEBISL = m_eblgCoFi.getEBISL();
 
-  LevelData<EBCellFAB> grownCoarData(coFiGrids, 1, numCoarGhostCells * IntVect::Unit, EBCellFactory(coFiEBISL));
+  LevelData<EBCellFAB> grownCoarData(coFiGrids, 1, m_ghostCF * IntVect::Unit, EBCellFactory(coFiEBISL));
 
   for (int icomp = a_variables.begin(); icomp <= a_variables.end(); icomp++) {
     const Interval srcInterv = Interval(icomp, icomp);
@@ -400,7 +398,7 @@ EBGhostCellInterpolator::interpolateIrregular(EBCellFAB&       a_phiFine,
     };
 
     CH_START(t1);
-    BoxLoops::loop(vofitCoar, computeIrregSlopes);
+    //    BoxLoops::loop(vofitCoar, computeIrregSlopes);
     CH_STOP(t1);
   }
 
