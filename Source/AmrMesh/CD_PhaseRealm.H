@@ -14,7 +14,6 @@
 
 // Chombo includes
 #include <DisjointBoxLayout.H>
-#include <AggEBPWLFillPatch.H>
 #include <EBFluxRegister.H>
 #include <EBLevelRedist.H>
 #include <EBCoarToFineRedist.H>
@@ -312,10 +311,10 @@ public:
   getMultigridInterpolator() const;
 
   /*!
-    @brief Get patch regridding utility
+    @brief Get ghost cell interpolation utility
   */
-  Vector<RefCountedPtr<AggEBPWLFillPatch>>&
-  getFillPatch() const;
+  Vector<RefCountedPtr<EBGhostCellInterpolator>>&
+  getGhostCellInterpolator() const;  
 
   /*!
     @brief Get piecewise linear ghost cell interpolation utility
@@ -520,7 +519,7 @@ protected:
   /*!
     @brief Ghost cell interpolation utility
   */
-  mutable Vector<RefCountedPtr<AggEBPWLFillPatch>> m_pwlFillPatch;
+  mutable Vector<RefCountedPtr<EBGhostCellInterpolator>> m_ghostCellInterpolator;  
 
   /*!
     @brief Regridding utility (for filling new grid patches)

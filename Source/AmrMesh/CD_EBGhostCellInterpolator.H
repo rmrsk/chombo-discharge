@@ -158,7 +158,7 @@ protected:
   /*!
     @brief Non-EB ghost cells to be interpolated
   */
-  LayoutData<std::map<std::pair<int, Side::LoHiSide>, Box>> m_regularGhostCells;
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, Box>> m_regularGhostRegions;
 
   /*!
     @brief Fine-grid ghost cells on the coarse-fine interface that overlap an irregular coarse cell. 
@@ -185,12 +185,12 @@ protected:
     @brief Regular interpolation, as if the EB was not there. 
   */
   virtual void
-  interpolate(EBCellFAB&       a_phiFine,
-              const EBCellFAB& a_phiCoar,
-              const DataIndex& a_dit,
-              const int        a_fineVar,
-              const int        a_coarVar,
-              const Type       a_interpType) const noexcept;
+  interpolateRegular(FArrayBox&       a_phiFine,
+                     const FArrayBox& a_phiCoar,
+                     const DataIndex& a_dit,
+                     const int        a_fineVar,
+                     const int        a_coarVar,
+                     const Type       a_interpType) const noexcept;
 
   /*!
     @brief minmod slope function. 

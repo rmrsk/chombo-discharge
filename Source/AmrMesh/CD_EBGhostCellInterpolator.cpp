@@ -84,7 +84,7 @@ EBGhostCellInterpolator::defineGhostRegions() noexcept
   const ProblemDomain& domainFine = m_eblgFine.getDomain();
   const ProblemDomain& domainCoar = m_eblgCoFi.getDomain();
 
-  m_regularGhostCells.define(dblFine);
+  m_regularGhostRegions.define(dblFine);
   m_fineIrregCells.define(dblFine);
   m_coarIrregCells.define(dblCoar);
 
@@ -102,28 +102,27 @@ EBGhostCellInterpolator::defineGhostRegions() noexcept
     for (int dir = 0; dir < SpaceDim; dir++) {
       for (SideIterator sit; sit.ok(); ++sit) {
 
-        // Compute the layer of ghost cells on the lo/hi side for this pathc.
+        // Compute the layer of ghost cells on the lo/hi side for this patch. Note that
+        // we need to grow the ghosted box in directions orthogonal to 'dir' because we
+        // also do the corner ghost cells.
         IntVectSet cfivs = IntVectSet(adjCellBox(fineCellBox, dir, sit(), m_ghostCF));
-
-        NeighborIterator nit(dblFine);
-        for (nit.begin(dit()); nit.ok(); ++nit) {
-          cfivs -= dblFine[nit()];
+        for (int otherDir = 0; otherDir < SpaceDim; otherDir++) {
+          if (otherDir != dir) {
+            cfivs.grow(otherDir, m_ghostCF);
+          }
         }
-
         cfivs &= domainFine;
         cfivs.recalcMinBox();
 
-        const Box ghostBox = cfivs.minBox();
+        const Box fineGhostBox = cfivs.minBox();
+        const Box coarGhostBox = coarsen(fineGhostBox, m_refRat);
 
-        // Coarsen the ghosted box and figure out if it contains cut-cells. We need to be careful when computing the coarse-grid slopes
-        // in these cells.
-        const Box        coarsenedGhostBox = coarsen(ghostBox, m_refRat);
-        const IntVectSet coarIrregIVS      = coarEBISBox.getIrregIVS(coarsenedGhostBox);
-        const IntVectSet refCoarIrregIVS   = refine(coarIrregIVS, m_refRat);
+        const IntVectSet coarIrregIVS = coarEBISBox.getIrregIVS(coarGhostBox);
+        const IntVectSet fineIrregIVS = refine(coarIrregIVS, m_refRat);
 
         // Define our objects.
-        m_regularGhostCells[dit()].emplace(std::make_pair(dir, sit()), ghostBox);
-        m_fineIrregCells[dit()].emplace(std::make_pair(dir, sit()), VoFIterator(refCoarIrregIVS, fineGraph));
+        m_regularGhostRegions[dit()].emplace(std::make_pair(dir, sit()), fineGhostBox);
+        m_fineIrregCells[dit()].emplace(std::make_pair(dir, sit()), VoFIterator(fineIrregIVS, fineGraph));
         m_coarIrregCells[dit()].emplace(std::make_pair(dir, sit()), VoFIterator(coarIrregIVS, coarGraph));
       }
     }
@@ -149,168 +148,151 @@ EBGhostCellInterpolator::interpolate(LevelData<EBCellFAB>&       a_phiFine,
 
   LevelData<EBCellFAB> grownCoarData(coFiGrids, 1, numCoarGhostCells * IntVect::Unit, EBCellFactory(coFiEBISL));
 
-  for (int fineVar = a_variables.begin(); fineVar <= a_variables.end(); fineVar++) {
-    const int coarVar = 0;
-
-    const Interval srcInterv = Interval(fineVar, fineVar);
-    const Interval dstInterv = Interval(coarVar, coarVar);
+  for (int icomp = a_variables.begin(); icomp <= a_variables.end(); icomp++) {
+    const Interval srcInterv = Interval(icomp, icomp);
+    const Interval dstInterv = Interval(0, 0);
     a_phiCoar.copyTo(srcInterv, grownCoarData, dstInterv);
     grownCoarData.exchange();
 
-    const DisjointBoxLayout& dbl = m_eblgFine.getDBL();
-
-    for (DataIterator dit(dbl); dit.ok(); ++dit) {
-      this->interpolate(a_phiFine[dit()], grownCoarData[dit()], dit(), fineVar, coarVar, a_interpType);
+    // Fill invalid regions.
+    for (DataIterator dit(m_eblgFine.getDBL()); dit.ok(); ++dit) {
+      this->interpolateRegular(a_phiFine[dit()].getFArrayBox(),
+                               grownCoarData[dit()].getFArrayBox(),
+                               dit(),
+                               icomp,
+                               0,
+                               a_interpType);
     }
   }
 
+  // Fill valid regions.
   a_phiFine.exchange(a_variables);
 }
 
 void
-EBGhostCellInterpolator::interpolate(EBCellFAB&       a_phiFine,
-                                     const EBCellFAB& a_phiCoar,
-                                     const DataIndex& a_dit,
-                                     const int        a_fineVar,
-                                     const int        a_coarVar,
-                                     const Type       a_interpType) const noexcept
+EBGhostCellInterpolator::interpolateRegular(FArrayBox&       a_phiFine,
+                                            const FArrayBox& a_phiCoar,
+                                            const DataIndex& a_dit,
+                                            const int        a_fineVar,
+                                            const int        a_coarVar,
+                                            const Type       a_interpType) const noexcept
 {
-  CH_TIMERS("EBGhostCellInterpolator::interpolate(EBCellFAB)");
-  CH_TIMER("EBGhostCellInterpolator::interpolate(EBCellFAB)::set_fine_to_coar", t1);
-  CH_TIMER("EBGhostCellInterpolator::interpolate(EBCellFAB)::compute_slopes", t2);
-  CH_TIMER("EBGhostCellInterpolator::interpolate(EBCellFAB)::apply_slopes", t3);
+  CH_TIMERS("EBGhostCellInterpolator::interpolateRegular(EBCellFAB)");
+  CH_TIMER("EBGhostCellInterpolator::interpolateRegular(EBCellFAB)::set_fine_to_coar", t1);
+  CH_TIMER("EBGhostCellInterpolator::interpolateRegular(EBCellFAB)::compute_slopes", t2);
+  CH_TIMER("EBGhostCellInterpolator::interpolateRegular(EBCellFAB)::apply_slopes", t3);
 
   CH_assert(a_phiFine.nComp() > a_fineVar);
   CH_assert(a_phiCoar.nComp() > a_coarVar);
 
-  const EBISLayout&    ebisl  = m_eblgCoFi.getEBISL();
-  const ProblemDomain& domain = m_eblgCoFi.getDomain();
+  const ProblemDomain& domainCoar = m_eblgCoFi.getDomain();
 
-  const EBISBox& ebisBox = ebisl[a_dit];
+  // Storage for grid slopes
+  FArrayBox slopes(a_phiCoar.box(), 1);
 
-  EBCellFAB slopes(ebisBox, a_phiCoar.getRegion(), 1);
-
-  FArrayBox&       phiFineReg = a_phiFine.getFArrayBox();
-  FArrayBox&       slopesReg  = slopes.getFArrayBox();
-  const FArrayBox& phiCoarReg = a_phiCoar.getFArrayBox();
-
+  // Interpolate on all coarse-fine interface sides.
   for (int dir = 0; dir < SpaceDim; dir++) {
     for (SideIterator sit; sit.ok(); ++sit) {
-      const Box interpBox = m_regularGhostCells[a_dit].at(std::make_pair(dir, sit()));
-      const Box coarseBox = coarsen(interpBox, m_refRat);
+      const Box interpBox = m_regularGhostRegions[a_dit].at(std::make_pair(dir, sit()));
 
-      // Set phiFine = phiCoar
+      // Kernel for setting phiFine = phiCoar in the ghost cells.
       auto regSetFineToCoar = [&](const IntVect fineIV) -> void {
         const IntVect coarIV = coarsen(fineIV, m_refRat);
 
-        phiFineReg(fineIV, a_fineVar) = phiCoarReg(coarIV, a_coarVar);
+        a_phiFine(fineIV, a_fineVar) = a_phiCoar(coarIV, a_coarVar);
       };
 
+      // Set phiFine = phiCoar
       CH_START(t1);
       BoxLoops::loop(interpBox, regSetFineToCoar);
       CH_STOP(t1);
 
       // Add contributions from slopes.
-      for (int slopeDir = 0; slopeDir < SpaceDim; slopeDir++) {
-        const IntVect s = BASISV(slopeDir);
+      const bool doSlopes = a_interpType != EBGhostCellInterpolator::Type::PWC &&
+                            a_interpType != EBGhostCellInterpolator::Type::ConservativePWC;
 
-        std::function<void(const IntVect& iv)>   regularSlopeKernel;
-        std::function<void(const VolIndex& vof)> irregularSlopeKernel;
+      if (doSlopes) {
+        for (int slopeDir = 0; slopeDir < SpaceDim; slopeDir++) {
+          const IntVect s = BASISV(slopeDir);
 
-        switch (a_interpType) {
-        case EBGhostCellInterpolator::Type::PWC: {
-          regularSlopeKernel = [&](const IntVect& iv) -> void {
-            slopesReg(iv, 0) = 0.0;
+          // Figure out how to compute the slopes.
+          std::function<void(const IntVect& iv)> regularSlopeKernel;
+          switch (a_interpType) {
+          case EBGhostCellInterpolator::Type::MinMod: {
+            regularSlopeKernel = [&](const IntVect& iv) -> void {
+              Real dwl = 0.0;
+              Real dwr = 0.0;
+
+              if (domainCoar.contains(iv - s)) {
+                dwl = a_phiCoar(iv, a_coarVar) - a_phiCoar(iv - s, a_coarVar);
+              }
+              if (domainCoar.contains(iv + s)) {
+                dwr = a_phiCoar(iv + s, a_coarVar) - a_phiCoar(iv, a_coarVar);
+              }
+
+              slopes(iv, 0) = this->minmod(dwl, dwr);
+            };
+
+            break;
+          }
+          case EBGhostCellInterpolator::Type::MonotonizedCentral: {
+            regularSlopeKernel = [&](const IntVect& iv) -> void {
+              Real dwl = 0.0;
+              Real dwr = 0.0;
+
+              if (domainCoar.contains(iv - s)) {
+                dwl = a_phiCoar(iv, a_coarVar) - a_phiCoar(iv - s, a_coarVar);
+              }
+              if (domainCoar.contains(iv + s)) {
+                dwr = a_phiCoar(iv + s, a_coarVar) - a_phiCoar(iv, a_coarVar);
+              }
+
+              slopes(iv, 0) = this->monotonizedCentral(dwl, dwr);
+            };
+
+            break;
+          }
+          case EBGhostCellInterpolator::Type::Superbee: {
+            regularSlopeKernel = [&](const IntVect& iv) -> void {
+              Real dwl = 0.0;
+              Real dwr = 0.0;
+
+              if (domainCoar.contains(iv - s)) {
+                dwl = a_phiCoar(iv, a_coarVar) - a_phiCoar(iv - s, a_coarVar);
+              }
+              if (domainCoar.contains(iv + s)) {
+                dwr = a_phiCoar(iv + s, a_coarVar) - a_phiCoar(iv, a_coarVar);
+              }
+
+              slopes(iv, 0) = this->superbee(dwl, dwr);
+            };
+
+            break;
+          }
+          default: {
+            MayDay::Error("EBGhostCellInterpolator::interpolate(EBCellFAB) - logic bust");
+          }
+          }
+
+          // Kernel for adding in slope limiter.
+          auto addRegularSlopeContribution = [&](const IntVect& fineIV) -> void {
+            const IntVect  coarIV = coarsen(fineIV, m_refRat);
+            const RealVect delta = (RealVect(fineIV) - m_refRat * RealVect(coarIV) + 0.5 * (1.0 - m_refRat)) / m_refRat;
+
+            a_phiFine(fineIV, a_fineVar) += slopes(coarIV, 0) * delta[slopeDir];
           };
 
-          irregularSlopeKernel = [&](const VolIndex& vof) -> void {
+          // Compute slopes and add contributions into phiFine.
+          const Box coarsenedInterpBox = coarsen(interpBox, m_refRat);
 
-          };
+          CH_START(t2);
+          BoxLoops::loop(coarsenedInterpBox, regularSlopeKernel);
+          CH_STOP(t2);
 
-          break;
+          CH_START(t3);
+          BoxLoops::loop(interpBox, addRegularSlopeContribution);
+          CH_STOP(t3);
         }
-        case EBGhostCellInterpolator::Type::MinMod: {
-          regularSlopeKernel = [&](const IntVect& iv) -> void {
-            Real dwl = 0.0;
-            Real dwr = 0.0;
-
-            if (domain.contains(iv - s)) {
-              dwl = phiCoarReg(iv, a_coarVar) - phiCoarReg(iv - s, a_coarVar);
-            }
-            if (domain.contains(iv + s)) {
-              dwr = phiCoarReg(iv + s, a_coarVar) - phiCoarReg(iv, a_coarVar);
-            }
-
-            slopesReg(iv, 0) = this->minmod(dwl, dwr);
-          };
-
-          irregularSlopeKernel = [&](const VolIndex& vof) -> void {
-            slopes(vof, 0) = 0.0;
-          };
-
-          break;
-        }
-        case EBGhostCellInterpolator::Type::MonotonizedCentral: {
-          regularSlopeKernel = [&](const IntVect& iv) -> void {
-            Real dwl = 0.0;
-            Real dwr = 0.0;
-
-            if (domain.contains(iv - s)) {
-              dwl = phiCoarReg(iv, a_coarVar) - phiCoarReg(iv - s, a_coarVar);
-            }
-            if (domain.contains(iv + s)) {
-              dwr = phiCoarReg(iv + s, a_coarVar) - phiCoarReg(iv, a_coarVar);
-            }
-
-            slopesReg(iv, 0) = this->monotonizedCentral(dwl, dwr);
-          };
-
-          irregularSlopeKernel = [&](const VolIndex& vof) -> void {
-            slopes(vof, 0) = 0.0;
-          };
-
-          break;
-        }
-        case EBGhostCellInterpolator::Type::Superbee: {
-          regularSlopeKernel = [&](const IntVect& iv) -> void {
-            Real dwl = 0.0;
-            Real dwr = 0.0;
-
-            if (domain.contains(iv - s)) {
-              dwl = phiCoarReg(iv, a_coarVar) - phiCoarReg(iv - s, a_coarVar);
-            }
-            if (domain.contains(iv + s)) {
-              dwr = phiCoarReg(iv + s, a_coarVar) - phiCoarReg(iv, a_coarVar);
-            }
-
-            slopesReg(iv, 0) = this->superbee(dwl, dwr);
-          };
-
-          irregularSlopeKernel = [&](const VolIndex& vof) -> void {
-            slopes(vof, 0) = 0.0;
-          };
-
-          break;
-        }
-        default: {
-          MayDay::Error("EBGhostCellInterpolator::interpolate(EBCellFAB) - logic bust");
-        }
-        }
-
-        auto addRegularSlopeContribution = [&](const IntVect& fineIV) -> void {
-          const IntVect  coarIV = coarsen(fineIV, m_refRat);
-          const RealVect delta  = (RealVect(fineIV) - m_refRat * RealVect(coarIV) + 0.5 * (1.0 - m_refRat)) / m_refRat;
-
-          phiFineReg(fineIV, a_fineVar) += slopesReg(coarIV, 0) * delta[slopeDir];
-        };
-
-        // CH_START(t2);
-        // BoxLoops::loop(coarseBox, regularSlopeKernel);
-        // CH_STOP(t2);
-
-        // CH_START(t3);
-        // BoxLoops::loop(interpBox, addRegularSlopeContribution);
-        // CH_STOP(t3);
       }
     }
   }
