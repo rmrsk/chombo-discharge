@@ -47,7 +47,10 @@ EBReflux::define(const EBLevelGrid& a_eblgFine,
 }
 
 void
-EBReflux::reflux(LevelData<EBCellFAB>& a_phiCoar, const Interval a_variables) const noexcept
+EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
+                 const LevelData<EBFluxFAB>& a_coarFlux,
+                 const LevelData<EBFluxFAB>& a_fineFlux,
+                 const Interval              a_variables) const noexcept
 {
   CH_TIME("EBReflux::reflux");
 }

@@ -70,11 +70,18 @@ public:
 
   /*!
     @brief Reflux into the coarse data. 
-    @param[in]    a_phiCoar   Coarse-grid data
-    @param[in]    a_variables Variables to reflux
+    @details This subtracts the coarse-fluxes from the EB and adds in the sum offine-grid fluxes. Multiplication by area 
+    fractions and grid resolutions are done in this routine. 
+    @param[inout] a_coarData  Coarse-grid data.
+    @param[in]    a_coarFlux  Coarse-grid flux.
+    @param[in]    a_fineFlux  Fine-grid flux. 
+    @param[in]    a_variables Variables to reflux.
   */
   virtual void
-  reflux(LevelData<EBCellFAB>& a_phiCoar, const Interval a_variables) const noexcept;
+  reflux(LevelData<EBCellFAB>& a_Lphi,
+	 const LevelData<EBFluxFAB>& a_coarFlux,
+	 const LevelData<EBFluxFAB>& a_fineFlux,
+	 const Interval a_variables) const noexcept;
 
 protected:
   /*!
