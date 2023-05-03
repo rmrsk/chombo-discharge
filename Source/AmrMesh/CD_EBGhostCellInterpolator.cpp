@@ -114,6 +114,11 @@ EBGhostCellInterpolator::defineGhostRegions() noexcept
           }
         }
         cfivs &= domainFine;
+
+        NeighborIterator nit(dblFine);
+        for (nit.begin(dit()); nit.ok(); ++nit) {
+          cfivs -= dblFine[nit()];
+        }
         cfivs.recalcMinBox();
 
         const Box fineGhostBox = cfivs.minBox();
