@@ -1852,7 +1852,7 @@ AmrMesh::interpGhostPwl(EBAMRCellData& a_data, const std::string a_realm, const 
 
     EBGhostCellInterpolator& interpolator = *m_realms[a_realm]->getGhostCellInterpolator(a_phase)[lvl];
 
-    interpolator.interpolate(*a_data[lvl], *a_data[lvl-1], interv, EBGhostCellInterpolator::Type::MinMod);    
+    interpolator.interpolate(*a_data[lvl], *a_data[lvl - 1], interv, EBGhostCellInterpolator::Type::MinMod);
   }
 
   a_data.exchange();

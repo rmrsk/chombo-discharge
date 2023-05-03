@@ -321,7 +321,7 @@ public:
     @param[in] a_phase Phase
   */
   Vector<RefCountedPtr<EBGhostCellInterpolator>>&
-  getGhostCellInterpolator(const phase::which_phase a_phase);  
+  getGhostCellInterpolator(const phase::which_phase a_phase);
 
   /*!
     @brief Get piecewise linear ghost cell interpolation utility

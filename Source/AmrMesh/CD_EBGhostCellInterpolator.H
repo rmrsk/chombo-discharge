@@ -25,33 +25,23 @@
 #include <CD_NamespaceHeader.H>
 
 /*!
-  @brief Class which can interpolate ghost cells across the coarse-fine interface.
+  @brief Class which can interpolate ghost cells across the coarse-fine interface. To select an interpolation method, use the type argument. 
 
-  To select an interpolation method, use the Type argument. 
+  @details This class works by computing slopes on the coarse grid. We then interpolate within the coarse-grid cell to the fine-grid ghost cell, using
+  the computed slopes. Note that all fine-grid ghost cells are interpolated from the coarse grid. Thus, this interpolator is useless for multigrid. 
 */
 class EBGhostCellInterpolator
 {
 public:
   /*!
-    @brief Type of interpolation method supported
-  */
-  /*!
-    @brief Type of interpolation methods supported.
-    PWC = Piecewise constant, ignoring the embedded boundary. This is not conservative. 
-    ConservativePWC = Piecewise constant, including the EB volume/area fractions.
-    ConservativeMinMod = Min-mod slope for interpolation, including the EB volume/area fractions.
-    ConservativeMonotonizedCentral = Monotonized central slope for interpolation, including the EB volume/area. 
+    @brief Type of interpolation slopes supported.
   */
   enum Type
   {
     PWC,
     MinMod,
     MonotonizedCentral,
-    Superbee,
-    ConservativePWC,
-    ConservativeMinMod,
-    ConservativeMonotonizedCentral,
-    ConservativeSuperbee,
+    Superbee
   };
 
   /*!
@@ -118,7 +108,6 @@ public:
               const Type                  a_interpType) const noexcept;
 
 protected:
-
   /*!
     @brief Is defined or not
   */
@@ -156,7 +145,7 @@ protected:
   int m_ghostCF;
 
   /*!
-    @brief Non-EB ghost cells to be interpolated
+    @brief Regular ghost regions to be interpolated. 
   */
   LayoutData<std::map<std::pair<int, Side::LoHiSide>, Box>> m_regularGhostRegions;
 
@@ -189,6 +178,12 @@ protected:
 
   /*!
     @brief Regular interpolation, as if the EB was not there. 
+    @param[in] a_phiFine Fine-grid data
+    @param[in] a_phiCoar Coarse-grid data
+    @param[in] a_dit Grid index on the fine grid
+    @param[in] a_fineVar Fine-grid variable
+    @param[in] a_coarVar Coarse-grid variable
+    @param[in] a_interType Slope type
   */
   virtual void
   interpolateRegular(FArrayBox&       a_phiFine,
@@ -199,7 +194,13 @@ protected:
                      const Type       a_interpType) const noexcept;
 
   /*!
-    @brief Irregular interpolation.
+    @brief Ghost cell interpolation near the EB, correcting slopes that broke in interpolateRegular. 
+    @param[in] a_phiFine Fine-grid data
+    @param[in] a_phiCoar Coarse-grid data
+    @param[in] a_dit Grid index on the fine grid
+    @param[in] a_fineVar Fine-grid variable
+    @param[in] a_coarVar Coarse-grid variable
+    @param[in] a_interType Slope type
   */
   virtual void
   interpolateIrregular(EBCellFAB&       a_phiFine,

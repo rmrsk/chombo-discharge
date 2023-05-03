@@ -632,7 +632,7 @@ PhaseRealm::defineFillPatch(const int a_lmin)
 
   const bool doThisOperator = this->queryOperator(s_eb_fill_patch);
 
-  m_ghostCellInterpolator.resize(1 + m_finestLevel);  
+  m_ghostCellInterpolator.resize(1 + m_finestLevel);
 
   if (doThisOperator) {
 
@@ -648,7 +648,7 @@ PhaseRealm::defineFillPatch(const int a_lmin)
         m_ghostCellInterpolator[lvl] = RefCountedPtr<EBGhostCellInterpolator>(
           new EBGhostCellInterpolator(*m_eblg[lvl],
                                       *m_eblgCoFi[lvl - 1],
-                                      *m_eblg[lvl-1],
+                                      *m_eblg[lvl - 1],
                                       ghost,
                                       m_refinementRatios[lvl - 1],
                                       radius));

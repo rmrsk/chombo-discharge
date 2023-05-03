@@ -213,8 +213,7 @@ EBGhostCellInterpolator::interpolateRegular(FArrayBox&       a_phiFine,
       CH_STOP(t1);
 
       // Add contributions from slopes.
-      const bool doSlopes = a_interpType != EBGhostCellInterpolator::Type::PWC &&
-                            a_interpType != EBGhostCellInterpolator::Type::ConservativePWC;
+      const bool doSlopes = a_interpType != EBGhostCellInterpolator::Type::PWC;
 
       if (doSlopes) {
         for (int slopeDir = 0; slopeDir < SpaceDim; slopeDir++) {

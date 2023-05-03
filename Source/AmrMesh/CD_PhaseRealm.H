@@ -314,7 +314,7 @@ public:
     @brief Get ghost cell interpolation utility
   */
   Vector<RefCountedPtr<EBGhostCellInterpolator>>&
-  getGhostCellInterpolator() const;  
+  getGhostCellInterpolator() const;
 
   /*!
     @brief Get piecewise linear ghost cell interpolation utility
@@ -519,7 +519,7 @@ protected:
   /*!
     @brief Ghost cell interpolation utility
   */
-  mutable Vector<RefCountedPtr<EBGhostCellInterpolator>> m_ghostCellInterpolator;  
+  mutable Vector<RefCountedPtr<EBGhostCellInterpolator>> m_ghostCellInterpolator;
 
   /*!
     @brief Regridding utility (for filling new grid patches)

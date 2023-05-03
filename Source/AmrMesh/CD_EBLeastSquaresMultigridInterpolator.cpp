@@ -757,7 +757,7 @@ EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(LevelData<FArrayBox
         const int iHiLo     = sign(sit());
         const Box interpBox = m_cfivs[dit()].at(std::make_pair(dir, sit()));
 
-	// Coarse-side interpolation stencil. This does interpolation orthogonal to direction 'dir'
+        // Coarse-side interpolation stencil. This does interpolation orthogonal to direction 'dir'
         const CoarseInterpQuadCF& coarseStencils = (sit() == Side::Lo) ? m_loCoarseInterpCF[dir][dit()]
                                                                        : m_hiCoarseInterpCF[dir][dit()];
 
