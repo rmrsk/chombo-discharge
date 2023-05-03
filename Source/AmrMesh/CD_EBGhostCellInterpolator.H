@@ -163,12 +163,18 @@ protected:
   /*!
     @brief Fine-grid ghost cells on the coarse-fine interface that overlap an irregular coarse cell. 
   */
-  LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_fineIrregCells;
+  mutable LayoutData<VoFIterator> m_fineIrregCells;
 
   /*!
     @brief Coarse-grid cells on the caorse-side of the interface that are irregular cells.
   */
-  LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_coarIrregCells;
+  mutable LayoutData<VoFIterator> m_coarIrregCells;
+
+  /*!
+    @brief Buffer data defined on the coarsened fine grids (over m_coarIrregCells). Used for holding slopes in the
+    coarse-grid cut-cells
+  */
+  mutable LayoutData<BaseIVFAB<Real>> m_coarIrregSlopes;
 
   /*!
     @brief Buffer data
@@ -191,6 +197,17 @@ protected:
                      const int        a_fineVar,
                      const int        a_coarVar,
                      const Type       a_interpType) const noexcept;
+
+  /*!
+    @brief Irregular interpolation.
+  */
+  virtual void
+  interpolateIrregular(EBCellFAB&       a_phiFine,
+                       const EBCellFAB& a_phiCoar,
+                       const DataIndex& a_dit,
+                       const int        a_fineVar,
+                       const int        a_coarVar,
+                       const Type       a_interpType) const noexcept;
 
   /*!
     @brief minmod slope function. 
