@@ -698,6 +698,7 @@ PhaseRealm::defineFluxReg(const int a_lmin, const int a_regsize)
   const bool doThisOperator = this->queryOperator(s_eb_flux_reg);
 
   m_fluxReg.resize(1 + m_finestLevel);
+  m_ebReflux.resize(1 + m_finestLevel);
 
   if (doThisOperator) {
 
@@ -729,6 +730,9 @@ PhaseRealm::defineFluxReg(const int a_lmin, const int a_regsize)
                                                                                 comps,
                                                                                 &(*m_ebis)));
         }
+
+        m_ebReflux[lvl] = RefCountedPtr<EBReflux>(
+          new EBReflux(*m_eblg[lvl + 1], *m_eblgCoFi[lvl], *m_eblg[lvl], m_refinementRatios[lvl]));
       }
     }
   }

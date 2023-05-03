@@ -30,6 +30,7 @@
 #include <CD_LoadBalancing.H>
 #include <CD_MFLevelGrid.H>
 #include <CD_EBCoarAve.H>
+#include <CD_EBReflux.H>
 #include <CD_DomainFluxIFFAB.H>
 #include <CD_DomainFluxIFFABFactory.H>
 #include <CD_ParticleContainer.H>
@@ -530,6 +531,11 @@ protected:
     @brief Flux register utility
   */
   mutable Vector<RefCountedPtr<EBFluxRegister>> m_fluxReg;
+
+  /*!
+    @brief Flux register utility
+  */
+  mutable Vector<RefCountedPtr<EBReflux>> m_ebReflux;
 
   /*!
     @brief Level redistribution utility
