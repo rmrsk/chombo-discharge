@@ -4,41 +4,41 @@
  */
 
 /*!
-  @file   CD_MFFluxReg.cpp
-  @brief  Implementation of CD_MFFluxReg.H
+  @file   CD_MFReflux.cpp
+  @brief  Implementation of CD_MFReflux.H
   @author Robert Marskar
 */
 
 // Our includes
-#include <CD_MFFluxReg.H>
+#include <CD_MFReflux.H>
 #include <CD_NamespaceHeader.H>
 
-MFFluxReg::MFFluxReg() {}
+MFReflux::MFReflux() {}
 
-MFFluxReg::MFFluxReg(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs) { this->define(a_fluxRegs); }
+MFReflux::MFReflux(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs) { this->define(a_fluxRegs); }
 
-MFFluxReg::~MFFluxReg() {}
+MFReflux::~MFReflux() {}
 
 void
-MFFluxReg::define(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs)
+MFReflux::define(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs)
 {
   m_fluxRegs = a_fluxRegs;
 }
 
 const RefCountedPtr<EBReflux>&
-MFFluxReg::getFluxRegPointer(const int a_phase) const
+MFReflux::getFluxRegPointer(const int a_phase) const
 {
   return m_fluxRegs[a_phase];
 }
 
 EBReflux&
-MFFluxReg::getFluxReg(const int a_phase)
+MFReflux::getFluxReg(const int a_phase)
 {
   return *m_fluxRegs[a_phase];
 }
 
 const EBReflux&
-MFFluxReg::getFluxReg(const int a_phase) const
+MFReflux::getFluxReg(const int a_phase) const
 {
   return *m_fluxRegs[a_phase];
 }

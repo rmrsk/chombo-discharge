@@ -571,7 +571,7 @@ FieldSolverMultigrid::setupHelmholtzFactory()
 
   Vector<MFLevelGrid>             mflg(1 + finestLevel);
   Vector<MFMultigridInterpolator> mfInterp(1 + finestLevel);
-  Vector<MFFluxReg>               mfFluxReg(1 + finestLevel);
+  Vector<MFReflux>                mfFluxReg(1 + finestLevel);
   Vector<MFCoarAve>               mfCoarAve(1 + finestLevel);
 
   for (int lvl = 0; lvl <= finestLevel; lvl++) {

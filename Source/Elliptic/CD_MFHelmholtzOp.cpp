@@ -30,7 +30,7 @@ MFHelmholtzOp::MFHelmholtzOp(const Location::Cell                             a_
                              const MFLevelGrid&                               a_mflgCoar,
                              const MFLevelGrid&                               a_mflgCoarMG,
                              const MFMultigridInterpolator&                   a_interpolator,
-                             const MFFluxReg&                                 a_fluxReg,
+                             const MFReflux&                                  a_fluxReg,
                              const MFCoarAve&                                 a_coarAve,
                              const RefCountedPtr<MFHelmholtzDomainBCFactory>& a_domainBcFactory,
                              const RefCountedPtr<MFHelmholtzEBBCFactory>&     a_ebBcFactory,

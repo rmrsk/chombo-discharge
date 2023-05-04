@@ -4,13 +4,13 @@
  */
 
 /*!
-  @file   CD_MFFluxReg.H
+  @file   CD_MFReflux.H
   @brief  Declaration of a class for refluxing in a multiphase context. 
   @author Robert Marskar
 */
 
-#ifndef CD_MFFluxReg_H
-#define CD_MFFluxReg_H
+#ifndef CD_MFReflux_H
+#define CD_MFReflux_H
 
 // Chombo includes
 #include <RefCountedPtr.H>
@@ -22,24 +22,24 @@
 /*!
   @brief Class which wraps EBRefluxs in multiphase. 
 */
-class MFFluxReg
+class MFReflux
 {
 public:
   /*!
     @brief Weak constructor. Must subsequently call define. 
   */
-  MFFluxReg();
+  MFReflux();
 
   /*!
     @brief Full constructor. Calls define
     @param[in] a_fluxRegs Flux registers on each phase
   */
-  MFFluxReg(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs);
+  MFReflux(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs);
 
   /*!
     @brief Destructor (does nothing)
   */
-  ~MFFluxReg();
+  ~MFReflux();
 
   /*!
     @brief Define function
