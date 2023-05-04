@@ -75,7 +75,7 @@ EBReflux::defineRegionsCF() noexcept
   const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
 
   CH_START(t1);
-  m_regularCoarseFineRegions.define(dbl);  
+  m_regularCoarseFineRegions.define(dbl);
   m_irregularCoarseFineRegions.define(dbl);
 
   Copier copier;
@@ -120,17 +120,19 @@ EBReflux::defineRegionsCF() noexcept
 
       // Define regular cells
       for (DataIterator dit(dbl); dit.ok(); ++dit) {
-        const FArrayBox& mask = coarMask[dit()];
+        const EBISBox&   ebisBox = ebisl[dit()];
+        const FArrayBox& mask    = coarMask[dit()];
         DenseIntVectSet  cfivs(dbl[dit()], false);
 
         for (BoxIterator bit(dbl[dit()]); bit.ok(); ++bit) {
-          if (mask(bit(), 0) > 0.0) {
-            cfivs |= bit();
+          const IntVect iv = bit();
+          if (mask(iv, 0) > 0.0 && ebisBox.isRegular(iv)) {
+            cfivs |= iv;
           }
         }
 
         cfivs.recalcMinBox();
-	m_regularCoarseFineRegions[dit()][std::make_pair(dir, sit())] = cfivs;
+        m_regularCoarseFineRegions[dit()][std::make_pair(dir, sit())] = cfivs;
       }
 
       // Define irregular cells.
@@ -183,12 +185,12 @@ EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
 
   CH_START(t1);
   LevelData<EBFluxFAB> fluxCoFi(dblCoFi, 1, IntVect::Zero, EBFluxFactory(ebislCoFi));
-  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Zero, EBFluxFactory(ebisl));
+  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Unit, EBFluxFactory(ebisl));
   CH_STOP(t1);
 
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
 
-    // Coarsen fluxes and copy to fluxCoar
+    // Coarsen fluxes and copy to something viewable by dbl
     this->coarsenFluxesCF(fluxCoFi, a_fineFlux, 0, ivar);
     fluxCoFi.copyTo(fluxCoar);
 
@@ -344,10 +346,8 @@ EBReflux::refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
         const IntVect shift = (sit() == Side::Lo) ? BASISV(dir) : IntVect::Zero;
 
         auto regularKernel = [&](const IntVect& iv) -> void {
-          if (ebisBox.isRegular(iv)) {
-            LphiReg(iv, a_phiVar) -= iHiLo * a_scaleCoarFlux * oldFluxReg(iv + shift, a_oldFluxVar);
-            LphiReg(iv, a_phiVar) += iHiLo * a_scaleFineFlux * newFluxReg(iv + shift, a_newFluxVar);
-          }
+          LphiReg(iv, a_phiVar) -= iHiLo * a_scaleCoarFlux * oldFluxReg(iv + shift, a_oldFluxVar);
+          LphiReg(iv, a_phiVar) += iHiLo * a_scaleFineFlux * newFluxReg(iv + shift, a_newFluxVar);
         };
 
         auto irregularKernel = [&](const VolIndex& vof) -> void {
@@ -358,7 +358,7 @@ EBReflux::refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
             const Real       faceArea = ebisBox.areaFrac(face);
 
             Lphi(vof, a_phiVar) -= iHiLo * faceArea * a_scaleCoarFlux * oldFlux(face, a_oldFluxVar);
-            Lphi(vof, a_phiVar) += iHiLo * faceArea * a_scaleFineFlux * newFlux(face, a_oldFluxVar);
+            Lphi(vof, a_phiVar) += iHiLo * faceArea * a_scaleFineFlux * newFlux(face, a_newFluxVar);
           }
         };
 

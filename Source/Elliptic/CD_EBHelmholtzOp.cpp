@@ -2071,12 +2071,10 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
   // we subtract the contribution from the coarse grid fluxes in a_Lphi and add in the contribution from the fine grid fluxes.
   //
   // Note: The most expensive part of this is incrementFRFine because it will redo the ghost cells on the fine level!
-
 #if 1
+  EBHelmholtzOp&        finerOp = (EBHelmholtzOp&)(a_finerOp);
   LevelData<EBCellFAB>& phiFine = (LevelData<EBCellFAB>&)a_phiFine;
-  //  phiFine.exchange();
-
-  EBHelmholtzOp& finerOp = (EBHelmholtzOp&)(a_finerOp);
+  //  phiFine.exchange(); Apparently this one is unecessary.
   finerOp.inhomogeneousCFInterp(phiFine, a_phi);
 
   EBLevelGrid eblgCoFi;
