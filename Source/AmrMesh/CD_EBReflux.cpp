@@ -182,8 +182,8 @@ EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
   const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
 
   CH_START(t1);
-  LevelData<EBFluxFAB> fluxCoFi(dblCoFi, 1, IntVect::Unit, EBFluxFactory(ebislCoFi));
-  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Unit, EBFluxFactory(ebisl));
+  LevelData<EBFluxFAB> fluxCoFi(dblCoFi, 1, IntVect::Zero, EBFluxFactory(ebislCoFi));
+  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Zero, EBFluxFactory(ebisl));
   CH_STOP(t1);
 
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
@@ -191,7 +191,6 @@ EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
     // Coarsen fluxes and copy to fluxCoar
     this->coarsenFluxesCF(fluxCoFi, a_fineFlux, 0, ivar);
     fluxCoFi.copyTo(fluxCoar);
-    fluxCoar.exchange();
 
     // Reflux the coarse level.
     this->refluxIntoCoarse(a_Lphi, a_flux, fluxCoar, ivar, 0, ivar, a_scaleCoarFlux, a_scaleFineFlux);
@@ -283,11 +282,10 @@ EBReflux::coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
 
           for (int i = 0; i < fineFaces.size(); i++) {
             const FaceIndex& fineFace = fineFaces[i];
-            //            coarFlux(face, a_coarVar) += fineEBISBox.areaFrac(fineFace) * fineFlux(fineFace, a_fineVar);
-            coarFlux(face, a_coarVar) += fineFlux(fineFace, a_fineVar);
+            coarFlux(face, a_coarVar) += fineEBISBox.areaFrac(fineFace) * fineFlux(fineFace, a_fineVar);
           }
 
-          coarFlux(face, a_coarVar) *= invFinePerCoar;
+          coarFlux(face, a_coarVar) *= invFinePerCoar / areaCoar;
         }
       };
 
