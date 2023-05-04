@@ -16,6 +16,7 @@
 #include <map>
 
 // Chombo includes
+#include <Copier.H>
 #include <EBLevelGrid.H>
 
 // Our includes
@@ -28,6 +29,14 @@
 class EBReflux
 {
 public:
+  /*!
+    @brief Refluxing type. 
+  */
+  enum class Type
+  {
+    Conservative,
+    Arithmetic
+  };
   /*!
     @brief Disallowed constructor. 
   */
@@ -105,6 +114,11 @@ protected:
   EBLevelGrid m_eblgCoFi;
 
   /*!
+    @brief Copier for copying from valid+ghost to valid
+  */
+  Copier m_copier;
+
+  /*!
     @brief Boxes in each patch that lie on the coarse-fine interface
     @note Defined over the coarse grids
   */
@@ -122,16 +136,18 @@ protected:
   int m_refRat;
 
   /*!
-    @brief Number of ghost cells to fill across coarse-fine interface. 
-    @note Only applies the the cut-cells. 
-  */
-  int m_ghostCF;
-
-  /*!
     @brief Define CF regions
   */
   virtual void
   defineRegionsCF() noexcept;
+
+  /*!
+    @brief */
+  virtual void
+  coarsenFluxes(LevelData<EBFluxFAB>&       a_coarFluxes,
+                const LevelData<EBFluxFAB>& a_fineFluxes,
+                const int                   a_coarVar,
+                const int                   a_fineVar) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>

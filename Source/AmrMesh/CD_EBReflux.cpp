@@ -11,6 +11,8 @@
 
 // Chombo includes
 #include <NeighborIterator.H>
+#include <EBCellFactory.H>
+#include <EBFluxFactory.H>
 #include <CH_Timer.H>
 
 // Our includes
@@ -72,6 +74,8 @@ EBReflux::defineRegionsCF() noexcept
   const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
 
   CH_START(t1);
+  m_copier.ghostDefine(dblCoFi, dbl, domain, IntVect::Unit);
+
   m_regularCoarseFineRegions.define(dbl);
   m_irregularCoarseFineRegions.define(dbl);
   CH_STOP(t1);
@@ -110,9 +114,6 @@ EBReflux::defineRegionsCF() noexcept
   LevelData<FArrayBox> coarMask(dbl, 1, IntVect::Zero);
   LevelData<FArrayBox> coFiMask(dblCoFi, 1, IntVect::Unit);
 
-  Copier copier;
-  copier.ghostDefine(dblCoFi, dbl, domain, IntVect::Unit);
-
   for (int dir = 0; dir < SpaceDim; dir++) {
     for (SideIterator sit; sit.ok(); ++sit) {
       for (DataIterator dit(dbl); dit.ok(); ++dit) {
@@ -139,7 +140,7 @@ EBReflux::defineRegionsCF() noexcept
 
       // Copy the data to the coarse grid.
       const Interval interv(0, 0);
-      coFiMask.copyTo(interv, coarMask, interv, copier, LDaddOp<FArrayBox>());
+      coFiMask.copyTo(interv, coarMask, interv, m_copier, LDaddOp<FArrayBox>());
 
       // Now define the VoFIterator on this side.
       for (DataIterator dit(dbl); dit.ok(); ++dit) {
@@ -169,11 +170,136 @@ EBReflux::defineRegionsCF() noexcept
 
 void
 EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
-                 const LevelData<EBFluxFAB>& a_coarFlux,
+                 const LevelData<EBFluxFAB>& a_flux,
                  const LevelData<EBFluxFAB>& a_fineFlux,
                  const Interval              a_variables) const noexcept
 {
-  CH_TIME("EBReflux::reflux");
+  CH_TIMERS("EBReflux::reflux");
+  CH_TIMER("EBReflux::reflux::define_buffers", t1);
+
+  CH_assert(a_Lphi.nComp() > a_variables.end());
+  CH_assert(a_flux.nComp() > a_variables.end());
+  CH_assert(a_fineFlux.nComp() > a_variables.end());
+
+  const DisjointBoxLayout& dbl     = m_eblg.getDBL();
+  const DisjointBoxLayout& dblCoFi = m_eblgCoFi.getDBL();
+
+  const EBISLayout& ebisl     = m_eblg.getEBISL();
+  const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
+
+  CH_START(t1);
+  LevelData<EBFluxFAB> fluxCoFi(dblCoFi, 1, IntVect::Zero, EBFluxFactory(ebislCoFi));
+  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Zero, EBFluxFactory(ebisl));
+  CH_STOP(t1);
+
+  for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
+
+    // Coarsen fluxes and copy to fluxCoar
+    this->coarsenFluxes(fluxCoFi, a_fineFlux, 0, ivar);
+    fluxCoFi.copyTo(fluxCoar);
+  }
+}
+
+void
+EBReflux::coarsenFluxes(LevelData<EBFluxFAB>&       a_coarFluxes,
+                        const LevelData<EBFluxFAB>& a_fineFluxes,
+                        const int                   a_coarVar,
+                        const int                   a_fineVar) const noexcept
+{
+  CH_TIMERS("EBReflux::coarsenFluxes");
+  CH_TIMER("EBReflux::coarsenFluxes::regular_faces", t1);
+  CH_TIMER("EBReflux::coarsenFluxes::irregular_faces", t2);
+
+  CH_assert(a_coarVar >= 0);
+  CH_assert(a_fineVar >= 0);
+  CH_assert(a_coarFluxes.nComp() > a_coarVar);
+  CH_assert(a_fineFluxes.nComp() > a_fineVar);
+
+  const DisjointBoxLayout& dblCoar = m_eblgCoFi.getDBL();
+  const DisjointBoxLayout& dblFine = m_eblgFine.getDBL();
+
+  const EBISLayout& ebislCoar = m_eblgCoFi.getEBISL();
+  const EBISLayout& ebislFine = m_eblgFine.getEBISL();
+
+  const Real dxCoar         = 1.0;
+  const Real dxFine         = dxCoar / m_refRat;
+  const Real invFinePerCoar = 1.0 / std::pow(m_refRat, SpaceDim - 1);
+
+  for (DataIterator dit(dblCoar); dit.ok(); ++dit) {
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      const Box coarCellBox = dblCoar[dit()];
+      const Box fineCellBox = dblFine[dit()];
+      const Box coarFaceBox = surroundingNodes(coarCellBox, dir);
+
+      const EBISBox& coarEBISBox = ebislCoar[dit()];
+      const EBISBox& fineEBISBox = ebislFine[dit()];
+
+      const EBGraph& coarGraph = coarEBISBox.getEBGraph();
+      const EBGraph& fineGraph = fineEBISBox.getEBGraph();
+
+      EBFaceFAB&       coarFlux = a_coarFluxes[dit()][dir];
+      const EBFaceFAB& fineFlux = a_coarFluxes[dit()][dir];
+
+      FArrayBox&       coarFluxReg = coarFlux.getFArrayBox();
+      const FArrayBox& fineFluxReg = fineFlux.getFArrayBox();
+
+      // Some hooks for deciding how to do the averaging.
+      const int xDoLoop = (dir == 0) ? 0 : 1;
+      const int yDoLoop = (dir == 1) ? 0 : 1;
+#if CH_SPACEDIM == 3
+      const int zDoLoop = (dir == 2) ? 0 : 1;
+#endif
+
+      const IntVectSet coarIrregIVS = coarEBISBox.getIrregIVS(coarCellBox);
+      FaceIterator     faceIt(coarIrregIVS, coarGraph, dir, FaceStop::SurroundingWithBoundary);
+
+      // Kernel for regular cells.
+      auto regularKernel = [&](const IntVect& iv) -> void {
+        coarFluxReg(iv, a_coarVar) = 0.0;
+
+#if CH_SPACEDIM == 3
+        for (int k = 0; k <= (m_refRat - 1) * zDoLoop; k++) {
+#endif
+          for (int j = 0; j <= (m_refRat - 1) * yDoLoop; j++) {
+            for (int i = 0; i <= (m_refRat - 1) * xDoLoop; i++) {
+              const IntVect ivFine = iv * m_refRat + IntVect(D_DECL(i, j, k));
+
+              coarFluxReg(iv, a_coarVar) += fineFluxReg(ivFine, a_fineVar);
+            }
+          }
+#if CH_SPACEDIM == 3
+        }
+#endif
+
+        coarFluxReg(iv, a_coarVar) *= invFinePerCoar;
+      };
+
+      auto irregularKernel = [&](const FaceIndex& face) -> void {
+        coarFlux(face, a_coarVar) = 0.0;
+
+        const Real areaCoar = coarEBISBox.areaFrac(face);
+
+        if (areaCoar > 0.0) {
+          const Vector<FaceIndex>& fineFaces = ebislCoar.refine(face, m_refRat, dit());
+
+          for (int i = 0; i < fineFaces.size(); i++) {
+            const FaceIndex& fineFace = fineFaces[i];
+            coarFlux(face, a_coarVar) += fineEBISBox.areaFrac(fineFace) * fineFlux(fineFace, a_fineVar);
+          }
+
+          coarFlux(face, a_coarVar) *= invFinePerCoar / areaCoar;
+        }
+      };
+
+      CH_START(t1);
+      BoxLoops::loop(coarFaceBox, regularKernel);
+      CH_STOP(t1);
+
+      CH_START(t2);
+      BoxLoops::loop(faceIt, irregularKernel);
+      CH_STOP(t2);
+    }
+  }
 }
 
 #include <CD_NamespaceFooter.H>
