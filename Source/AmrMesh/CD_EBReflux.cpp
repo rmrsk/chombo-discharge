@@ -10,10 +10,12 @@
 */
 
 // Chombo includes
+#include <NeighborIterator.H>
 #include <CH_Timer.H>
 
 // Our includes
 #include <CD_EBReflux.H>
+#include <CD_BoxLoops.H>
 #include <CD_NamespaceHeader.H>
 
 EBReflux::EBReflux() noexcept
@@ -55,24 +57,36 @@ EBReflux::define(const EBLevelGrid& a_eblg,
 void
 EBReflux::defineRegionsCF() noexcept
 {
-  CH_TIME("EBReflux::defineRegionsCF");
+  CH_TIMERS("EBReflux::defineRegionsCF");
+  CH_TIMER("EBReflux::defineRegionsCF::layout_define", t1);
+  CH_TIMER("EBReflux::defineRegionsCF::regular_regions", t2);
+  CH_TIMER("EBReflux::defineRegionsCF::irregular_regions", t3);
 
   const DisjointBoxLayout& dbl     = m_eblg.getDBL();
   const DisjointBoxLayout& dblCoFi = m_eblgCoFi.getDBL();
 
+  const ProblemDomain& domain     = m_eblg.getDomain();
+  const ProblemDomain& domainCoFi = m_eblgCoFi.getDomain();
+
   const EBISLayout& ebisl     = m_eblg.getEBISL();
   const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
 
+  CH_START(t1);
   m_regularCoarseFineRegions.define(dbl);
   m_irregularCoarseFineRegions.define(dbl);
+  CH_STOP(t1);
 
+  // Define the "regular" coarse-fine interface cells on the coarse side.
+  CH_START(t2);
   for (DataIterator dit(dbl); dit.ok(); ++dit) {
     const Box boxCoar = dbl[dit()];
 
-    // Define map.
-    auto& regularCoarseFineRegions   = m_regularCoarseFineRegions[dit()];
-    auto& irregularCoarseFineRegions = m_irregularCoarseFineRegions[dit()];
+    auto& regularCoarseFineRegions = m_regularCoarseFineRegions[dit()];
 
+    // I don't like this loop but hopefully it _shouldn't_ become a performance bottleneck. The issue is that
+    // it will iterate through all fine-grid boxes and there can be many of them. I _could_ do this in conjunction
+    // with how we define the irregular cells on the coarse-fine interface (using the masks), but I really want
+    // to describe the regions regions using a collection boxes rather than an IntVectSet/VoFIterator.
     for (LayoutIterator lit = dblCoFi.layoutIterator(); lit.ok(); ++lit) {
       const Box boxCoFi = dblCoFi[lit()];
 
@@ -88,6 +102,69 @@ EBReflux::defineRegionsCF() noexcept
       }
     }
   }
+  CH_STOP(t2);
+
+  // Define the irregular coarse-fine interface. This is way more involved since we need to figure out which cells
+  // on the coarse-grid side interfaces with cells on the fine-grid side.
+  CH_START(t3);
+  LevelData<FArrayBox> coarMask(dbl, 1, IntVect::Zero);
+  LevelData<FArrayBox> coFiMask(dblCoFi, 1, IntVect::Unit);
+
+  Copier copier;
+  copier.ghostDefine(dblCoFi, dbl, domain, IntVect::Unit);
+
+  for (int dir = 0; dir < SpaceDim; dir++) {
+    for (SideIterator sit; sit.ok(); ++sit) {
+      for (DataIterator dit(dbl); dit.ok(); ++dit) {
+        coarMask[dit()].setVal(0.0);
+      }
+
+      for (DataIterator dit(dblCoFi); dit.ok(); ++dit) {
+        coFiMask[dit()].setVal(0.0);
+
+        const Box boxCoFi     = dblCoFi[dit()];
+        const Box sideBoxCoFi = adjCellBox(boxCoFi, dir, sit(), 1);
+
+        DenseIntVectSet cfivs = DenseIntVectSet(sideBoxCoFi, true);
+
+        NeighborIterator nit(dblCoFi);
+        for (nit.begin(dit()); nit.ok(); ++nit) {
+          cfivs -= dblCoFi[nit()];
+        }
+
+        for (DenseIntVectSetIterator ivsIt(cfivs); ivsIt.ok(); ++ivsIt) {
+          coFiMask[dit()](ivsIt(), 0) = 1.0;
+        }
+      }
+
+      // Copy the data to the coarse grid.
+      const Interval interv(0, 0);
+      coFiMask.copyTo(interv, coarMask, interv, copier, LDaddOp<FArrayBox>());
+
+      // Now define the VoFIterator on this side.
+      for (DataIterator dit(dbl); dit.ok(); ++dit) {
+        const Box        cellBox = dbl[dit()];
+        const FArrayBox& mask    = coarMask[dit()];
+        const EBISBox&   ebisBox = ebisl[dit()];
+        const EBGraph&   ebGraph = ebisBox.getEBGraph();
+
+        IntVectSet irregCells;
+
+        auto findIrregCells = [&](const IntVect& iv) -> void {
+          if (mask(iv, 0) > 0.0 && ebisBox.isIrregular(iv)) {
+            irregCells |= iv;
+          }
+        };
+
+        BoxLoops::loop(cellBox, findIrregCells);
+
+        // Define appropriate iterators.
+        auto& irregularCoarseFineRegions = m_irregularCoarseFineRegions[dit()];
+        irregularCoarseFineRegions[std::make_pair(dir, sit())].define(irregCells, ebGraph);
+      }
+    }
+  }
+  CH_STOP(t3);
 }
 
 void
