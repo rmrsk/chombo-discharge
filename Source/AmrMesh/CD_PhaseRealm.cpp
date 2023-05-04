@@ -732,7 +732,7 @@ PhaseRealm::defineFluxReg(const int a_lmin, const int a_regsize)
         }
 
         m_ebReflux[lvl] = RefCountedPtr<EBReflux>(
-          new EBReflux(*m_eblg[lvl], *m_eblg[lvl+1], *m_eblgCoFi[lvl], m_refinementRatios[lvl]));
+          new EBReflux(*m_eblg[lvl], *m_eblg[lvl + 1], *m_eblgCoFi[lvl], m_refinementRatios[lvl]));
       }
     }
   }

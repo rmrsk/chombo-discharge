@@ -1510,7 +1510,9 @@ EBHelmholtzOp::gauSaiRedBlackKernel(EBCellFAB&       a_Lcorr,
                                     const DataIndex& a_dit,
                                     const int&       a_redBlack)
 {
-  CH_TIME("EBHelmholtzOp::gauSaiRedBlackkernel(EBCellFAB, EBCellFAB, EBCellFAB, Box, DataIndex, int)");
+  CH_TIMERS("EBHelmholtzOp::gauSaiRedBlackkernel");
+  CH_TIMER("EBHelmholtzOp::regular_cells", t1);
+  CH_TIMER("EBHelmholtzOp::irregular_cells", t2);
 
   // This is the kernel for computing phi^(k+1) = phi^k - (res - L(phi))/|diag(L)| with a red-black pattern. Here, "red" cells are encoded by a_redBlack=0.
 
@@ -1548,8 +1550,13 @@ EBHelmholtzOp::gauSaiRedBlackKernel(EBCellFAB&       a_Lcorr,
     };
 
     // Launch the kernels over their respective domains.
+    CH_START(t1);
     BoxLoops::loop(a_cellBox, regularKernel);
+    CH_STOP(t1);
+
+    CH_START(t2);
     BoxLoops::loop(m_vofIterMulti[a_dit], irregularKernel);
+    CH_STOP(t2);
   }
 }
 
@@ -2070,8 +2077,8 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
   // This routine computes the fluxes on the coarse and fine-side of the boundary and does a refluxing operation where
   // we subtract the contribution from the coarse grid fluxes in a_Lphi and add in the contribution from the fine grid fluxes.
   //
-  // Note: The most expensive part of this is incrementFRFine because it will redo the ghost cells on the fine level!
-#if 1
+
+#if 0
   EBHelmholtzOp&        finerOp = (EBHelmholtzOp&)(a_finerOp);
   LevelData<EBCellFAB>& phiFine = (LevelData<EBCellFAB>&)a_phiFine;
   //  phiFine.exchange(); Apparently this one is unecessary.
@@ -2088,6 +2095,7 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
 
   refluxEB.reflux(a_Lphi, m_flux, finerOp.getFlux(), Interval(0, 0), scale, scale);
 #else
+  // Note: The most expensive part of this is incrementFRFine because it will redo the ghost cells on the fine level!
   m_fluxReg->setToZero();
 
   this->incrementFRCoar(a_phi);

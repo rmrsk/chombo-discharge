@@ -24,19 +24,18 @@
 
 /*!
   @brief Class which can do refluxing across a coarse-fine interface. 
-  @details This is like Chombos EBFluxRegister, but trimmed for reduced memory overhead and performance. 
+  @details This is like Chombos EBFluxRegister, but trimmed for being faster & cheaper. This class will only reflux on the
+  coarse-fine interface. If the user wants to accumulate fluxes, he/she should do it outside of this routine and only call
+  the reflux method at the very end (only relevant for subcycling).
+
+  This reflux method operates slightly different from Chombo in that the coarse-grid fluxes are first constructed by 
+  conservatively coarsening the fine-grid fluxes. Then we do as we always do, subtracting the originan coarse-grid fluxes
+  and adding in the corresponding fine-grid fluxes. Standard scaling factor for scaling the coarse/fine flux contributions
+  are present, as always. 
 */
 class EBReflux
 {
 public:
-  /*!
-    @brief Refluxing type. 
-  */
-  enum class Type
-  {
-    Conservative,
-    Arithmetic
-  };
   /*!
     @brief Disallowed constructor. 
   */
@@ -105,7 +104,7 @@ protected:
   /*!
     @brief Refinement factor between fine and coarse level. 
   */
-  int m_refRat;  
+  int m_refRat;
 
   /*!
     @brief Fine grids
@@ -133,11 +132,15 @@ protected:
   LayoutData<std::map<std::pair<int, Side::LoHiSide>, DenseIntVectSet>> m_regularCoarseFineRegions;
 
   /*!
+    @brief Stencils for conservatively coarsening fine-grid fluxes onto the coarse grid
+  */
+  mutable LayoutData<std::map<std::pair<int, Side::LoHiSide>, FaceIterator>> m_fluxCoarseningRegions;
+
+  /*!
     @brief Cut-cells in each patch that lie on the coarse-fine interface
     @note Defined over the coarse grids
   */
   mutable LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_irregularCoarseFineRegions;
-
 
   /*!
     @brief Define coarse-fine interface regions so that we can compute things later. 
