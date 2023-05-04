@@ -24,7 +24,7 @@
 
 /*!
   @brief Class which can do refluxing across a coarse-fine interface. 
-  @details This is like Chombos EBFluxRegister, but trimmed for being faster & cheaper. This class will only reflux on the
+  @details This is like Chombos EBReflux, but trimmed for being faster & cheaper. This class will only reflux on the
   coarse-fine interface. If the user wants to accumulate fluxes, he/she should do it outside of this routine and only call
   the reflux method at the very end (only relevant for subcycling).
 

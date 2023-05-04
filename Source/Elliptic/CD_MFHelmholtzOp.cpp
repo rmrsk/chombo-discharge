@@ -12,6 +12,7 @@
 // Chombo includes
 #include <ParmParse.H>
 #include <CH_Timer.H>
+#include <EBLevelDataOps.H>
 
 // Our includes
 #include <CD_Timer.H>
@@ -105,7 +106,7 @@ MFHelmholtzOp::MFHelmholtzOp(const Location::Cell                             a_
     EBLevelGrid eblgCoarMG = a_hasMGObjects ? a_mflgCoarMG.getEBLevelGrid(iphase) : dummy;
 
     RefCountedPtr<EBMultigridInterpolator> interpolator = RefCountedPtr<EBMultigridInterpolator>(nullptr);
-    RefCountedPtr<EBFluxRegister>          fluxRegister = RefCountedPtr<EBFluxRegister>(nullptr);
+    RefCountedPtr<EBReflux>                fluxRegister = RefCountedPtr<EBReflux>(nullptr);
     RefCountedPtr<EBCoarAve>               coarsener    = RefCountedPtr<EBCoarAve>(nullptr);
 
     if (!a_isMGOperator) {

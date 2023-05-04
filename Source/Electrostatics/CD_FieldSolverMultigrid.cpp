@@ -577,7 +577,7 @@ FieldSolverMultigrid::setupHelmholtzFactory()
   for (int lvl = 0; lvl <= finestLevel; lvl++) {
     Vector<EBLevelGrid>                            eblgPhases(numPhases);
     Vector<RefCountedPtr<EBMultigridInterpolator>> interpPhases(numPhases);
-    Vector<RefCountedPtr<EBFluxRegister>>          fluxRegPhases(numPhases);
+    Vector<RefCountedPtr<EBReflux>>                fluxRegPhases(numPhases);
     Vector<RefCountedPtr<EBCoarAve>>               avePhases(numPhases);
 
     if (!ebisGas.isNull()) {

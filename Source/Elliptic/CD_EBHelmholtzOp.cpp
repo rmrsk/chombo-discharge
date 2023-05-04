@@ -35,7 +35,7 @@ EBHelmholtzOp::EBHelmholtzOp(const Location::Cell                             a_
                              const EBLevelGrid&                               a_eblgCoar,
                              const EBLevelGrid&                               a_eblgCoarMG,
                              const RefCountedPtr<EBMultigridInterpolator>&    a_interpolator,
-                             const RefCountedPtr<EBFluxRegister>&             a_fluxReg,
+                             const RefCountedPtr<EBReflux>&                   a_fluxReg,
                              const RefCountedPtr<EBCoarAve>&                  a_coarAve,
                              const RefCountedPtr<EBHelmholtzDomainBC>&        a_domainBc,
                              const RefCountedPtr<EBHelmholtzEBBC>&            a_ebBc,
@@ -1995,7 +1995,7 @@ EBHelmholtzOp::incrementFRCoar(const LevelData<EBCellFAB>& a_phi)
   CH_TIME("EBHelmholtzOp::incrementFRCoar(LD<EBCellFAB>)");
 
   CH_assert(m_hasFine);
-
+#if 0
   // TLDR: We want to compute the flux on this level so we can later set it to the sum of the fluxes through the fine-grid faces.
 
   const Real scale = 1.0;
@@ -2021,6 +2021,7 @@ EBHelmholtzOp::incrementFRCoar(const LevelData<EBCellFAB>& a_phi)
       }
     }
   }
+#endif
 }
 
 void
@@ -2031,6 +2032,7 @@ EBHelmholtzOp::incrementFRFine(const LevelData<EBCellFAB>&       a_phiFine,
   CH_TIME("EBHelmholtzOp::incrementFRFine(LD<EBCellFAB>, LD<EBCellFAB>, AMRLevelOp<LevelData<EBCellFAB>)");
 
   CH_assert(m_hasFine);
+#if 0
 
   // TLDR: We want to compute the fluxes on the fine grid so that we can later use these fluxes in the reflux step. This just means
   //       that we must compute the fine-grid fluxes along the refinement bounary and add those fluxes to the flux register.
@@ -2064,6 +2066,7 @@ EBHelmholtzOp::incrementFRFine(const LevelData<EBCellFAB>&       a_phiFine,
       }
     }
   }
+#endif
 }
 
 void
@@ -2078,31 +2081,22 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
   // we subtract the contribution from the coarse grid fluxes in a_Lphi and add in the contribution from the fine grid fluxes.
   //
 
-#if 0
   EBHelmholtzOp&        finerOp = (EBHelmholtzOp&)(a_finerOp);
   LevelData<EBCellFAB>& phiFine = (LevelData<EBCellFAB>&)a_phiFine;
   //  phiFine.exchange(); Apparently this one is unecessary.
   finerOp.inhomogeneousCFInterp(phiFine, a_phi);
 
-  EBLevelGrid eblgCoFi;
-  coarsen(eblgCoFi, m_eblgFine, m_refToFine);
-  EBReflux refluxEB(m_eblg, m_eblgFine, eblgCoFi, m_refToFine);
+  // EBLevelGrid eblgCoFi;
+  // coarsen(eblgCoFi, m_eblgFine, m_refToFine);
+  // EBReflux refluxEB(m_eblg, m_eblgFine, eblgCoFi, m_refToFine);
 
+  // Compute flux on both levels and then reflux into this level.
   this->computeFlux(a_phi);
   finerOp.computeFlux(a_phiFine);
 
   const Real scale = 1.0 / m_dx;
 
-  refluxEB.reflux(a_Lphi, m_flux, finerOp.getFlux(), Interval(0, 0), scale, scale);
-#else
-  // Note: The most expensive part of this is incrementFRFine because it will redo the ghost cells on the fine level!
-  m_fluxReg->setToZero();
-
-  this->incrementFRCoar(a_phi);
-  this->incrementFRFine(a_phiFine, a_phi, a_finerOp);
-
-  m_fluxReg->reflux(a_Lphi, m_interval, 1. / m_dx);
-#endif
+  m_fluxReg->reflux(a_Lphi, m_flux, finerOp.getFlux(), Interval(0, 0), scale, scale);
 }
 
 void

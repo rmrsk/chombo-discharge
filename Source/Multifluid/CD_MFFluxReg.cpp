@@ -15,29 +15,29 @@
 
 MFFluxReg::MFFluxReg() {}
 
-MFFluxReg::MFFluxReg(const Vector<RefCountedPtr<EBFluxRegister>>& a_fluxRegs) { this->define(a_fluxRegs); }
+MFFluxReg::MFFluxReg(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs) { this->define(a_fluxRegs); }
 
 MFFluxReg::~MFFluxReg() {}
 
 void
-MFFluxReg::define(const Vector<RefCountedPtr<EBFluxRegister>>& a_fluxRegs)
+MFFluxReg::define(const Vector<RefCountedPtr<EBReflux>>& a_fluxRegs)
 {
   m_fluxRegs = a_fluxRegs;
 }
 
-const RefCountedPtr<EBFluxRegister>&
+const RefCountedPtr<EBReflux>&
 MFFluxReg::getFluxRegPointer(const int a_phase) const
 {
   return m_fluxRegs[a_phase];
 }
 
-EBFluxRegister&
+EBReflux&
 MFFluxReg::getFluxReg(const int a_phase)
 {
   return *m_fluxRegs[a_phase];
 }
 
-const EBFluxRegister&
+const EBReflux&
 MFFluxReg::getFluxReg(const int a_phase) const
 {
   return *m_fluxRegs[a_phase];
