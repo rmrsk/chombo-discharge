@@ -75,50 +75,16 @@ EBReflux::defineRegionsCF() noexcept
   const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
 
   CH_START(t1);
-  m_regularCoarseFineRegions.define(dbl);
+  m_regularCoarseFineRegions.define(dbl);  
   m_irregularCoarseFineRegions.define(dbl);
 
-  m_copier.ghostDefine(dblCoFi, dbl, domain, IntVect::Unit);
+  Copier copier;
+  copier.ghostDefine(dblCoFi, dbl, domain, IntVect::Unit);
   CH_STOP(t1);
-
-  // Define the "regular" coarse-fine interface cells on the coarse side.
-  CH_START(t2);
-  for (DataIterator dit(dbl); dit.ok(); ++dit) {
-    const Box boxCoar = dbl[dit()];
-
-    auto& regularCoarseFineRegions = m_regularCoarseFineRegions[dit()];
-    for (int dir = 0; dir < SpaceDim; dir++) {
-      for (SideIterator sit; sit.ok(); ++sit) {
-        regularCoarseFineRegions[std::make_pair(dir, sit())] = std::vector<Box>();
-      }
-    }
-
-    // I don't like this loop but hopefully it _shouldn't_ become a performance bottleneck. The issue is that
-    // it will iterate through all fine-grid boxes and there can be many of them. I _could_ do this in conjunction
-    // with how we define the irregular cells on the coarse-fine interface (using the masks), but I really want
-    // to describe the regions regions using a collection boxes rather than an IntVectSet/VoFIterator.
-    for (LayoutIterator lit = dblCoFi.layoutIterator(); lit.ok(); ++lit) {
-      const Box boxCoFi = dblCoFi[lit()];
-
-      for (int dir = 0; dir < SpaceDim; dir++) {
-        for (SideIterator sit; sit.ok(); ++sit) {
-          const Box sideBoxCoFi            = adjCellBox(boxCoFi, dir, sit(), 1);
-          const Box coarseFineInterfaceBox = boxCoar & sideBoxCoFi;
-
-          if (boxCoar.intersectsNotEmpty(sideBoxCoFi)) {
-            regularCoarseFineRegions[std::make_pair(dir, sit())].emplace_back(coarseFineInterfaceBox);
-
-            std::cout << dir << "\t" << sit() << "\t" << coarseFineInterfaceBox << std::endl;
-          }
-        }
-      }
-    }
-  }
-  CH_STOP(t2);
 
   // Define the irregular coarse-fine interface. This is way more involved since we need to figure out which cells
   // on the coarse-grid side interfaces with cells on the fine-grid side.
-  CH_START(t3);
+  CH_START(t2);
   LevelData<FArrayBox> coarMask(dbl, 1, IntVect::Zero);
   LevelData<FArrayBox> coFiMask(dblCoFi, 1, IntVect::Unit);
 
@@ -150,10 +116,9 @@ EBReflux::defineRegionsCF() noexcept
 
       // Copy the data to the coarse grid.
       const Interval interv(0, 0);
-      coFiMask.copyTo(interv, coarMask, interv, m_copier, LDaddOp<FArrayBox>());
+      coFiMask.copyTo(interv, coarMask, interv, copier, LDaddOp<FArrayBox>());
 
-#if 0 // Debug hook - should be removable. \
-  // Define regular cells
+      // Define regular cells
       for (DataIterator dit(dbl); dit.ok(); ++dit) {
         const FArrayBox& mask = coarMask[dit()];
         DenseIntVectSet  cfivs(dbl[dit()], false);
@@ -165,11 +130,8 @@ EBReflux::defineRegionsCF() noexcept
         }
 
         cfivs.recalcMinBox();
-        if (!(cfivs.isEmpty())) {
-          std::cout << dir << "\t" << sit() << "\t" << cfivs.mBox() << std::endl;
-        }
+	m_regularCoarseFineRegions[dit()][std::make_pair(dir, sit())] = cfivs;
       }
-#endif
 
       // Define irregular cells.
       for (DataIterator dit(dbl); dit.ok(); ++dit) {
@@ -194,7 +156,7 @@ EBReflux::defineRegionsCF() noexcept
       }
     }
   }
-  CH_STOP(t3);
+  CH_STOP(t2);
 }
 
 void
@@ -220,8 +182,8 @@ EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
   const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
 
   CH_START(t1);
-  LevelData<EBFluxFAB> fluxCoFi(dblCoFi, 1, IntVect::Zero, EBFluxFactory(ebislCoFi));
-  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Zero, EBFluxFactory(ebisl));
+  LevelData<EBFluxFAB> fluxCoFi(dblCoFi, 1, IntVect::Unit, EBFluxFactory(ebislCoFi));
+  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Unit, EBFluxFactory(ebisl));
   CH_STOP(t1);
 
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
@@ -229,6 +191,7 @@ EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
     // Coarsen fluxes and copy to fluxCoar
     this->coarsenFluxesCF(fluxCoFi, a_fineFlux, 0, ivar);
     fluxCoFi.copyTo(fluxCoar);
+    fluxCoar.exchange();
 
     // Reflux the coarse level.
     this->refluxIntoCoarse(a_Lphi, a_flux, fluxCoar, ivar, 0, ivar, a_scaleCoarFlux, a_scaleFineFlux);
@@ -289,9 +252,6 @@ EBReflux::coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
       const int zDoLoop = (dir == 2) ? 0 : 1;
 #endif
 
-      const IntVectSet coarIrregIVS = coarEBISBox.getIrregIVS(coarCellBox);
-      FaceIterator     faceIt(coarIrregIVS, coarGraph, dir, FaceStop::SurroundingWithBoundary);
-
       // Kernel for regular cells.
       auto regularKernel = [&](const IntVect& iv) -> void {
         coarFluxReg(iv, a_coarVar) = 0.0;
@@ -323,12 +283,16 @@ EBReflux::coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
 
           for (int i = 0; i < fineFaces.size(); i++) {
             const FaceIndex& fineFace = fineFaces[i];
-            coarFlux(face, a_coarVar) += fineEBISBox.areaFrac(fineFace) * fineFlux(fineFace, a_fineVar);
+            //            coarFlux(face, a_coarVar) += fineEBISBox.areaFrac(fineFace) * fineFlux(fineFace, a_fineVar);
+            coarFlux(face, a_coarVar) += fineFlux(fineFace, a_fineVar);
           }
 
-          coarFlux(face, a_coarVar) *= invFinePerCoar / areaCoar;
+          coarFlux(face, a_coarVar) *= invFinePerCoar;
         }
       };
+
+      const IntVectSet coarIrregIVS = coarEBISBox.getIrregIVS(coarCellBox);
+      FaceIterator     faceIt(coarIrregIVS, coarGraph, dir, FaceStop::SurroundingWithBoundary);
 
       CH_START(t1);
       BoxLoops::loop(coarFaceBox, regularKernel);
@@ -378,7 +342,7 @@ EBReflux::refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
       const FArrayBox& newFluxReg = newFlux.getFArrayBox();
 
       for (SideIterator sit; sit.ok(); ++sit) {
-        const int     iHiLo = sign(sit());
+        const int     iHiLo = sign(flip(sit()));
         const IntVect shift = (sit() == Side::Lo) ? BASISV(dir) : IntVect::Zero;
 
         auto regularKernel = [&](const IntVect& iv) -> void {
@@ -389,15 +353,26 @@ EBReflux::refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
         };
 
         auto irregularKernel = [&](const VolIndex& vof) -> void {
+          const Vector<FaceIndex>& faces = ebisBox.getFaces(vof, dir, flip(sit()));
 
+          for (int iface = 0; iface < faces.size(); iface++) {
+            const FaceIndex& face     = faces[iface];
+            const Real       faceArea = ebisBox.areaFrac(face);
+
+            Lphi(vof, a_phiVar) -= iHiLo * faceArea * a_scaleCoarFlux * oldFlux(face, a_oldFluxVar);
+            Lphi(vof, a_phiVar) += iHiLo * faceArea * a_scaleFineFlux * newFlux(face, a_oldFluxVar);
+          }
         };
 
-        const std::vector<Box> coarseFineRegions = m_regularCoarseFineRegions[dit()].at(std::make_pair(dir, sit()));
+        const DenseIntVectSet& regularCFIVS   = m_regularCoarseFineRegions[dit()].at(std::make_pair(dir, sit()));
+        VoFIterator&           irregularCFIVS = m_irregularCoarseFineRegions[dit()].at(std::make_pair(dir, sit()));
 
         CH_START(t1);
-        for (const auto& coarseFineRegion : coarseFineRegions) {
-          BoxLoops::loop(coarseFineRegion, regularKernel);
-        }
+        BoxLoops::loop(regularCFIVS, regularKernel);
+        CH_STOP(t1);
+
+        CH_START(t1);
+        BoxLoops::loop(irregularCFIVS, irregularKernel);
         CH_STOP(t1);
       }
     }

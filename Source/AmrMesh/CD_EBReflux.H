@@ -116,21 +116,15 @@ protected:
   EBLevelGrid m_eblgCoFi;
 
   /*!
-    @brief Copier for copying from valid+ghost to valid
+    @brief Regular coarse-fine regions for coarse-grid patches
   */
-  Copier m_copier;
-
-  /*!
-    @brief Boxes in each patch that lie on the coarse-fine interface
-    @note Defined over the coarse grids
-  */
-  LayoutData<std::map<std::pair<int, Side::LoHiSide>, std::vector<Box>>> m_regularCoarseFineRegions;
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, DenseIntVectSet>> m_regularCoarseFineRegions;
 
   /*!
     @brief Cut-cells in each patch that lie on the coarse-fine interface
     @note Defined over the coarse grids
   */
-  LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_irregularCoarseFineRegions;
+  mutable LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_irregularCoarseFineRegions;
 
   /*!
     @brief Refinement factor between fine and coarse level. 

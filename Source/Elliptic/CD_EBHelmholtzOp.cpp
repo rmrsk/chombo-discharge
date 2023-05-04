@@ -251,7 +251,7 @@ EBHelmholtzOp::defineStencils()
   EBFluxFactory fluxFact(m_eblg.getEBISL());
 
   m_relCoef.define(m_eblg.getDBL(), m_nComp, IntVect::Zero, cellFact);
-  m_flux.define(m_eblg.getDBL(), m_nComp, IntVect::Zero, fluxFact);
+  m_flux.define(m_eblg.getDBL(), m_nComp, IntVect::Unit, fluxFact);
 
   m_vofIterIrreg.define(m_eblg.getDBL());
   m_vofIterMulti.define(m_eblg.getDBL());
@@ -1920,9 +1920,11 @@ EBHelmholtzOp::computeFaceCenteredFlux(EBFaceFAB&       a_fluxCenter,
 
   // Discard domain faces
   Box compCellBox = a_cellBox;
-  compCellBox.grow(a_dir, 1);
+  compCellBox.grow(1);
   compCellBox &= m_eblg.getDomain();
   compCellBox.grow(a_dir, -1);
+
+  a_fluxCenter.setVal(1.E99);
 
   BaseFab<Real>&       regFlux = a_fluxCenter.getSingleValuedFAB();
   const BaseFab<Real>& regPhi  = a_phi.getSingleValuedFAB();
@@ -1930,8 +1932,9 @@ EBHelmholtzOp::computeFaceCenteredFlux(EBFaceFAB&       a_fluxCenter,
 
   // This kernel does centered differencing, setting the face flux to flux = B*(phi(high) - phi(lo))/dx. Recall that regFlux
   // is face centered but phi lives on in the cell.
-  const Real inverseDx     = 1. / m_dx;
-  auto       regularKernel = [&](const IntVect& iv) -> void {
+  const Real inverseDx = 1. / m_dx;
+
+  auto regularKernel = [&](const IntVect& iv) -> void {
     regFlux(iv, m_comp) = regBco(iv, m_comp) * inverseDx * (regPhi(iv, m_comp) - regPhi(iv - BASISV(a_dir), m_comp));
   };
 
@@ -2082,25 +2085,33 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
   //
   // Note: The most expensive part of this is incrementFRFine because it will redo the ghost cells on the fine level!
 
+#if 0
+  LevelData<EBCellFAB>& phiFine = (LevelData<EBCellFAB>&)a_phiFine;
+  phiFine.exchange();
+
+  EBHelmholtzOp& finerOp = (EBHelmholtzOp&)(a_finerOp);
+  finerOp.inhomogeneousCFInterp(phiFine, a_phi);
+  
+  EBLevelGrid eblgCoFi;
+  coarsen(eblgCoFi, m_eblgFine, m_refToFine);
+  EBReflux refluxEB(m_eblg, m_eblgFine, eblgCoFi, m_refToFine);
+
+  EBHelmholtzOp& fineOp = (EBHelmholtzOp&) a_finerOp;
+  this->computeFlux(a_phi);
+
+  this->incrementFRFine(a_phiFine, a_phi, a_finerOp);  
+  fineOp.computeFlux(a_phiFine);
+
+  const Real scale = 1.0/m_dx;
+
+  refluxEB.reflux(a_Lphi, m_flux, fineOp.getFlux(), Interval(0,0), scale, scale);
+#else
   m_fluxReg->setToZero();
 
   this->incrementFRCoar(a_phi);
   this->incrementFRFine(a_phiFine, a_phi, a_finerOp);
-
+  
   m_fluxReg->reflux(a_Lphi, m_interval, 1. / m_dx);
-
-
-#if 0
-  EBLevelGrid eblgCoFi;
-  coarsen(eblgCoFi, m_eblgFine, m_refToFine);
-  LevelData<EBCellFAB> proxyCell(m_eblg.getDBL(), 1, IntVect::Unit, EBCellFactory(m_eblg.getEBISL()));  
-  EBReflux refluxEB(m_eblg, m_eblgFine, eblgCoFi, m_refToFine);
-
-  EBHelmholtzOp& fineOp = (EBHelmholtzOp&) a_finerOp;
-
-  const Real scale = 1./m_dx;
-
-  refluxEB.reflux(a_Lphi, m_flux, fineOp.getFlux(), Interval(0,0), scale, scale);
 #endif
 }
 
