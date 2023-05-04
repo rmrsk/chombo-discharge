@@ -40,14 +40,14 @@ public:
 
   /*!
     @brief Full constructor. Calls the define function. 
+    @param[in] a_eblg         Grids
     @param[in] a_eblgFine     Fine grids
     @param[in] a_eblgCoFi     Coarsened fine grids
-    @param[in] a_eblgCoar     Coarse grids
     @param[in] a_refRat       Refinement ratio between grids. 
   */
-  EBReflux(const EBLevelGrid& a_eblgFine,
+  EBReflux(const EBLevelGrid& a_eblg,
+           const EBLevelGrid& a_eblgFine,
            const EBLevelGrid& a_eblgCoFi,
-           const EBLevelGrid& a_eblgCoar,
            const int          a_refRat) noexcept;
 
   /*!
@@ -57,31 +57,31 @@ public:
 
   /*!
     @brief Define method. Puts object in usable state. 
-    @param[in] a_eblgFine     Fine grids
-    @param[in] a_eblgCoFi     Coarsened fine grids
-    @param[in] a_eblgCoar     Coarse grids
-    @param[in] a_refRat       Refinement ratio between coarse and fine grids.
+    @param[in] a_eblg     Grids on this level
+    @param[in] a_eblgFine Fine grids
+    @param[in] a_eblgCoFi Coarsened fine grids
+    @param[in] a_refRat    Refinement ratio between coarse and fine grids.
   */
   virtual void
-  define(const EBLevelGrid& a_eblgFine,
+  define(const EBLevelGrid& a_eblg,
+         const EBLevelGrid& a_eblgFine,
          const EBLevelGrid& a_eblgCoFi,
-         const EBLevelGrid& a_eblgCoar,
          const int          a_refRat) noexcept;
 
   /*!
     @brief Reflux into the coarse data. 
     @details This subtracts the coarse-fluxes from the EB and adds in the sum offine-grid fluxes. Multiplication by area 
     fractions and grid resolutions are done in this routine. 
-    @param[inout] a_coarData  Coarse-grid data.
-    @param[in]    a_coarFlux  Coarse-grid flux.
+    @param[inout] a_data      Data
+    @param[in]    a_flux      Fluxes
     @param[in]    a_fineFlux  Fine-grid flux. 
     @param[in]    a_variables Variables to reflux.
   */
   virtual void
-  reflux(LevelData<EBCellFAB>& a_Lphi,
-	 const LevelData<EBFluxFAB>& a_coarFlux,
-	 const LevelData<EBFluxFAB>& a_fineFlux,
-	 const Interval a_variables) const noexcept;
+  reflux(LevelData<EBCellFAB>&       a_Lphi,
+         const LevelData<EBFluxFAB>& a_flux,
+         const LevelData<EBFluxFAB>& a_fineFlux,
+         const Interval              a_variables) const noexcept;
 
 protected:
   /*!
@@ -95,14 +95,26 @@ protected:
   EBLevelGrid m_eblgFine;
 
   /*!
-    @brief Coarse grids
+    @brief Grid on this level. 
   */
-  EBLevelGrid m_eblgCoar;
+  EBLevelGrid m_eblg;
 
   /*!
     @brief Coarsened fine grids. 
   */
   EBLevelGrid m_eblgCoFi;
+
+  /*!
+    @brief Boxes in each patch that lie on the coarse-fine interface
+    @note Defined over the coarse grids
+  */
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, std::vector<Box>>> m_regularCoarseFineRegions;
+
+  /*!
+    @brief Cut-cells in each patch that lie on the coarse-fine interface
+    @note Defined over the coarse grids
+  */
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_irregularCoarseFineRegions;
 
   /*!
     @brief Refinement factor between fine and coarse level. 
@@ -114,6 +126,12 @@ protected:
     @note Only applies the the cut-cells. 
   */
   int m_ghostCF;
+
+  /*!
+    @brief Define CF regions
+  */
+  virtual void
+  defineRegionsCF() noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
