@@ -14,12 +14,14 @@
 #include <ParmParse.H>
 #include <EBLevelDataOps.H>
 #include <EBCellFactory.H>
+#include <EBLevelGrid.H>
 #include <CH_Timer.H>
 
 // Our includes
 #include <CD_EBHelmholtzOp.H>
 #include <CD_LeastSquares.H>
 #include <CD_BoxLoops.H>
+#include <CD_EBReflux.H>
 #include <CD_ParallelOps.H>
 #include <CD_NamespaceHeader.H>
 
@@ -652,7 +654,7 @@ EBHelmholtzOp::AMROperator(LevelData<EBCellFAB>&             a_Lphi,
     // first. The best solution would probably be to have the EB flux stencil reach directly into the fine level.
     if (m_hasFine && m_doCoarsen) {
       EBHelmholtzOp* fineOp = (EBHelmholtzOp*)a_finerOp;
-      fineOp->coarsen((LevelData<EBCellFAB>&)a_phi, a_phiFine);
+      fineOp->coarsenCell((LevelData<EBCellFAB>&)a_phi, a_phiFine);
     }
 
     this->applyOp(a_Lphi, a_phi, &a_phiCoar, a_homogeneousPhysBC, false);
@@ -688,7 +690,7 @@ EBHelmholtzOp::refluxFreeAMROperator(LevelData<EBCellFAB>&             a_Lphi,
   // first. The best solution would probably be to have the EB flux stencil reach directly into the fine level.
   if (m_hasFine && m_doCoarsen) {
     EBHelmholtzOp* fineOp = (EBHelmholtzOp*)a_finerOp;
-    fineOp->coarsen((LevelData<EBCellFAB>&)a_phi, a_phiFine);
+    fineOp->coarsenCell((LevelData<EBCellFAB>&)a_phi, a_phiFine);
   }
 
   // Make sure this level has updated ghost cells. The guards around these calls
@@ -718,7 +720,7 @@ EBHelmholtzOp::refluxFreeAMROperator(LevelData<EBCellFAB>&             a_Lphi,
     fineOp->inhomogeneousCFInterp(phiFine, a_phi);
 
     fineOp->computeFlux(a_phiFine);
-    fineOp->coarsen(m_flux, fineOp->getFlux());
+    fineOp->coarsenFlux(m_flux, fineOp->getFlux());
   }
 
   // Fill the domain fluxes.
@@ -2086,10 +2088,24 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
   this->incrementFRFine(a_phiFine, a_phi, a_finerOp);
 
   m_fluxReg->reflux(a_Lphi, m_interval, 1. / m_dx);
+
+
+#if 0
+  EBLevelGrid eblgCoFi;
+  coarsen(eblgCoFi, m_eblgFine, m_refToFine);
+  LevelData<EBCellFAB> proxyCell(m_eblg.getDBL(), 1, IntVect::Unit, EBCellFactory(m_eblg.getEBISL()));  
+  EBReflux refluxEB(m_eblg, m_eblgFine, eblgCoFi, m_refToFine);
+
+  EBHelmholtzOp& fineOp = (EBHelmholtzOp&) a_finerOp;
+
+  const Real scale = 1./m_dx;
+
+  refluxEB.reflux(a_Lphi, m_flux, fineOp.getFlux(), Interval(0,0), scale, scale);
+#endif
 }
 
 void
-EBHelmholtzOp::coarsen(LevelData<EBCellFAB>& a_phi, const LevelData<EBCellFAB>& a_phiFine)
+EBHelmholtzOp::coarsenCell(LevelData<EBCellFAB>& a_phi, const LevelData<EBCellFAB>& a_phiFine)
 {
   CH_TIME("EBHelmholtzOp::coarsen(LD<EBCellFAB>, LD<EBCellFAB>)");
 
@@ -2097,7 +2113,7 @@ EBHelmholtzOp::coarsen(LevelData<EBCellFAB>& a_phi, const LevelData<EBCellFAB>& 
 }
 
 void
-EBHelmholtzOp::coarsen(LevelData<EBFluxFAB>& a_flux, const LevelData<EBFluxFAB>& a_fineFlux)
+EBHelmholtzOp::coarsenFlux(LevelData<EBFluxFAB>& a_flux, const LevelData<EBFluxFAB>& a_fineFlux)
 {
   m_coarAve->averageData(a_flux, a_fineFlux, m_interval, Average::Conservative);
 }

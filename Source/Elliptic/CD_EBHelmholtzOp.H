@@ -223,7 +223,7 @@ public:
     @note This routine is used in AMROperator to ensure that EB fluxes which are described by stencils get consistent data under the fine level. 
   */
   void
-  coarsen(LevelData<EBCellFAB>& a_phi, const LevelData<EBCellFAB>& a_phiFine);
+  coarsenCell(LevelData<EBCellFAB>& a_phi, const LevelData<EBCellFAB>& a_phiFine);
 
   /*!
     @brief Coarsen fluxes on the fine level onto this level. 
@@ -233,7 +233,7 @@ public:
     @note This routine is used in the reflux-free AMROperator
   */
   void
-  coarsen(LevelData<EBFluxFAB>& a_flux, const LevelData<EBFluxFAB>& a_fineFlux);
+  coarsenFlux(LevelData<EBFluxFAB>& a_flux, const LevelData<EBFluxFAB>& a_fineFlux);
 
   /*!
     @brief Point Jacobi kernel. 

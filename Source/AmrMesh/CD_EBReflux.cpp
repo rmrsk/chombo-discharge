@@ -50,6 +50,7 @@ EBReflux::define(const EBLevelGrid& a_eblg,
   m_eblg     = a_eblg;
   m_eblgFine = a_eblgFine;
   m_eblgCoFi = a_eblgCoFi;
+  m_refRat   = a_refRat;
 
   this->defineRegionsCF();
 
@@ -74,10 +75,10 @@ EBReflux::defineRegionsCF() noexcept
   const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
 
   CH_START(t1);
-  m_copier.ghostDefine(dblCoFi, dbl, domain, IntVect::Unit);
-
   m_regularCoarseFineRegions.define(dbl);
   m_irregularCoarseFineRegions.define(dbl);
+
+  m_copier.ghostDefine(dblCoFi, dbl, domain, IntVect::Unit);
   CH_STOP(t1);
 
   // Define the "regular" coarse-fine interface cells on the coarse side.
@@ -86,6 +87,11 @@ EBReflux::defineRegionsCF() noexcept
     const Box boxCoar = dbl[dit()];
 
     auto& regularCoarseFineRegions = m_regularCoarseFineRegions[dit()];
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      for (SideIterator sit; sit.ok(); ++sit) {
+        regularCoarseFineRegions[std::make_pair(dir, sit())] = std::vector<Box>();
+      }
+    }
 
     // I don't like this loop but hopefully it _shouldn't_ become a performance bottleneck. The issue is that
     // it will iterate through all fine-grid boxes and there can be many of them. I _could_ do this in conjunction
@@ -94,13 +100,15 @@ EBReflux::defineRegionsCF() noexcept
     for (LayoutIterator lit = dblCoFi.layoutIterator(); lit.ok(); ++lit) {
       const Box boxCoFi = dblCoFi[lit()];
 
-      // Check if the coarsened fine box intersects this box in any direction.
       for (int dir = 0; dir < SpaceDim; dir++) {
         for (SideIterator sit; sit.ok(); ++sit) {
-          const Box sideBoxCoFi = adjCellBox(boxCoFi, dir, sit(), 1);
+          const Box sideBoxCoFi            = adjCellBox(boxCoFi, dir, sit(), 1);
+          const Box coarseFineInterfaceBox = boxCoar & sideBoxCoFi;
 
           if (boxCoar.intersectsNotEmpty(sideBoxCoFi)) {
-            regularCoarseFineRegions[std::make_pair(dir, sit())].emplace_back(boxCoar & sideBoxCoFi);
+            regularCoarseFineRegions[std::make_pair(dir, sit())].emplace_back(coarseFineInterfaceBox);
+
+            std::cout << dir << "\t" << sit() << "\t" << coarseFineInterfaceBox << std::endl;
           }
         }
       }
@@ -126,15 +134,17 @@ EBReflux::defineRegionsCF() noexcept
         const Box boxCoFi     = dblCoFi[dit()];
         const Box sideBoxCoFi = adjCellBox(boxCoFi, dir, sit(), 1);
 
-        DenseIntVectSet cfivs = DenseIntVectSet(sideBoxCoFi, true);
+        if (domain.contains(sideBoxCoFi)) {
+          DenseIntVectSet cfivs = DenseIntVectSet(sideBoxCoFi, true);
 
-        NeighborIterator nit(dblCoFi);
-        for (nit.begin(dit()); nit.ok(); ++nit) {
-          cfivs -= dblCoFi[nit()];
-        }
+          NeighborIterator nit(dblCoFi);
+          for (nit.begin(dit()); nit.ok(); ++nit) {
+            cfivs -= dblCoFi[nit()];
+          }
 
-        for (DenseIntVectSetIterator ivsIt(cfivs); ivsIt.ok(); ++ivsIt) {
-          coFiMask[dit()](ivsIt(), 0) = 1.0;
+          for (DenseIntVectSetIterator ivsIt(cfivs); ivsIt.ok(); ++ivsIt) {
+            coFiMask[dit()](ivsIt(), 0) = 1.0;
+          }
         }
       }
 
@@ -142,7 +152,26 @@ EBReflux::defineRegionsCF() noexcept
       const Interval interv(0, 0);
       coFiMask.copyTo(interv, coarMask, interv, m_copier, LDaddOp<FArrayBox>());
 
-      // Now define the VoFIterator on this side.
+#if 0 // Debug hook - should be removable. \
+  // Define regular cells
+      for (DataIterator dit(dbl); dit.ok(); ++dit) {
+        const FArrayBox& mask = coarMask[dit()];
+        DenseIntVectSet  cfivs(dbl[dit()], false);
+
+        for (BoxIterator bit(dbl[dit()]); bit.ok(); ++bit) {
+          if (mask(bit(), 0) > 0.0) {
+            cfivs |= bit();
+          }
+        }
+
+        cfivs.recalcMinBox();
+        if (!(cfivs.isEmpty())) {
+          std::cout << dir << "\t" << sit() << "\t" << cfivs.mBox() << std::endl;
+        }
+      }
+#endif
+
+      // Define irregular cells.
       for (DataIterator dit(dbl); dit.ok(); ++dit) {
         const Box        cellBox = dbl[dit()];
         const FArrayBox& mask    = coarMask[dit()];
@@ -172,11 +201,14 @@ void
 EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
                  const LevelData<EBFluxFAB>& a_flux,
                  const LevelData<EBFluxFAB>& a_fineFlux,
-                 const Interval              a_variables) const noexcept
+                 const Interval              a_variables,
+                 const Real                  a_scaleCoarFlux,
+                 const Real                  a_scaleFineFlux) const noexcept
 {
   CH_TIMERS("EBReflux::reflux");
   CH_TIMER("EBReflux::reflux::define_buffers", t1);
 
+  CH_assert(m_isDefined);
   CH_assert(a_Lphi.nComp() > a_variables.end());
   CH_assert(a_flux.nComp() > a_variables.end());
   CH_assert(a_fineFlux.nComp() > a_variables.end());
@@ -195,21 +227,28 @@ EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
 
     // Coarsen fluxes and copy to fluxCoar
-    this->coarsenFluxes(fluxCoFi, a_fineFlux, 0, ivar);
+    this->coarsenFluxesCF(fluxCoFi, a_fineFlux, 0, ivar);
     fluxCoFi.copyTo(fluxCoar);
+
+    // Reflux the coarse level.
+    this->refluxIntoCoarse(a_Lphi, a_flux, fluxCoar, ivar, 0, ivar, a_scaleCoarFlux, a_scaleFineFlux);
   }
 }
 
 void
-EBReflux::coarsenFluxes(LevelData<EBFluxFAB>&       a_coarFluxes,
-                        const LevelData<EBFluxFAB>& a_fineFluxes,
-                        const int                   a_coarVar,
-                        const int                   a_fineVar) const noexcept
+EBReflux::coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
+                          const LevelData<EBFluxFAB>& a_fineFluxes,
+                          const int                   a_coarVar,
+                          const int                   a_fineVar) const noexcept
 {
   CH_TIMERS("EBReflux::coarsenFluxes");
   CH_TIMER("EBReflux::coarsenFluxes::regular_faces", t1);
   CH_TIMER("EBReflux::coarsenFluxes::irregular_faces", t2);
 
+  MayDay::Warning(
+    "EBReflux::coarsenFluxesCF - since we only reflux on the CF, we can optimize this by only coarsening fluxes on the CF");
+
+  CH_assert(m_isDefined);
   CH_assert(a_coarVar >= 0);
   CH_assert(a_fineVar >= 0);
   CH_assert(a_coarFluxes.nComp() > a_coarVar);
@@ -238,7 +277,7 @@ EBReflux::coarsenFluxes(LevelData<EBFluxFAB>&       a_coarFluxes,
       const EBGraph& fineGraph = fineEBISBox.getEBGraph();
 
       EBFaceFAB&       coarFlux = a_coarFluxes[dit()][dir];
-      const EBFaceFAB& fineFlux = a_coarFluxes[dit()][dir];
+      const EBFaceFAB& fineFlux = a_fineFluxes[dit()][dir];
 
       FArrayBox&       coarFluxReg = coarFlux.getFArrayBox();
       const FArrayBox& fineFluxReg = fineFlux.getFArrayBox();
@@ -298,6 +337,69 @@ EBReflux::coarsenFluxes(LevelData<EBFluxFAB>&       a_coarFluxes,
       CH_START(t2);
       BoxLoops::loop(faceIt, irregularKernel);
       CH_STOP(t2);
+    }
+  }
+}
+
+void
+EBReflux::refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
+                           const LevelData<EBFluxFAB>& a_oldFluxes,
+                           const LevelData<EBFluxFAB>& a_newFluxes,
+                           const int                   a_phiVar,
+                           const int                   a_oldFluxVar,
+                           const int                   a_newFluxVar,
+                           const Real                  a_scaleCoarFlux,
+                           const Real                  a_scaleFineFlux) const noexcept
+{
+  CH_TIMERS("EBReflux::refluxIntoCoarse");
+  CH_TIMER("EBReflux::refluxIntoCoarse::regular_cells", t1);
+  CH_TIMER("EBReflux::refluxIntoCoarse::irregular_cells", t2);
+
+  CH_assert(m_isDefined);
+  CH_assert(a_Lphi.nComp() > a_phivar);
+  CH_assert(a_oldFluxes.nComp() > a_oldFluxVar);
+  CH_assert(a_newFluxes.nComp() > a_newFluxVar);
+
+  const DisjointBoxLayout& dbl   = m_eblg.getDBL();
+  const EBISLayout&        ebisl = m_eblg.getEBISL();
+
+  for (DataIterator dit(dbl); dit.ok(); ++dit) {
+    const Box      cellBox = dbl[dit()];
+    const EBISBox& ebisBox = ebisl[dit()];
+
+    EBCellFAB& Lphi    = a_Lphi[dit()];
+    FArrayBox& LphiReg = Lphi.getFArrayBox();
+
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      const EBFaceFAB& oldFlux = a_oldFluxes[dit()][dir];
+      const EBFaceFAB& newFlux = a_newFluxes[dit()][dir];
+
+      const FArrayBox& oldFluxReg = oldFlux.getFArrayBox();
+      const FArrayBox& newFluxReg = newFlux.getFArrayBox();
+
+      for (SideIterator sit; sit.ok(); ++sit) {
+        const int     iHiLo = sign(sit());
+        const IntVect shift = (sit() == Side::Lo) ? BASISV(dir) : IntVect::Zero;
+
+        auto regularKernel = [&](const IntVect& iv) -> void {
+          if (ebisBox.isRegular(iv)) {
+            LphiReg(iv, a_phiVar) -= iHiLo * a_scaleCoarFlux * oldFluxReg(iv + shift, a_oldFluxVar);
+            LphiReg(iv, a_phiVar) += iHiLo * a_scaleFineFlux * newFluxReg(iv + shift, a_newFluxVar);
+          }
+        };
+
+        auto irregularKernel = [&](const VolIndex& vof) -> void {
+
+        };
+
+        const std::vector<Box> coarseFineRegions = m_regularCoarseFineRegions[dit()].at(std::make_pair(dir, sit()));
+
+        CH_START(t1);
+        for (const auto& coarseFineRegion : coarseFineRegions) {
+          BoxLoops::loop(coarseFineRegion, regularKernel);
+        }
+        CH_STOP(t1);
+      }
     }
   }
 }

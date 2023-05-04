@@ -1103,7 +1103,7 @@ MFHelmholtzOp::AMROperatorNC(LevelData<MFCellFAB>&             a_Lphi,
       MultifluidAlias::aliasMF(phi, op.first, a_phi);
       MultifluidAlias::aliasMF(phiFine, op.first, a_phiFine);
 
-      op.second->coarsen(phi, phiFine);
+      op.second->coarsenCell(phi, phiFine);
     }
   }
 
@@ -1158,7 +1158,7 @@ MFHelmholtzOp::AMROperator(LevelData<MFCellFAB>&             a_Lphi,
       MultifluidAlias::aliasMF(phi, op.first, a_phi);
       MultifluidAlias::aliasMF(phiFine, op.first, a_phiFine);
 
-      op.second->coarsen(phi, phiFine);
+      op.second->coarsenCell(phi, phiFine);
     }
   }
 

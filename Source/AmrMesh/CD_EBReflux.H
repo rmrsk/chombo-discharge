@@ -90,7 +90,9 @@ public:
   reflux(LevelData<EBCellFAB>&       a_Lphi,
          const LevelData<EBFluxFAB>& a_flux,
          const LevelData<EBFluxFAB>& a_fineFlux,
-         const Interval              a_variables) const noexcept;
+         const Interval              a_variables,
+         const Real                  a_scaleCoarFlux,
+         const Real                  a_scaleFineFlux) const noexcept;
 
 protected:
   /*!
@@ -142,12 +144,23 @@ protected:
   defineRegionsCF() noexcept;
 
   /*!
-    @brief */
+    @brief 
+  */
   virtual void
-  coarsenFluxes(LevelData<EBFluxFAB>&       a_coarFluxes,
-                const LevelData<EBFluxFAB>& a_fineFluxes,
-                const int                   a_coarVar,
-                const int                   a_fineVar) const noexcept;
+  coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
+                  const LevelData<EBFluxFAB>& a_fineFluxes,
+                  const int                   a_coarVar,
+                  const int                   a_fineVar) const noexcept;
+
+  virtual void
+  refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
+                   const LevelData<EBFluxFAB>& a_oldFluxes,
+                   const LevelData<EBFluxFAB>& a_newFluxes,
+                   const int                   a_phiVar,
+                   const int                   a_oldFluxVar,
+                   const int                   a_newFluxVar,
+                   const Real                  a_scaleCoarFlux,
+                   const Real                  a_scaleFineFlux) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
