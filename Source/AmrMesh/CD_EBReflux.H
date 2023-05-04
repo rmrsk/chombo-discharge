@@ -85,6 +85,8 @@ public:
     @param[in]    a_flux      Fluxes
     @param[in]    a_fineFlux  Fine-grid flux. 
     @param[in]    a_variables Variables to reflux.
+    @param[in]    a_scaleCoarFlux Scaling constant for fine-grid fluxes
+    @param[in]    a_scaleFineFlux Scaling constant for fine-grid fluxes
   */
   virtual void
   reflux(LevelData<EBCellFAB>&       a_Lphi,
@@ -99,6 +101,11 @@ protected:
     @brief Is defined or not
   */
   bool m_isDefined;
+
+  /*!
+    @brief Refinement factor between fine and coarse level. 
+  */
+  int m_refRat;  
 
   /*!
     @brief Fine grids
@@ -116,6 +123,11 @@ protected:
   EBLevelGrid m_eblgCoFi;
 
   /*!
+    @brief Stencils for conservatively coarsening fine-grid fluxes onto the coarse grid
+  */
+  LayoutData<std::map<std::pair<int, Side::LoHiSide>, BaseIFFAB<FaceStencil>>> m_fluxCoarseningStencils;
+
+  /*!
     @brief Regular coarse-fine regions for coarse-grid patches
   */
   LayoutData<std::map<std::pair<int, Side::LoHiSide>, DenseIntVectSet>> m_regularCoarseFineRegions;
@@ -126,19 +138,26 @@ protected:
   */
   mutable LayoutData<std::map<std::pair<int, Side::LoHiSide>, VoFIterator>> m_irregularCoarseFineRegions;
 
-  /*!
-    @brief Refinement factor between fine and coarse level. 
-  */
-  int m_refRat;
 
   /*!
-    @brief Define CF regions
+    @brief Define coarse-fine interface regions so that we can compute things later. 
   */
   virtual void
   defineRegionsCF() noexcept;
 
   /*!
-    @brief 
+    @brief Define the stencils required for coarsening the fine-grid fluxes onto the coarse grid
+  */
+  virtual void
+  defineStencils() noexcept;
+
+  /*!
+    @brief Coarsen the input fine fluxes onto the coarse fluxes. 
+    @details This replaces the coarse fluxes along the coarse-fine interface by the conservative average of the fine fluxes.
+    @param[inout] a_coarFluxes Coarse-grid fluxes
+    @param[in]    a_fineFluxes Fine-grid fluxes
+    @param[in]    a_coarVar    Coarse-flux variable
+    @param[in]    a_fineVar    Fine-flux variable
   */
   virtual void
   coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
@@ -146,6 +165,18 @@ protected:
                   const int                   a_coarVar,
                   const int                   a_fineVar) const noexcept;
 
+  /*!
+    @brief Reflux data into a_Lphi
+    @details This subtracts the old fluxes (scaled by a_scaleOldFlux) from a_Lphi and adds in the new fluxes (scaled by a_scaleFineFlux).
+    @param[inout] a_Lphi
+    @param[in]    a_oldFluxes     Previous fluxes from which a_Lphi was computed
+    @param[in]    a_newFluxes     New fluxes to be put into a_Lphi
+    @param[in]    a_phiVar        Variable in a_Lphi to reflux
+    @param[in]    a_oldFluxVar    Variable in a_oldFluxes to subtract
+    @param[in]    a_newFluxVar    Variable in a_newFluxes to add
+    @param[in]    a_scaleCoarFlux Scaling constant for fine-grid fluxes
+    @param[in]    a_scaleFineFlux Scaling constant for fine-grid fluxes
+  */
   virtual void
   refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
                    const LevelData<EBFluxFAB>& a_oldFluxes,

@@ -53,6 +53,7 @@ EBReflux::define(const EBLevelGrid& a_eblg,
   m_refRat   = a_refRat;
 
   this->defineRegionsCF();
+  this->defineStencils();
 
   m_isDefined = true;
 }
@@ -162,6 +163,67 @@ EBReflux::defineRegionsCF() noexcept
 }
 
 void
+EBReflux::defineStencils() noexcept
+{
+  CH_TIMERS("EBReflux::defineStencils");
+
+  const DisjointBoxLayout& dblCoar = m_eblgCoFi.getDBL();
+  const DisjointBoxLayout& dblFine = m_eblgFine.getDBL();
+
+  const EBISLayout& ebislCoar = m_eblgCoFi.getEBISL();
+  const EBISLayout& ebislFine = m_eblgFine.getEBISL();
+
+  const Real dxCoar   = 1.0;
+  const Real dxFine   = dxCoar / m_refRat;
+  const Real dxFactor = std::pow(dxFine / dxCoar, SpaceDim - 1);
+
+  m_fluxCoarseningStencils.define(dblCoar);
+
+  for (DataIterator dit(dblCoar); dit.ok(); ++dit) {
+    const Box boxCoar = dblCoar[dit()];
+    const Box boxFine = dblFine[dit()];
+
+    const EBISBox& ebisBoxCoar = ebislCoar[dit()];
+    const EBISBox& ebisBoxFine = ebislFine[dit()];
+
+    const EBGraph& graphCoar = ebisBoxCoar.getEBGraph();
+    const EBGraph& graphFine = ebisBoxFine.getEBGraph();
+
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      for (SideIterator sit; sit.ok(); ++sit) {
+        const Box        boxSide  = adjCellBox(boxCoar, dir, sit(), -1);
+        const IntVectSet irregIVS = ebisBoxCoar.getIrregIVS(boxSide);
+
+        BaseIFFAB<FaceStencil>& faceStencils = m_fluxCoarseningStencils[dit()][std::make_pair(dir, sit())];
+
+        faceStencils.define(irregIVS, graphCoar, dir, 1);
+
+        // Go through the coarse face and build the requires stencils for conservative flux coarsening.
+        FaceIterator faceIt(irregIVS, graphCoar, dir, FaceStop::SurroundingWithBoundary);
+        for (faceIt.reset(); faceIt.ok(); ++faceIt) {
+          const FaceIndex& coarFace = faceIt();
+          const Real       areaCoar = ebisBoxCoar.areaFrac(coarFace);
+
+          FaceStencil& stencil = faceStencils(coarFace, 0);
+          stencil.clear();
+
+          if (areaCoar > 0.0) {
+
+            const Vector<FaceIndex>& fineFaces = ebislCoar.refine(coarFace, m_refRat, dit());
+            for (int iface = 0; iface < fineFaces.size(); iface++) {
+              const FaceIndex& fineFace   = fineFaces[iface];
+              const Real       fineWeight = ebisBoxFine.areaFrac(fineFace) * dxFactor / areaCoar;
+
+              stencil.add(fineFace, fineWeight);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void
 EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
                  const LevelData<EBFluxFAB>& a_flux,
                  const LevelData<EBFluxFAB>& a_fineFlux,
@@ -209,9 +271,6 @@ EBReflux::coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
   CH_TIMER("EBReflux::coarsenFluxes::regular_faces", t1);
   CH_TIMER("EBReflux::coarsenFluxes::irregular_faces", t2);
 
-  MayDay::Warning(
-    "EBReflux::coarsenFluxesCF - since we only reflux on the CF, we can optimize this by only coarsening fluxes on the CF");
-
   CH_assert(m_isDefined);
   CH_assert(a_coarVar >= 0);
   CH_assert(a_fineVar >= 0);
@@ -253,54 +312,59 @@ EBReflux::coarsenFluxesCF(LevelData<EBFluxFAB>&       a_coarFluxes,
       const int zDoLoop = (dir == 2) ? 0 : 1;
 #endif
 
-      // Kernel for regular cells.
-      auto regularKernel = [&](const IntVect& iv) -> void {
-        coarFluxReg(iv, a_coarVar) = 0.0;
+      for (SideIterator sit; sit.ok(); ++sit) {
+        const Box sideBox = adjCellBox(coarCellBox, dir, sit(), -1);
+        const Box faceBox = surroundingNodes(sideBox, dir);
+
+        // Kernel for regular cells.
+        auto regularKernel = [&](const IntVect& iv) -> void {
+          coarFluxReg(iv, a_coarVar) = 0.0;
 
 #if CH_SPACEDIM == 3
-        for (int k = 0; k <= (m_refRat - 1) * zDoLoop; k++) {
+          for (int k = 0; k <= (m_refRat - 1) * zDoLoop; k++) {
 #endif
-          for (int j = 0; j <= (m_refRat - 1) * yDoLoop; j++) {
-            for (int i = 0; i <= (m_refRat - 1) * xDoLoop; i++) {
-              const IntVect ivFine = iv * m_refRat + IntVect(D_DECL(i, j, k));
+            for (int j = 0; j <= (m_refRat - 1) * yDoLoop; j++) {
+              for (int i = 0; i <= (m_refRat - 1) * xDoLoop; i++) {
+                const IntVect ivFine = iv * m_refRat + IntVect(D_DECL(i, j, k));
 
-              coarFluxReg(iv, a_coarVar) += fineFluxReg(ivFine, a_fineVar);
+                coarFluxReg(iv, a_coarVar) += fineFluxReg(ivFine, a_fineVar);
+              }
             }
-          }
 #if CH_SPACEDIM == 3
-        }
+          }
 #endif
 
-        coarFluxReg(iv, a_coarVar) *= invFinePerCoar;
-      };
+          coarFluxReg(iv, a_coarVar) *= invFinePerCoar;
+        };
 
-      auto irregularKernel = [&](const FaceIndex& face) -> void {
-        coarFlux(face, a_coarVar) = 0.0;
+        auto irregularKernel = [&](const FaceIndex& face) -> void {
+          coarFlux(face, a_coarVar) = 0.0;
 
-        const Real areaCoar = coarEBISBox.areaFrac(face);
+          const Real areaCoar = coarEBISBox.areaFrac(face);
 
-        if (areaCoar > 0.0) {
-          const Vector<FaceIndex>& fineFaces = ebislCoar.refine(face, m_refRat, dit());
+          if (areaCoar > 0.0) {
+            const Vector<FaceIndex>& fineFaces = ebislCoar.refine(face, m_refRat, dit());
 
-          for (int i = 0; i < fineFaces.size(); i++) {
-            const FaceIndex& fineFace = fineFaces[i];
-            coarFlux(face, a_coarVar) += fineEBISBox.areaFrac(fineFace) * fineFlux(fineFace, a_fineVar);
+            for (int i = 0; i < fineFaces.size(); i++) {
+              const FaceIndex& fineFace = fineFaces[i];
+              coarFlux(face, a_coarVar) += fineEBISBox.areaFrac(fineFace) * fineFlux(fineFace, a_fineVar);
+            }
+
+            coarFlux(face, a_coarVar) *= invFinePerCoar / areaCoar;
           }
+        };
 
-          coarFlux(face, a_coarVar) *= invFinePerCoar / areaCoar;
-        }
-      };
+        const IntVectSet coarIrregIVS = coarEBISBox.getIrregIVS(sideBox);
+        FaceIterator     faceIt(coarIrregIVS, coarGraph, dir, FaceStop::SurroundingWithBoundary);
 
-      const IntVectSet coarIrregIVS = coarEBISBox.getIrregIVS(coarCellBox);
-      FaceIterator     faceIt(coarIrregIVS, coarGraph, dir, FaceStop::SurroundingWithBoundary);
+        CH_START(t1);
+        BoxLoops::loop(faceBox, regularKernel);
+        CH_STOP(t1);
 
-      CH_START(t1);
-      BoxLoops::loop(coarFaceBox, regularKernel);
-      CH_STOP(t1);
-
-      CH_START(t2);
-      BoxLoops::loop(faceIt, irregularKernel);
-      CH_STOP(t2);
+        CH_START(t2);
+        BoxLoops::loop(faceIt, irregularKernel);
+        CH_STOP(t2);
+      }
     }
   }
 }
