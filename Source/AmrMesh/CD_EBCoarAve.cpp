@@ -603,20 +603,15 @@ EBCoarAve::arithmeticAverage(EBFaceFAB&       a_coarData,
   CH_assert(a_coarData.nComp() > a_coarVar);
   CH_assert(a_fineData.nComp() > a_fineVar);
 
-  // Regular faces.
-  CH_START(t1);
-  const Box&       coarBox      = m_eblgCoFi.getDBL()[a_datInd];
-  const Box        coarFaceBox  = surroundingNodes(coarBox, a_dir);
-  const EBISBox&   ebisBoxCoar  = m_eblgCoFi.getEBISL()[a_datInd];
-  const EBGraph&   ebgraphCoar  = ebisBoxCoar.getEBGraph();
-  const IntVectSet coarIrregIVS = ebisBoxCoar.getIrregIVS(coarBox);
-
   FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
   const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
 
-  const int finePerCoar = std::pow(m_refRat, SpaceDim - 1);
-  const int xDoLoop     = (a_dir == 0) ? 0 : 1;
-  const int yDoLoop     = (a_dir == 1) ? 0 : 1;
+  const BaseIFFAB<FaceStencil>& coarseningStencils = m_faceArithmeticStencils[a_datInd].at(a_dir);
+
+  // Kernel for doing regular faces.
+  const int invFinePerCoar = 1.0 / std::pow(m_refRat, SpaceDim - 1);
+  const int xDoLoop        = (a_dir == 0) ? 0 : 1;
+  const int yDoLoop        = (a_dir == 1) ? 0 : 1;
 #if CH_SPACEDIM == 3
   const int zDoLoop = (a_dir == 2) ? 0 : 1;
 #endif
@@ -638,31 +633,32 @@ EBCoarAve::arithmeticAverage(EBFaceFAB&       a_coarData,
     }
 #endif
 
-    coarDataReg(iv, a_coarVar) *= 1.0 / finePerCoar;
+    coarDataReg(iv, a_coarVar) *= invFinePerCoar;
   };
+
+  // Kernel for doing irregular faces.
+  auto irregularKernel = [&](const FaceIndex& face) -> void {
+    a_coarData(face, a_coarVar) = 0.0;
+
+    const FaceStencil& stencil = coarseningStencils(face, 0);
+    for (int i = 0; i < stencil.size(); i++) {
+      a_coarData(face, a_coarVar) += stencil.weight(i) * a_fineData(stencil.face(i), a_fineVar);
+    }
+  };
+
+  // Regular faces.
+  CH_START(t1);
+  const Box& coarBox     = m_eblgCoFi.getDBL()[a_datInd];
+  const Box  coarFaceBox = surroundingNodes(coarBox, a_dir);
 
   BoxLoops::loop(coarFaceBox, regularKernel);
   CH_STOP(t1);
 
   // Irregular faces
   CH_START(t2);
-  FaceIterator faceIt(coarIrregIVS, ebgraphCoar, a_dir, FaceStop::SurroundingWithBoundary);
+  FaceIterator& faceIt = m_irregFacesCoFi[a_datInd][a_dir];
 
-  for (faceIt.reset(); faceIt.ok(); ++faceIt) {
-    const FaceIndex&             coarFace     = faceIt();
-    const std::vector<FaceIndex> fineFaces    = m_eblgCoFi.getEBISL().refine(coarFace, m_refRat, a_datInd).stdVector();
-    const int                    numFineFaces = fineFaces.size();
-
-    a_coarData(coarFace, a_coarVar) = 0.0;
-
-    if (numFineFaces > 0) {
-      for (const auto& fineFace : fineFaces) {
-        a_coarData(coarFace, a_coarVar) += a_fineData(fineFace, a_fineVar);
-      }
-
-      a_coarData(coarFace, a_coarVar) *= 1.0 / numFineFaces;
-    }
-  }
+  BoxLoops::loop(faceIt, irregularKernel);
   CH_STOP(t2);
 }
 
@@ -682,13 +678,10 @@ EBCoarAve::harmonicAverage(EBFaceFAB&       a_coarData,
   CH_assert(a_coarData.nComp() > a_coarVar);
   CH_assert(a_fineData.nComp() > a_fineVar);
 
-  // Regular faces.
-  CH_START(t1);
-  const Box&       coarBox      = m_eblgCoFi.getDBL()[a_datInd];
-  const Box        coarFaceBox  = surroundingNodes(coarBox, a_dir);
-  const EBISBox&   ebisBoxCoar  = m_eblgCoFi.getEBISL()[a_datInd];
-  const EBGraph&   ebgraphCoar  = ebisBoxCoar.getEBGraph();
-  const IntVectSet coarIrregIVS = ebisBoxCoar.getIrregIVS(coarBox);
+  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
+  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
+
+  const BaseIFFAB<FaceStencil>& coarseningStencils = m_faceHarmonicStencils[a_datInd].at(a_dir);
 
   const int finePerCoar = std::pow(m_refRat, SpaceDim - 1);
   const int xDoLoop     = (a_dir == 0) ? 0 : 1;
@@ -697,10 +690,7 @@ EBCoarAve::harmonicAverage(EBFaceFAB&       a_coarData,
   const int zDoLoop = (a_dir == 2) ? 0 : 1;
 #endif
 
-  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
-  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
-
-  // Regular cells.
+  // Kernel for doing regular faces.
   auto regularKernel = [&](const IntVect& iv) -> void {
     coarDataReg(iv, a_coarVar) = 0.0;
 
@@ -721,28 +711,31 @@ EBCoarAve::harmonicAverage(EBFaceFAB&       a_coarData,
     coarDataReg(iv, a_coarVar) = finePerCoar / coarDataReg(iv, a_coarVar);
   };
 
+  // Kernel for doing irregular faces.
+  auto irregularKernel = [&](const FaceIndex& face) -> void {
+    a_coarData(face, a_coarVar) = 0.0;
+
+    const FaceStencil& stencil = coarseningStencils(face, 0);
+    for (int i = 0; i < stencil.size(); i++) {
+      a_coarData(face, a_coarVar) += stencil.weight(i) / a_fineData(stencil.face(i), a_fineVar);
+    }
+
+    a_coarData(face, a_coarVar) = 1. / a_coarData(face, a_coarVar);
+  };
+
+  // Regular cells
+  CH_START(t1);
+  const Box& coarBox     = m_eblgCoFi.getDBL()[a_datInd];
+  const Box  coarFaceBox = surroundingNodes(coarBox, a_dir);
+
   BoxLoops::loop(coarFaceBox, regularKernel);
   CH_STOP(t1);
 
-  // Irregular faces.
+  // Irregular faces
   CH_START(t2);
-  FaceIterator faceIt(coarIrregIVS, ebgraphCoar, a_dir, FaceStop::SurroundingWithBoundary);
+  FaceIterator& faceIt = m_irregFacesCoFi[a_datInd][a_dir];
 
-  for (faceIt.reset(); faceIt.ok(); ++faceIt) {
-    const FaceIndex&             coarFace     = faceIt();
-    const std::vector<FaceIndex> fineFaces    = m_eblgCoFi.getEBISL().refine(coarFace, m_refRat, a_datInd).stdVector();
-    const int                    numFineFaces = fineFaces.size();
-
-    a_coarData(coarFace, a_coarVar) = 0.0;
-
-    if (numFineFaces > 0) {
-      for (const auto& fineFace : fineFaces) {
-        a_coarData(coarFace, a_coarVar) += 1.0 / a_fineData(fineFace, a_fineVar);
-      }
-
-      a_coarData(coarFace, a_coarVar) = numFineFaces / a_coarData(coarFace, a_coarVar);
-    }
-  }
+  BoxLoops::loop(faceIt, irregularKernel);
   CH_STOP(t2);
 }
 
@@ -762,28 +755,19 @@ EBCoarAve::conservativeAverage(EBFaceFAB&       a_coarData,
   CH_assert(a_coarData.nComp() > a_coarVar);
   CH_assert(a_fineData.nComp() > a_fineVar);
 
-  CH_START(t1);
-  const Real dxCoar = 1.0;
-  const Real dxFine = dxCoar / m_refRat;
+  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
+  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
 
-  const Box&       coarBox      = m_eblgCoFi.getDBL()[a_datInd];
-  const Box        coarFaceBox  = surroundingNodes(coarBox, a_dir);
-  const EBISBox&   ebisBoxCoar  = m_eblgCoFi.getEBISL()[a_datInd];
-  const EBISBox&   ebisBoxFine  = m_eblgFine.getEBISL()[a_datInd];
-  const EBGraph&   ebgraphCoar  = ebisBoxCoar.getEBGraph();
-  const IntVectSet coarIrregIVS = ebisBoxCoar.getIrregIVS(coarBox);
+  const BaseIFFAB<FaceStencil>& coarseningStencils = m_faceConservativeStencils[a_datInd].at(a_dir);
 
-  const int finePerCoar = std::pow(m_refRat, SpaceDim - 1);
-  const int xDoLoop     = (a_dir == 0) ? 0 : 1;
-  const int yDoLoop     = (a_dir == 1) ? 0 : 1;
+  // Kernel for doing regular faces.
+  const int invFinePerCoar = 1.0 / std::pow(m_refRat, SpaceDim - 1);
+  const int xDoLoop        = (a_dir == 0) ? 0 : 1;
+  const int yDoLoop        = (a_dir == 1) ? 0 : 1;
 #if CH_SPACEDIM == 3
   const int zDoLoop = (a_dir == 2) ? 0 : 1;
 #endif
 
-  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
-  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
-
-  // Regular cells.
   auto regularKernel = [&](const IntVect& iv) -> void {
     coarDataReg(iv, a_coarVar) = 0.0;
 
@@ -801,44 +785,32 @@ EBCoarAve::conservativeAverage(EBFaceFAB&       a_coarData,
     }
 #endif
 
-    coarDataReg(iv, a_coarVar) = coarDataReg(iv, a_coarVar) / finePerCoar;
+    coarDataReg(iv, a_coarVar) *= invFinePerCoar;
   };
+
+  // Kernel for doing irregular faces.
+  auto irregularKernel = [&](const FaceIndex& face) -> void {
+    a_coarData(face, a_coarVar) = 0.0;
+
+    const FaceStencil& stencil = coarseningStencils(face, 0);
+    for (int i = 0; i < stencil.size(); i++) {
+      a_coarData(face, a_coarVar) += stencil.weight(i) * a_fineData(stencil.face(i), a_fineVar);
+    }
+  };
+
+  // Regular faces.
+  CH_START(t1);
+  const Box& coarBox     = m_eblgCoFi.getDBL()[a_datInd];
+  const Box  coarFaceBox = surroundingNodes(coarBox, a_dir);
 
   BoxLoops::loop(coarFaceBox, regularKernel);
   CH_STOP(t1);
 
   // Irregular faces
   CH_START(t2);
-  FaceIterator faceIt(coarIrregIVS, ebgraphCoar, a_dir, FaceStop::SurroundingWithBoundary);
+  FaceIterator& faceIt = m_irregFacesCoFi[a_datInd][a_dir];
 
-  for (faceIt.reset(); faceIt.ok(); ++faceIt) {
-    const FaceIndex&             coarFace  = faceIt();
-    const std::vector<FaceIndex> fineFaces = m_eblgCoFi.getEBISL().refine(coarFace, m_refRat, a_datInd).stdVector();
-    const Real                   areaCoar  = ebisBoxCoar.areaFrac(coarFace);
-
-    a_coarData(coarFace, a_coarVar) = 0.0;
-
-    // Set phiCoar = sum(areaFine * phiFine) / areaCoar * (dxFine/dxCoar)^D-1
-    if (areaCoar > 0.0) {
-      for (const auto& fineFace : fineFaces) {
-        a_coarData(coarFace, a_coarVar) += ebisBoxFine.areaFrac(fineFace) * a_fineData(fineFace, a_fineVar);
-      }
-
-      a_coarData(coarFace, a_coarVar) = a_coarData(coarFace, a_coarVar) * std::pow(dxFine / dxCoar, SpaceDim - 1);
-      a_coarData(coarFace, a_coarVar) = a_coarData(coarFace, a_coarVar) / areaCoar;
-    }
-    else {
-      const int numFineFaces = fineFaces.size();
-
-      if (numFineFaces > 0) {
-        for (const auto& fineFace : fineFaces) {
-          a_coarData(coarFace, a_coarVar) += a_fineData(fineFace, a_fineVar);
-        }
-
-        a_coarData(coarFace, a_coarVar) = a_coarData(coarFace, a_coarVar) / numFineFaces;
-      }
-    }
-  }
+  BoxLoops::loop(faceIt, irregularKernel);
   CH_STOP(t2);
 }
 
