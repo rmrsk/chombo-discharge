@@ -1,5 +1,5 @@
 /* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
+ * Copyright © 2023 SINTEF Energy Research.
  * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
  */
 
@@ -84,7 +84,80 @@ EBCoarAve::define(const EBLevelGrid& a_eblgFine,
     m_irregSetsCoFi[dit()] = m_eblgCoFi.getEBISL()[dit()].getIrregIVS(m_eblgCoFi.getDBL().get(dit()));
   }
 
+  this->defineCellStencils();
+
   m_isDefined = true;
+}
+
+void
+EBCoarAve::defineCellStencils() noexcept
+{
+  CH_TIME("EBCoarAve::defineCellStencils");
+
+  const DisjointBoxLayout& dblCoar = m_eblgCoFi.getDBL();
+  const DisjointBoxLayout& dblFine = m_eblgFine.getDBL();
+
+  const EBISLayout& ebislCoar = m_eblgCoFi.getEBISL();
+  const EBISLayout& ebislFine = m_eblgFine.getEBISL();
+
+  const Real dxCoar   = 1.0;
+  const Real dxFine   = dxCoar / m_refRat;
+  const Real dxFactor = std::pow(dxFine / dxCoar, SpaceDim);
+
+  m_irregCellsCoFi.define(dblCoar);
+  m_cellConservativeStencils.define(dblCoar);
+  m_cellArithmeticStencils.define(dblCoar);
+  m_cellHarmonicStencils.define(dblCoar);
+
+  for (DataIterator dit(dblCoar); dit.ok(); ++dit) {
+    const EBISBox& ebisBoxCoar = ebislCoar[dit()];
+    const EBISBox& ebisBoxFine = ebislFine[dit()];
+    const EBGraph& ebGraphCoar = ebisBoxCoar.getEBGraph();
+
+    VoFIterator&           irregCells           = m_irregCellsCoFi[dit()];
+    BaseIVFAB<VoFStencil>& conservativeStencils = m_cellConservativeStencils[dit()];
+    BaseIVFAB<VoFStencil>& arithmeticStencils   = m_cellArithmeticStencils[dit()];
+    BaseIVFAB<VoFStencil>& harmonicStencils     = m_cellHarmonicStencils[dit()];
+
+    irregCells.define(m_irregSetsCoFi[dit()], ebGraphCoar);
+    conservativeStencils.define(m_irregSetsCoFi[dit()], ebGraphCoar, 1);
+    arithmeticStencils.define(m_irregSetsCoFi[dit()], ebGraphCoar, 1);
+    harmonicStencils.define(m_irregSetsCoFi[dit()], ebGraphCoar, 1);
+
+    auto buildStencils = [&](const VolIndex& coarVoF) -> void {
+      const Real             kappaC      = ebisBoxCoar.volFrac(coarVoF);
+      const Vector<VolIndex> fineVoFs    = ebislCoar.refine(coarVoF, m_refRat, dit());
+      const int              numFineVoFs = fineVoFs.size();
+
+      VoFStencil& consSten  = conservativeStencils(coarVoF, 0);
+      VoFStencil& arithSten = arithmeticStencils(coarVoF, 0);
+      VoFStencil& harmSten  = harmonicStencils(coarVoF, 0);
+
+      consSten.clear();
+      arithSten.clear();
+      harmSten.clear();
+
+      if (numFineVoFs > 0) {
+
+        for (int ifine = 0; ifine < numFineVoFs; ifine++) {
+          const VolIndex& fineVoF = fineVoFs[ifine];
+          const Real      kappaF  = ebisBoxFine.volFrac(fineVoF);
+
+          if (kappaC > 0.0) {
+            consSten.add(fineVoF, kappaF * dxFactor / kappaC);
+          }
+          else {
+            consSten.add(fineVoF, 1.0 / numFineVoFs);
+          }
+
+          arithSten.add(fineVoF, 1.0 / numFineVoFs);
+          harmSten.add(fineVoF, 1.0 / numFineVoFs);
+        }
+      }
+    };
+
+    BoxLoops::loop(irregCells, buildStencils);
+  }
 }
 
 void
@@ -93,23 +166,17 @@ EBCoarAve::averageData(LevelData<EBCellFAB>&       a_coarData,
                        const Interval&             a_variables,
                        const Average&              a_average) const noexcept
 {
-  CH_TIMERS("EBCoarAve::averageData(ebcellfab_no_buffer)");
-  CH_TIMER("EBCoarAve::define_buffer", t1);
-  CH_TIMER("EBCoarAve::averageData", t2);
+  CH_TIME("EBCoarAve::averageData(ebcellfab_no_buffer)");
 
   CH_assert(m_isDefined);
   CH_assert(a_fineData.nComp() > a_variables.end());
   CH_assert(a_coarData.nComp() > a_variables.end());
 
-  CH_START(t1);
   LevelData<EBCellFAB> coarFiData;
   EBCellFactory        factCoFi(m_eblgCoFi.getEBISL());
   coarFiData.define(m_eblgCoFi.getDBL(), 1, IntVect::Zero, factCoFi);
-  CH_STOP(t1);
-
-  CH_START(t2);
+  
   this->averageData(a_coarData, coarFiData, a_fineData, a_variables, a_average);
-  CH_STOP(t2);
 }
 
 void
@@ -191,51 +258,47 @@ EBCoarAve::arithmeticAverage(EBCellFAB&       a_coarData,
   CH_assert(a_coarData.nComp() > a_coarVar);
   CH_assert(a_fineData.nComp() > a_fineVar);
 
-  // Regular cells.
-  CH_START(t1);
-  const Box&        coarBox      = m_eblgCoFi.getDBL()[a_datInd];
-  const Box         refiBox      = Box(IntVect::Zero, (m_refRat - 1) * IntVect::Unit);
-  const EBISBox&    ebisBoxCoar  = m_eblgCoFi.getEBISL()[a_datInd];
-  const IntVectSet& coarIrregIVS = ebisBoxCoar.getIrregIVS(coarBox);
+  const Box& coarBox        = m_eblgCoFi.getDBL()[a_datInd];
+  const Box  refiBox        = Box(IntVect::Zero, (m_refRat - 1) * IntVect::Unit);
+  const Real invFinePerCoar = 1.0 / refiBox.numPts();
 
-  BaseFab<Real>&       coarDataReg = a_coarData.getSingleValuedFAB();
-  const BaseFab<Real>& fineDataReg = a_fineData.getSingleValuedFAB();
+  // Handle to single-valued data.
+  FArrayBox&                   coarDataReg       = a_coarData.getFArrayBox();
+  const FArrayBox&             fineDataReg       = a_fineData.getFArrayBox();
+  const BaseIVFAB<VoFStencil>& coarseningStencil = m_cellArithmeticStencils[a_datInd];
 
   auto regularKernel = [&](const IntVect& iv) -> void {
-    Real coarVal = 0.0;
+    coarDataReg(iv, a_coarVar) = 0.0;
 
     for (BoxIterator bit(refiBox); bit.ok(); ++bit) {
-      coarVal += fineDataReg(m_refRat * iv + bit(), a_fineVar);
+      coarDataReg(iv, a_coarVar) += fineDataReg(m_refRat * iv + bit(), a_fineVar);
     }
 
-    coarDataReg(iv, a_coarVar) = coarVal / refiBox.numPts();
+    coarDataReg(iv, a_coarVar) *= invFinePerCoar;
   };
 
+  auto irregularKernel = [&](const VolIndex& coarVoF) -> void {
+    a_coarData(coarVoF, 0.0);
+
+    const VoFStencil& stencil = coarseningStencil(coarVoF, 0);
+
+    a_coarData(coarVoF, a_coarVar) = 0.0;
+    for (int i = 0; i < stencil.size(); i++) {
+      const Real     fineWeight = stencil.weight(i);
+      const VolIndex fineVoF    = stencil.vof(i);
+
+      a_coarData(coarVoF, a_coarVar) += fineWeight * a_fineData(fineVoF, a_fineVar);
+    }
+  };
+
+  VoFIterator& vofitCoar = m_irregCellsCoFi[a_datInd];
+
+  CH_START(t1);
   BoxLoops::loop(coarBox, regularKernel);
   CH_STOP(t1);
 
-  // Irregular cells.
   CH_START(t2);
-  for (VoFIterator vofitCoar(coarIrregIVS, ebisBoxCoar.getEBGraph()); vofitCoar.ok(); ++vofitCoar) {
-    const VolIndex& coarVoF = vofitCoar();
-
-    const Vector<VolIndex> fineVoFs = m_eblgCoFi.getEBISL().refine(coarVoF, m_refRat, a_datInd);
-
-    const int numFineVoFs = fineVoFs.size();
-
-    a_coarData(coarVoF, a_coarVar) = 0.0;
-
-    // Set phic = sum(phif)/numFine
-    if (numFineVoFs > 0) {
-      for (int ifine = 0; ifine < numFineVoFs; ifine++) {
-        const VolIndex& fineVoF = fineVoFs[ifine];
-
-        a_coarData(coarVoF, a_coarVar) += a_fineData(fineVoF, a_fineVar);
-      }
-
-      a_coarData(coarVoF, a_coarVar) = a_coarData(coarVoF, a_coarVar) / numFineVoFs;
-    }
-  }
+  BoxLoops::loop(vofitCoar, irregularKernel);
   CH_STOP(t2);
 }
 
@@ -262,8 +325,8 @@ EBCoarAve::harmonicAverage(EBCellFAB&       a_coarData,
   const EBISBox&    ebisBoxCoar  = m_eblgCoFi.getEBISL()[a_datInd];
   const IntVectSet& coarIrregIVS = ebisBoxCoar.getIrregIVS(coarBox);
 
-  BaseFab<Real>&       coarDataReg = a_coarData.getSingleValuedFAB();
-  const BaseFab<Real>& fineDataReg = a_fineData.getSingleValuedFAB();
+  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
+  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
 
   auto regularKernel = [&](const IntVect& iv) -> void {
     Real coarVal = 0.0;
@@ -316,18 +379,14 @@ EBCoarAve::conservativeAverage(EBCellFAB&       a_coarData,
   CH_assert(a_coarData.nComp() > a_coarVar);
   CH_assert(a_fineData.nComp() > a_fineVar);
 
-  // Regular cells
-  CH_START(t1);
-  const Real        dxCoar       = 1.0;
-  const Real        dxFine       = dxCoar / m_refRat;
-  const Box&        coarBox      = m_eblgCoFi.getDBL()[a_datInd];
-  const Box         refiBox      = Box(IntVect::Zero, (m_refRat - 1) * IntVect::Unit);
-  const EBISBox&    ebisBoxCoar  = m_eblgCoFi.getEBISL()[a_datInd];
-  const EBISBox&    ebisBoxFine  = m_eblgFine.getEBISL()[a_datInd];
-  const IntVectSet& coarIrregIVS = ebisBoxCoar.getIrregIVS(coarBox);
+  const Box& coarBox        = m_eblgCoFi.getDBL()[a_datInd];
+  const Box  refiBox        = Box(IntVect::Zero, (m_refRat - 1) * IntVect::Unit);
+  const Real invFinePerCoar = 1.0 / refiBox.numPts();
 
-  BaseFab<Real>&       coarDataReg = a_coarData.getSingleValuedFAB();
-  const BaseFab<Real>& fineDataReg = a_fineData.getSingleValuedFAB();
+  // Handle to single-valued data.
+  FArrayBox&                   coarDataReg       = a_coarData.getFArrayBox();
+  const FArrayBox&             fineDataReg       = a_fineData.getFArrayBox();
+  const BaseIVFAB<VoFStencil>& coarseningStencil = m_cellConservativeStencils[a_datInd];
 
   auto regularKernel = [&](const IntVect& iv) -> void {
     coarDataReg(iv, a_coarVar) = 0.0;
@@ -336,44 +395,30 @@ EBCoarAve::conservativeAverage(EBCellFAB&       a_coarData,
       coarDataReg(iv, a_coarVar) += fineDataReg(m_refRat * iv + bit(), a_fineVar);
     }
 
-    coarDataReg(iv, a_coarVar) *= std::pow(dxFine / dxCoar, SpaceDim);
+    coarDataReg(iv, a_coarVar) *= invFinePerCoar;
   };
 
+  auto irregularKernel = [&](const VolIndex& coarVoF) -> void {
+    a_coarData(coarVoF, 0.0);
+
+    const VoFStencil& stencil = coarseningStencil(coarVoF, 0);
+
+    for (int i = 0; i < stencil.size(); i++) {
+      const Real     fineWeight = stencil.weight(i);
+      const VolIndex fineVoF    = stencil.vof(i);
+
+      a_coarData(coarVoF, a_coarVar) += fineWeight * a_fineData(fineVoF, a_fineVar);
+    }
+  };
+
+  VoFIterator& vofitCoar = m_irregCellsCoFi[a_datInd];
+
+  CH_START(t1);
   BoxLoops::loop(coarBox, regularKernel);
   CH_STOP(t1);
 
-  // Irregular cells.
   CH_START(t2);
-  for (VoFIterator vofitCoar(coarIrregIVS, ebisBoxCoar.getEBGraph()); vofitCoar.ok(); ++vofitCoar) {
-    const VolIndex&        coarVoF     = vofitCoar();
-    const Real             kappaC      = ebisBoxCoar.volFrac(coarVoF);
-    const Vector<VolIndex> fineVoFs    = m_eblgCoFi.getEBISL().refine(coarVoF, m_refRat, a_datInd);
-    const int              numFineVoFs = fineVoFs.size();
-
-    a_coarData(coarVoF, a_coarVar) = 0.0;
-
-    // Set phic = sum(kappaf * phif * dxf^D)/(kappac * dxc^D) if we can.
-    if (numFineVoFs > 0) {
-      if (kappaC > 0.0) {
-        for (int ifine = 0; ifine < numFineVoFs; ifine++) {
-          const VolIndex& fineVoF = fineVoFs[ifine];
-
-          a_coarData(coarVoF, a_coarVar) += ebisBoxFine.volFrac(fineVoF) * a_fineData(fineVoF, a_fineVar);
-        }
-
-        a_coarData(coarVoF, a_coarVar) = a_coarData(coarVoF, a_coarVar) * std::pow(dxFine / dxCoar, SpaceDim);
-        a_coarData(coarVoF, a_coarVar) = a_coarData(coarVoF, a_coarVar) / kappaC;
-      }
-      else {
-        // No real volume so take the arithmetic average.
-        for (int ifine = 0; ifine < numFineVoFs; ifine++) {
-          a_coarData(coarVoF, a_coarVar) += a_fineData(fineVoFs[ifine], a_fineVar);
-        }
-
-        a_coarData(coarVoF, a_coarVar) = a_coarData(coarVoF, a_coarVar) / numFineVoFs;
-      }
-    }
-  }
+  BoxLoops::loop(vofitCoar, irregularKernel);
   CH_STOP(t2);
 }
 
@@ -485,8 +530,8 @@ EBCoarAve::arithmeticAverage(EBFaceFAB&       a_coarData,
   const EBGraph&   ebgraphCoar  = ebisBoxCoar.getEBGraph();
   const IntVectSet coarIrregIVS = ebisBoxCoar.getIrregIVS(coarBox);
 
-  BaseFab<Real>&       coarDataReg = a_coarData.getSingleValuedFAB();
-  const BaseFab<Real>& fineDataReg = a_fineData.getSingleValuedFAB();
+  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
+  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
 
   const int finePerCoar = std::pow(m_refRat, SpaceDim - 1);
   const int xDoLoop     = (a_dir == 0) ? 0 : 1;
@@ -571,8 +616,8 @@ EBCoarAve::harmonicAverage(EBFaceFAB&       a_coarData,
   const int zDoLoop = (a_dir == 2) ? 0 : 1;
 #endif
 
-  BaseFab<Real>&       coarDataReg = a_coarData.getSingleValuedFAB();
-  const BaseFab<Real>& fineDataReg = a_fineData.getSingleValuedFAB();
+  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
+  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
 
   // Regular cells.
   auto regularKernel = [&](const IntVect& iv) -> void {
@@ -654,8 +699,8 @@ EBCoarAve::conservativeAverage(EBFaceFAB&       a_coarData,
   const int zDoLoop = (a_dir == 2) ? 0 : 1;
 #endif
 
-  BaseFab<Real>&       coarDataReg = a_coarData.getSingleValuedFAB();
-  const BaseFab<Real>& fineDataReg = a_fineData.getSingleValuedFAB();
+  FArrayBox&       coarDataReg = a_coarData.getFArrayBox();
+  const FArrayBox& fineDataReg = a_fineData.getFArrayBox();
 
   // Regular cells.
   auto regularKernel = [&](const IntVect& iv) -> void {

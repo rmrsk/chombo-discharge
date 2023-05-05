@@ -1,5 +1,5 @@
 /* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
+ * Copyright © 2023 SINTEF Energy Research.
  * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
  */
 
@@ -13,6 +13,7 @@
 #define CD_EBCoarAve_H
 
 // Chombo includes
+#include <AggStencil.H>
 #include <EBLevelGrid.H>
 
 // Our includes
@@ -28,6 +29,16 @@
 class EBCoarAve
 {
 public:
+  /*!
+    @brief Type of coarsening supported
+  */
+  enum class Type
+  {
+    Arithmetic,
+    Conservative,
+    Harmonic
+  };
+
   /*!
     @brief Default constructor. Must call define afterwards. 
   */
@@ -213,6 +224,34 @@ protected:
     @brief Irregular cells on the coarsened fine layout
   */
   LayoutData<IntVectSet> m_irregSetsCoFi;
+
+  /*!
+    @brief Irregular cells on the coarsened fine layout
+  */
+  mutable LayoutData<VoFIterator> m_irregCellsCoFi;
+
+  /*!
+    @brief Stencils for arithmetic coarsening of volume data
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_cellArithmeticStencils;
+
+  /*!
+    @brief Stencils for conservative coarsening of volume data
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_cellConservativeStencils;
+
+  /*!
+    @brief Stencils for harmonic coarsening of volume data
+    @note This is different than the cellConservative and cellArithmetic stencils because its weights are all one and
+    the harmonic average is applied differently. 
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_cellHarmonicStencils;
+
+  /*!
+    @brief Define stencisl for the various coarsening functions of cell data
+  */
+  virtual void
+  defineCellStencils() noexcept;
 
   /*!
     @brief Do an arithmetic average of cell-centered data when coarsening. 
