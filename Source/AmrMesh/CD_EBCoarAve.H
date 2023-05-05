@@ -15,6 +15,8 @@
 // Chombo includes
 #include <AggStencil.H>
 #include <EBLevelGrid.H>
+#include <VoFIterator.H>
+#include <FaceIterator.H>
 
 // Our includes
 #include <CD_Average.H>
@@ -231,9 +233,21 @@ protected:
   mutable LayoutData<VoFIterator> m_irregCellsCoFi;
 
   /*!
+    @brief Irregular faces on the coarsened fine layout
+  */
+  mutable LayoutData<std::map<int, FaceIterator>> m_irregFacesCoFi;
+
+  /*!
     @brief Stencils for arithmetic coarsening of volume data
   */
   LayoutData<BaseIVFAB<VoFStencil>> m_cellArithmeticStencils;
+
+  /*!
+    @brief Stencils for harmonic coarsening of volume data
+    @note This is different than the cellConservative and cellArithmetic stencils because its weights are all one and
+    the harmonic average is applied differently. 
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_cellHarmonicStencils;  
 
   /*!
     @brief Stencils for conservative coarsening of volume data
@@ -241,17 +255,31 @@ protected:
   LayoutData<BaseIVFAB<VoFStencil>> m_cellConservativeStencils;
 
   /*!
-    @brief Stencils for harmonic coarsening of volume data
-    @note This is different than the cellConservative and cellArithmetic stencils because its weights are all one and
-    the harmonic average is applied differently. 
+    @brief Stencils for arithmetic coarsening of face data
   */
-  LayoutData<BaseIVFAB<VoFStencil>> m_cellHarmonicStencils;
+  LayoutData<std::map<int, BaseIFFAB<FaceStencil>>> m_faceArithmeticStencils;
 
   /*!
-    @brief Define stencisl for the various coarsening functions of cell data
+    @brief Stencils for harmonic coarsening of face data
+  */
+  LayoutData<std::map<int, BaseIFFAB<FaceStencil>>> m_faceHarmonicStencils;
+
+  /*!
+    @brief Stencils for conservative coarsening of face data
+  */
+  LayoutData<std::map<int, BaseIFFAB<FaceStencil>>> m_faceConservativeStencils;    
+
+  /*!
+    @brief Define stencils for the various coarsening functions of cell data
   */
   virtual void
   defineCellStencils() noexcept;
+
+  /*!
+    @brief Define stencils for the various coarsening functions of face data
+  */
+  virtual void
+  defineFaceStencils() noexcept;  
 
   /*!
     @brief Do an arithmetic average of cell-centered data when coarsening. 

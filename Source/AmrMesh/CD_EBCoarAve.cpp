@@ -85,6 +85,7 @@ EBCoarAve::define(const EBLevelGrid& a_eblgFine,
   }
 
   this->defineCellStencils();
+  this->defineFaceStencils();
 
   m_isDefined = true;
 }
@@ -129,13 +130,13 @@ EBCoarAve::defineCellStencils() noexcept
       const Vector<VolIndex> fineVoFs    = ebislCoar.refine(coarVoF, m_refRat, dit());
       const int              numFineVoFs = fineVoFs.size();
 
-      VoFStencil& consSten  = conservativeStencils(coarVoF, 0);
       VoFStencil& arithSten = arithmeticStencils(coarVoF, 0);
       VoFStencil& harmSten  = harmonicStencils(coarVoF, 0);
+      VoFStencil& consSten  = conservativeStencils(coarVoF, 0);
 
-      consSten.clear();
       arithSten.clear();
       harmSten.clear();
+      consSten.clear();
 
       if (numFineVoFs > 0) {
 
@@ -143,20 +144,96 @@ EBCoarAve::defineCellStencils() noexcept
           const VolIndex& fineVoF = fineVoFs[ifine];
           const Real      kappaF  = ebisBoxFine.volFrac(fineVoF);
 
+          arithSten.add(fineVoF, 1.0 / numFineVoFs);
+          harmSten.add(fineVoF, 1.0 / numFineVoFs);
+
           if (kappaC > 0.0) {
             consSten.add(fineVoF, kappaF * dxFactor / kappaC);
           }
           else {
             consSten.add(fineVoF, 1.0 / numFineVoFs);
           }
-
-          arithSten.add(fineVoF, 1.0 / numFineVoFs);
-          harmSten.add(fineVoF, 1.0 / numFineVoFs);
         }
       }
     };
 
     BoxLoops::loop(irregCells, buildStencils);
+  }
+}
+
+void
+EBCoarAve::defineFaceStencils() noexcept
+{
+  CH_TIME("EBCoarAve::defineFaceStencils");
+
+  const DisjointBoxLayout& dblCoar = m_eblgCoFi.getDBL();
+  const DisjointBoxLayout& dblFine = m_eblgFine.getDBL();
+
+  const EBISLayout& ebislCoar = m_eblgCoFi.getEBISL();
+  const EBISLayout& ebislFine = m_eblgFine.getEBISL();
+
+  const Real dxCoar   = 1.0;
+  const Real dxFine   = dxCoar / m_refRat;
+  const Real dxFactor = std::pow(dxFine / dxCoar, SpaceDim - 1);
+
+  m_irregFacesCoFi.define(dblCoar);
+  m_faceArithmeticStencils.define(dblCoar);
+  m_faceHarmonicStencils.define(dblCoar);
+  m_faceConservativeStencils.define(dblCoar);
+
+  for (DataIterator dit(dblCoar); dit.ok(); ++dit) {
+    const EBISBox& ebisBoxCoar = ebislCoar[dit()];
+    const EBISBox& ebisBoxFine = ebislFine[dit()];
+    const EBGraph& ebGraphCoar = ebisBoxCoar.getEBGraph();
+
+    const IntVectSet irregIVS = ebisBoxCoar.getIrregIVS(dblCoar[dit()]);
+
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      FaceIterator& faceIt = m_irregFacesCoFi[dit()][dir];
+
+      BaseIFFAB<FaceStencil>& arithmeticStencils   = m_faceArithmeticStencils[dit()][dir];
+      BaseIFFAB<FaceStencil>& harmonicStencils     = m_faceHarmonicStencils[dit()][dir];
+      BaseIFFAB<FaceStencil>& conservativeStencils = m_faceConservativeStencils[dit()][dir];
+
+      faceIt.define(irregIVS, ebGraphCoar, dir, FaceStop::SurroundingWithBoundary);
+
+      conservativeStencils.define(irregIVS, ebGraphCoar, dir, 1);
+      arithmeticStencils.define(irregIVS, ebGraphCoar, dir, 1);
+      harmonicStencils.define(irregIVS, ebGraphCoar, dir, 1);
+
+      auto buildStencils = [&](const FaceIndex& coarFace) -> void {
+        const Real               areaCoar     = ebisBoxCoar.areaFrac(coarFace);
+        const Vector<FaceIndex>& fineFaces    = ebislCoar.refine(coarFace, m_refRat, dit());
+        const int                numFineFaces = fineFaces.size();
+
+        FaceStencil& arithSten = arithmeticStencils(coarFace, 0);
+        FaceStencil& harmSten  = harmonicStencils(coarFace, 0);
+        FaceStencil& consSten  = conservativeStencils(coarFace, 0);
+
+        arithSten.clear();
+        harmSten.clear();
+        consSten.clear();
+
+        if (numFineFaces > 0) {
+          for (int ifine = 0; ifine < numFineFaces; ifine++) {
+            const FaceIndex& fineFace = fineFaces[ifine];
+            const Real       areaFine = ebisBoxFine.areaFrac(fineFace);
+
+            arithSten.add(fineFace, 1.0 / numFineFaces);
+            harmSten.add(fineFace, 1.0 / numFineFaces);
+
+            if (areaCoar > 0.0) {
+              consSten.add(fineFace, areaFine * dxFactor / areaCoar);
+            }
+            else {
+              consSten.add(fineFace, 1.0 / numFineFaces);
+            }
+          }
+        }
+      };
+
+      BoxLoops::loop(faceIt, buildStencils);
+    }
   }
 }
 
