@@ -84,8 +84,9 @@ EBCoarAve::define(const EBLevelGrid& a_eblgFine,
     m_irregSetsCoFi[dit()] = m_eblgCoFi.getEBISL()[dit()].getIrregIVS(m_eblgCoFi.getDBL().get(dit()));
   }
 
-  this->defineCellStencils();
+  this->defineCellStencils(); // Needs to go first because it defines the VoFIterator
   this->defineFaceStencils();
+  this->defineEBStencils();
 
   m_isDefined = true;
 }
@@ -234,6 +235,75 @@ EBCoarAve::defineFaceStencils() noexcept
 
       BoxLoops::loop(faceIt, buildStencils);
     }
+  }
+}
+
+void
+EBCoarAve::defineEBStencils() noexcept
+{
+  CH_TIME("EBCoarAve::defineEBStencils");
+
+  const DisjointBoxLayout& dblCoar = m_eblgCoFi.getDBL();
+  const DisjointBoxLayout& dblFine = m_eblgFine.getDBL();
+
+  const EBISLayout& ebislCoar = m_eblgCoFi.getEBISL();
+  const EBISLayout& ebislFine = m_eblgFine.getEBISL();
+
+  const Real dxCoar   = 1.0;
+  const Real dxFine   = dxCoar / m_refRat;
+  const Real dxFactor = std::pow(dxFine / dxCoar, SpaceDim - 1);
+
+  m_ebConservativeStencils.define(dblCoar);
+  m_ebArithmeticStencils.define(dblCoar);
+  m_ebHarmonicStencils.define(dblCoar);
+
+  for (DataIterator dit(dblCoar); dit.ok(); ++dit) {
+    const EBISBox& ebisBoxCoar = ebislCoar[dit()];
+    const EBISBox& ebisBoxFine = ebislFine[dit()];
+    const EBGraph& ebGraphCoar = ebisBoxCoar.getEBGraph();
+
+    BaseIVFAB<VoFStencil>& conservativeStencils = m_ebConservativeStencils[dit()];
+    BaseIVFAB<VoFStencil>& arithmeticStencils   = m_ebArithmeticStencils[dit()];
+    BaseIVFAB<VoFStencil>& harmonicStencils     = m_ebHarmonicStencils[dit()];
+
+    conservativeStencils.define(m_irregSetsCoFi[dit()], ebGraphCoar, 1);
+    arithmeticStencils.define(m_irregSetsCoFi[dit()], ebGraphCoar, 1);
+    harmonicStencils.define(m_irregSetsCoFi[dit()], ebGraphCoar, 1);
+
+    auto buildStencils = [&](const VolIndex& coarVoF) -> void {
+      const Real             areaCoar    = ebisBoxCoar.bndryArea(coarVoF);
+      const Vector<VolIndex> fineVoFs    = ebislCoar.refine(coarVoF, m_refRat, dit());
+      const int              numFineVoFs = fineVoFs.size();
+
+      VoFStencil& arithSten = arithmeticStencils(coarVoF, 0);
+      VoFStencil& harmSten  = harmonicStencils(coarVoF, 0);
+      VoFStencil& consSten  = conservativeStencils(coarVoF, 0);
+
+      arithSten.clear();
+      harmSten.clear();
+      consSten.clear();
+
+      if (numFineVoFs > 0) {
+        for (int ifine = 0; ifine < numFineVoFs; ifine++) {
+          const VolIndex& fineVoF  = fineVoFs[ifine];
+          const Real      areaFine = ebisBoxFine.bndryArea(fineVoF);
+
+          arithSten.add(fineVoF, 1.0 / numFineVoFs);
+          harmSten.add(fineVoF, 1.0 / numFineVoFs);
+
+          if (areaCoar > 0.0) {
+            consSten.add(fineVoF, areaFine * dxFactor / areaCoar);
+          }
+          else {
+            consSten.add(fineVoF, 1.0 / numFineVoFs);
+          }
+        }
+      }
+    };
+
+    VoFIterator& irregCells = m_irregCellsCoFi[dit()];
+
+    BoxLoops::loop(irregCells, buildStencils);
   }
 }
 

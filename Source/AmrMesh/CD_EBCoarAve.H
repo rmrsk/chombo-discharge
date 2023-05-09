@@ -267,7 +267,22 @@ protected:
   /*!
     @brief Stencils for conservative coarsening of face data
   */
-  LayoutData<std::map<int, BaseIFFAB<FaceStencil>>> m_faceConservativeStencils;    
+  LayoutData<std::map<int, BaseIFFAB<FaceStencil>>> m_faceConservativeStencils;
+
+  /*!
+    @brief Stencils for arithmetic coarsening of EB data
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_ebArithmeticStencils;
+
+  /*!
+    @brief Stencils for harmonic coarsening of EB data
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_ebHarmonicStencils;
+
+  /*!
+    @brief Stencils for conservative coarsening of EB data
+  */
+  LayoutData<BaseIVFAB<VoFStencil>> m_ebConservativeStencils;
 
   /*!
     @brief Define stencils for the various coarsening functions of cell data
@@ -279,7 +294,13 @@ protected:
     @brief Define stencils for the various coarsening functions of face data
   */
   virtual void
-  defineFaceStencils() noexcept;  
+  defineFaceStencils() noexcept;
+
+  /*!
+    @brief Define stencils for the various coarsening functions of EB data
+  */
+  virtual void
+  defineEBStencils() noexcept;    
 
   /*!
     @brief Do an arithmetic average of cell-centered data when coarsening. 
