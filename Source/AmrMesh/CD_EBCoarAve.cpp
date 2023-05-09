@@ -609,7 +609,7 @@ EBCoarAve::arithmeticAverage(EBFaceFAB&       a_coarData,
   const BaseIFFAB<FaceStencil>& coarseningStencils = m_faceArithmeticStencils[a_datInd].at(a_dir);
 
   // Kernel for doing regular faces.
-  const int invFinePerCoar = 1.0 / std::pow(m_refRat, SpaceDim - 1);
+  const Real invFinePerCoar = 1.0 / std::pow(m_refRat, SpaceDim - 1);
   const int xDoLoop        = (a_dir == 0) ? 0 : 1;
   const int yDoLoop        = (a_dir == 1) ? 0 : 1;
 #if CH_SPACEDIM == 3
@@ -683,9 +683,9 @@ EBCoarAve::harmonicAverage(EBFaceFAB&       a_coarData,
 
   const BaseIFFAB<FaceStencil>& coarseningStencils = m_faceHarmonicStencils[a_datInd].at(a_dir);
 
-  const int finePerCoar = std::pow(m_refRat, SpaceDim - 1);
-  const int xDoLoop     = (a_dir == 0) ? 0 : 1;
-  const int yDoLoop     = (a_dir == 1) ? 0 : 1;
+  const Real finePerCoar = std::pow(m_refRat, SpaceDim - 1);
+  const int  xDoLoop     = (a_dir == 0) ? 0 : 1;
+  const int  yDoLoop     = (a_dir == 1) ? 0 : 1;
 #if CH_SPACEDIM == 3
   const int zDoLoop = (a_dir == 2) ? 0 : 1;
 #endif
@@ -761,7 +761,7 @@ EBCoarAve::conservativeAverage(EBFaceFAB&       a_coarData,
   const BaseIFFAB<FaceStencil>& coarseningStencils = m_faceConservativeStencils[a_datInd].at(a_dir);
 
   // Kernel for doing regular faces.
-  const int invFinePerCoar = 1.0 / std::pow(m_refRat, SpaceDim - 1);
+  const Real invFinePerCoar = 1.0 / std::pow(m_refRat, SpaceDim - 1);
   const int xDoLoop        = (a_dir == 0) ? 0 : 1;
   const int yDoLoop        = (a_dir == 1) ? 0 : 1;
 #if CH_SPACEDIM == 3
