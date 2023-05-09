@@ -84,7 +84,7 @@ EBCoarAve::define(const EBLevelGrid& a_eblgFine,
     m_irregSetsCoFi[dit()] = m_eblgCoFi.getEBISL()[dit()].getIrregIVS(m_eblgCoFi.getDBL().get(dit()));
   }
 
-  this->defineCellStencils(); // Needs to go first because it defines the VoFIterator
+  this->defineCellStencils();
   this->defineFaceStencils();
   this->defineEBStencils();
 
@@ -1008,7 +1008,7 @@ EBCoarAve::harmonicAverage(BaseIVFAB<Real>&       a_coarData,
 {
   CH_TIME("EBCoarAve::harmonicAverage(BaseIVFAB<Real>)");
 
-  const BaseIVFAB<VoFStencil>& coarseningStencils = m_ebArithmeticStencils[a_datInd];
+  const BaseIVFAB<VoFStencil>& coarseningStencils = m_ebHarmonicStencils[a_datInd];
 
   auto irregularKernel = [&](const VolIndex& coarVoF) -> void {
     a_coarData(coarVoF, a_coarVar) = 0.0;
