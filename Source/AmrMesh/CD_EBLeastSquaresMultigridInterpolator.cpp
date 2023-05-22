@@ -46,6 +46,7 @@ EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator(const E
   CH_TIMER("EBLeastSquaresMultigridInterpolator::define_irregular", t2);
 
   CH_assert(a_ghostCF > 0);
+  CH_assert(a_refRat >= 2);
   CH_assert(a_refRat % 2 == 0);
   CH_assert(a_eblgFine.getGhost() >= a_ghostVector.max());
 
@@ -135,7 +136,8 @@ EBLeastSquaresMultigridInterpolator::coarseFineInterp(LevelData<EBCellFAB>&     
     CH_START(t1);
     const Interval srcInterv = Interval(icomp, icomp);
     const Interval dstInterv = Interval(m_comp, m_comp);
-    a_phiCoar.copyTo(srcInterv, *m_grownCoarData, dstInterv);
+    a_phiCoar.copyTo(srcInterv, (*m_grownCoarData), dstInterv);
+    a_phiCoar.copyTo(srcInterv, m_coarData, dstInterv);
     CH_STOP(t1);
 
     // Do the regular interpolation as if the EB is not there.
@@ -340,6 +342,16 @@ EBLeastSquaresMultigridInterpolator::defineBuffers() const noexcept
   const EBISLayout&        coFiEBISL = m_eblgCoFi.getEBISL();
 
   m_grownCoarData = new LevelData<EBCellFAB>(coFiGrids, 1, coarRadius * IntVect::Unit, EBCellFactory(coFiEBISL));
+
+  const DisjointBoxLayout& fineGrid = m_eblgFine.getDBL();
+
+  BoxLayout coarGrid;
+  coarGrid.deepCopy(fineGrid);
+  coarGrid.coarsen(m_refRat);
+  coarGrid.grow(coarRadius);
+  coarGrid.close();
+  
+  m_coarData.define(coarGrid, 1, EBCellFactory(coFiEBISL));
 }
 
 void

@@ -175,6 +175,8 @@ protected:
   */
   mutable LevelData<EBCellFAB>* m_grownCoarData;
 
+  mutable BoxLayoutData<EBCellFAB> m_coarData;
+
   /*!
     @brief Iterator over ghost cells
   */
