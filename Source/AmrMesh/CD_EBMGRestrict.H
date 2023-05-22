@@ -39,8 +39,12 @@ public:
     @param[in] a_eblgFine Fine level
     @param[in] a_eblgCoar Coarse level
     @param[in] a_refRat   Refinement factor between levels.
+    @param[in] a_ghostPhi Ghost cells in data holders
   */
-  EBMGRestrict(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoar, const int& a_refRat) noexcept;
+  EBMGRestrict(const EBLevelGrid& a_eblgFine,
+               const EBLevelGrid& a_eblgCoar,
+               const int&         a_refRat,
+               const IntVect&     a_ghostPhi) noexcept;
 
   /*!
     @brief Destructor
@@ -52,9 +56,13 @@ public:
     @param[in] a_eblgFine Fine level
     @param[in] a_eblgCoar Coarse level
     @param[in] a_refRat   Refinement factor between levels.
+    @param[in] a_ghostPhi Ghost cells in data holders
   */
   virtual void
-  define(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoar, const int& a_refRat) noexcept;
+  define(const EBLevelGrid& a_eblgFine,
+         const EBLevelGrid& a_eblgCoar,
+         const int&         a_refRat,
+         const IntVect&     a_ghostPhi) noexcept;
 
   /*!
     @brief Restrict residual onto the coarse grid.
@@ -81,6 +89,11 @@ protected:
   int m_refRat;
 
   /*!
+    @brief Number of ghost cells in data holders
+  */
+  IntVect m_ghostPhi;
+
+  /*!
     @brief Fine grid
   */
   EBLevelGrid m_eblgFine;
@@ -94,6 +107,16 @@ protected:
     @brief Coarsened fine grids
   */
   EBLevelGrid m_eblgCoFi;
+
+  /*!
+    @brief Copier for making copying from the coarsened fine grids to the coarse grid go faster.
+  */
+  mutable Copier m_copier;
+
+  /*!
+    @brief Data on the coarsened fine grid. Exists for performance reasons
+  */
+  mutable LevelData<EBCellFAB> m_dataCoFi;
 
   /*!
     @brief Iterator for iterating over cut-cells on the coarse level

@@ -127,7 +127,7 @@ EBHelmholtzOp::EBHelmholtzOp(const Location::Cell                             a_
     m_eblgCoFi = a_eblgCoFi;
     m_eblgCoar = a_eblgCoar;
 
-    m_restrictOp.define(m_eblg, m_eblgCoar, m_refToCoar);
+    m_restrictOp.define(m_eblg, m_eblgCoFi, m_refToCoar, m_ghostPhi);
     m_prolongOp.define(m_eblg, m_eblgCoar, m_refToCoar);
   }
 
@@ -136,7 +136,7 @@ EBHelmholtzOp::EBHelmholtzOp(const Location::Cell                             a_
 
     m_eblgCoarMG = a_eblgCoarMG;
 
-    m_restrictOpMG.define(m_eblg, m_eblgCoarMG, mgRef);
+    m_restrictOpMG.define(m_eblg, m_eblgCoarMG, mgRef, m_ghostPhi);
     m_prolongOpMG.define(m_eblg, m_eblgCoarMG, mgRef);
   }
 
