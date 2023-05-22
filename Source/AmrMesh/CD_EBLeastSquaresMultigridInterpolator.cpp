@@ -130,8 +130,8 @@ EBLeastSquaresMultigridInterpolator::coarseFineInterp(LevelData<EBCellFAB>&     
   // Interpolate all variables near the EB. We will copy a_phiCoar to m_grownCoarData which holds the data on the coarse grid cells around each fine-grid
   // patch. Note that m_grownCoarData provides a LOCAL view of the coarse grid around each fine-level patch, so we can apply the stencils directly.
   for (int icomp = a_variables.begin(); icomp <= a_variables.end(); icomp++) {
-    // Now do the EB. Copy data to scratch data holders. We need the coarse-data to be accessible by the
-    // fine data (through the same iterators), so we can't  get away from a copy here (I think).
+
+    // Can we get rid of a copy here? I don't think so, but
     CH_START(t1);
     const Interval srcInterv = Interval(icomp, icomp);
     const Interval dstInterv = Interval(m_comp, m_comp);

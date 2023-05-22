@@ -470,7 +470,7 @@ EBHelmholtzOp::residual(LevelData<EBCellFAB>&       a_residual,
 void
 EBHelmholtzOp::preCond(LevelData<EBCellFAB>& a_corr, const LevelData<EBCellFAB>& a_residual)
 {
-  CH_TIME("EBHelmholtzOp::preCond(LD<EBCellFAB>, LD<EBCellFAB>)");
+  CH_TIME("EBHelmholtzOp::preCond");
 
   EBLevelDataOps::assign(a_corr, a_residual);
   EBLevelDataOps::scale(a_corr, m_relCoef);
@@ -481,7 +481,7 @@ EBHelmholtzOp::preCond(LevelData<EBCellFAB>& a_corr, const LevelData<EBCellFAB>&
 void
 EBHelmholtzOp::create(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs)
 {
-  CH_TIME("EBHelmholtzOp::create(LD<EBCellFAB>, LD<EBCellFAB>)");
+  CH_TIME("EBHelmholtzOp::create");
 
   a_lhs.define(m_eblg.getDBL(), a_rhs.nComp(), a_rhs.ghostVect(), EBCellFactory(m_eblg.getEBISL()));
 }
@@ -489,7 +489,7 @@ EBHelmholtzOp::create(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a
 void
 EBHelmholtzOp::assign(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs)
 {
-  CH_TIME("EBHelmholtzOp::assign(LD<EBCellFAB>, LD<EBCellFAB>)");
+  CH_TIME("EBHelmholtzOp::assign");
 
   a_rhs.copyTo(a_lhs);
 }
@@ -497,7 +497,7 @@ EBHelmholtzOp::assign(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a
 Real
 EBHelmholtzOp::dotProduct(const LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs)
 {
-  CH_TIME("EBHelmholtzOp::dotProduct(LD<EBCellFAB>, LD<EBCellFAB>)");
+  CH_TIME("EBHelmholtzOp::dotProduct");
 
   ProblemDomain domain;
   Real          volume;
@@ -508,7 +508,7 @@ EBHelmholtzOp::dotProduct(const LevelData<EBCellFAB>& a_lhs, const LevelData<EBC
 void
 EBHelmholtzOp::incr(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs, const Real a_scale)
 {
-  CH_TIME("EBHelmholtzOp::incr(LD<EBCellFAB>, LD<EBCellFAB>, Real)");
+  CH_TIME("EBHelmholtzOp::incr");
 
   EBLevelDataOps::incr(a_lhs, a_rhs, a_scale);
 }
@@ -520,7 +520,7 @@ EBHelmholtzOp::axby(LevelData<EBCellFAB>&       a_lhs,
                     const Real                  a_a,
                     const Real                  a_b)
 {
-  CH_TIME("EBHelmholtzOp::axby(LD<EBCellFAB>, LD<EBCellFAB>, LD<EBCellFAB>, Real, Real)");
+  CH_TIME("EBHelmholtzOp::axby");
 
   EBLevelDataOps::axby(a_lhs, a_x, a_y, a_a, a_b);
 }
@@ -528,7 +528,7 @@ EBHelmholtzOp::axby(LevelData<EBCellFAB>&       a_lhs,
 void
 EBHelmholtzOp::scale(LevelData<EBCellFAB>& a_lhs, const Real& a_scale)
 {
-  CH_TIME("EBHelmholtzOp::axby(LD<EBCellFAB>, Real)");
+  CH_TIME("EBHelmholtzOp::scale");
 
   EBLevelDataOps::scale(a_lhs, a_scale);
 }
@@ -536,7 +536,10 @@ EBHelmholtzOp::scale(LevelData<EBCellFAB>& a_lhs, const Real& a_scale)
 Real
 EBHelmholtzOp::norm(const LevelData<EBCellFAB>& a_rhs, const int a_order)
 {
-  CH_TIME("EBHelmholtzOp::axby(LD<EBCellFAB>, int)");
+  CH_TIMERS("EBHelmholtzOp::norm");
+  CH_TIMER("EBHelmholtzOp::norm::regular_cells", t1);
+  CH_TIMER("EBHelmholtzOp::norm::irregular_cells", t2);
+  CH_TIMER("EBHelmholtzOp::norm::parallel_reduce", t3);
 
   // TLDR: This computes the Linf norm.
   Real maxNorm = 0.0;
@@ -558,9 +561,20 @@ EBHelmholtzOp::norm(const LevelData<EBCellFAB>& a_rhs, const int a_order)
     };
 
     // Launch the kernels.
+    CH_START(t1);
     BoxLoops::loop(box, regularKernel);
+    CH_STOP(t1);
+
+    CH_START(t2);
     BoxLoops::loop(m_vofIterIrreg[dit()], irregularKernel);
+    CH_STOP(t2);
   }
+
+  // Adding an explicit MPI barrier here because the max routine is a blocking operation anyways, so this lets us spot load
+  // imbalance.
+  CH_START(t3);
+  ParallelOps::barrier();
+  CH_STOP(t3);
 
   maxNorm = ParallelOps::max(maxNorm);
 

@@ -1055,6 +1055,8 @@ MFHelmholtzOp::AMROperatorNF(LevelData<MFCellFAB>&       a_Lphi,
 
   constexpr bool homogeneousCFBC = false;
 
+  // Note; There is no coarse-fine interpolation here because that will have been
+  // done by AMROperator (which is called before this routine).
   this->exchangeGhost(a_phi);
   this->updateJumpBC(a_phi, a_homogeneousPhysBC);
 
