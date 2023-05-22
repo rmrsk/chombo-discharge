@@ -46,7 +46,7 @@ public:
   };
 
   /*!
-    @brief Disallowed constructor. 
+    @brief Weak constructor. Need to call define afterwards.
   */
   EBGhostCellInterpolator() noexcept;
 

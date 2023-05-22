@@ -35,6 +35,7 @@
 #include <CD_ParticleContainer.H>
 #include <CD_EBMultigridInterpolator.H>
 #include <CD_EBGradient.H>
+#include <CD_EBRedistribution.H>
 #include <CD_EBAMRParticleMesh.H>
 #include <CD_EBAMRSurfaceDeposition.H>
 #include <CD_EBCoarseToFineInterp.H>
