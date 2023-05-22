@@ -13,16 +13,17 @@
 #include <sstream>
 
 // Chombo includes
+#include <CH_Timer.H>
 #include <EBCellFactory.H>
 #include <EBLevelDataOps.H>
 #include <NeighborIterator.H>
 #include <EBAlias.H>
-#include <CH_Timer.H>
 #include <ParmParse.H>
 
 // Our includes
 #include <CD_EBLeastSquaresMultigridInterpolator.H>
 #include <CD_VofUtils.H>
+#include <CD_ParallelOps.H>
 #include <CD_LeastSquares.H>
 #include <CD_BoxLoops.H>
 #include <CD_NamespaceHeader.H>
