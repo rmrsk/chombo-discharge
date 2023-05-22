@@ -95,6 +95,7 @@ EBLeastSquaresMultigridInterpolator::coarseFineInterp(LevelData<EBCellFAB>&     
                                                       const Interval              a_variables) const noexcept
 {
   CH_TIMERS("EBLeastSquaresMultigridInterpolator::coarseFineInterp");
+  CH_TIMER("EBLeastSquaresMultigridInterpolator::barrier", t0);  
   CH_TIMER("EBLeastSquaresMultigridInterpolator::copy_exchange", t1);
   CH_TIMER("EBLeastSquaresMultigridInterpolator::regular_interp", t2);
   CH_TIMER("EBLeastSquaresMultigridInterpolator::irregular_interp", t3);
@@ -107,13 +108,17 @@ EBLeastSquaresMultigridInterpolator::coarseFineInterp(LevelData<EBCellFAB>&     
     MayDay::Error("EBLeastSquaresMultigridInterpolator::coarseFineInterp -- number of ghost cells do not match!");
   }
 
+  CH_START(t0);
+  ParallelOps::barrier();
+  CH_STOP(t0);  
+
   // Interpolate all variables near the EB. We will copy a_phiCoar to m_coarData which holds the data on the coarse grid cells around each fine-grid
   // patch. Note that m_coarData provides a LOCAL view of the coarse grid around each fine-level patch, so we can apply the stencils directly.
   for (int icomp = a_variables.begin(); icomp <= a_variables.end(); icomp++) {
-
-    CH_START(t1);
     const Interval srcInterv = Interval(icomp, icomp);
     const Interval dstInterv = Interval(m_comp, m_comp);
+    
+    CH_START(t1);
     a_phiCoar.copyTo(srcInterv, m_coarData, dstInterv);
     CH_STOP(t1);
 

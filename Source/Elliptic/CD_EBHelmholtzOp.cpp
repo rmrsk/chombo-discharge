@@ -539,7 +539,7 @@ EBHelmholtzOp::norm(const LevelData<EBCellFAB>& a_rhs, const int a_order)
   CH_TIMERS("EBHelmholtzOp::norm");
   CH_TIMER("EBHelmholtzOp::norm::regular_cells", t1);
   CH_TIMER("EBHelmholtzOp::norm::irregular_cells", t2);
-  CH_TIMER("EBHelmholtzOp::norm::parallel_reduce", t3);
+  CH_TIMER("EBHelmholtzOp::norm::barrier", t3);
 
   // TLDR: This computes the Linf norm.
   Real maxNorm = 0.0;
