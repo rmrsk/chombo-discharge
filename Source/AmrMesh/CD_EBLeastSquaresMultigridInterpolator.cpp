@@ -676,34 +676,9 @@ EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(LevelData<EBCellFAB
                                                              const int                       a_fineVar,
                                                              const int                       a_coarVar) const noexcept
 {
-  CH_TIME("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(level");
-
-  const DisjointBoxLayout& dblFine    = m_eblgFine.getDBL();
-  const ProblemDomain&     domainCoar = m_eblgCoFi.getDomain();
-
-  for (DataIterator dit(dblFine); dit.ok(); ++dit) {
-    const Box fineBox = dblFine[dit()];
-
-    FArrayBox&       finePhi = a_finePhi[dit()].getFArrayBox();
-    const FArrayBox& coarPhi = a_coarPhi[dit()].getFArrayBox();
-
-    this->regularCoarseFineInterp(finePhi, coarPhi, a_fineVar, a_coarVar, dit());
-  }
-}
-
-void
-EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(FArrayBox&       a_finePhi,
-                                                             const FArrayBox& a_coarPhi,
-                                                             const int        a_fineVar,
-                                                             const int        a_coarVar,
-                                                             const DataIndex& a_dit) const noexcept
-{
-  CH_TIMERS("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(patch)");
-  CH_TIMER("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(patch)::coarse_interp", t1);
-  CH_TIMER("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(patch)::fine_interp", t2);
-
-  // We are interpolating the first layer of ghost cells to O(h^3). To do this, we must first do an interpolation on the
-  // coarse grid, and then cubic interpolation on the fine grid.
+  CH_TIMERS("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp");
+  CH_TIMER("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp::coarse_interp", t1);
+  CH_TIMER("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp::fine_interp", t2);
 
   CH_assert(a_finePhi.nComp() > a_fineVar);
   CH_assert(a_coarPhi.nComp() > a_coarVar);
@@ -723,66 +698,74 @@ EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(FArrayBox&       a_
   const DisjointBoxLayout& dblFine    = m_eblgFine.getDBL();
   const ProblemDomain&     domainCoar = m_eblgCoFi.getDomain();
 
-  const Box fineBox = dblFine[a_dit];
+  // We are interpolating the first layer of ghost cells to O(h^3). To do this, we must first do an interpolation on the
+  // coarse grid, and then cubic interpolation on the fine grid.
 
-  for (int dir = 0; dir < SpaceDim; dir++) {
-    for (SideIterator sit; sit.ok(); ++sit) {
-      const int iHiLo     = sign(sit());
-      const Box interpBox = m_cfivs[a_dit].at(std::make_pair(dir, sit()));
+  for (DataIterator dit(dblFine); dit.ok(); ++dit) {
+    const Box fineBox = dblFine[dit()];
 
-      // Coarse-side interpolation stencil. This does interpolation orthogonal to direction 'dir'
-      const CoarseInterpQuadCF& coarseStencils = (sit() == Side::Lo) ? m_loCoarseInterpCF[dir][a_dit]
-                                                                     : m_hiCoarseInterpCF[dir][a_dit];
+    FArrayBox&       finePhi = a_finePhi[dit()].getFArrayBox();
+    const FArrayBox& coarPhi = a_coarPhi[dit()].getFArrayBox();
 
-      // Adds first derivative to the Taylor expansion.
-      auto applyDerivs = [&](const IntVect& fineIV) -> void {
-        const IntVect coarIV = coarsen(fineIV, m_refRat);
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      for (SideIterator sit; sit.ok(); ++sit) {
+        const int iHiLo     = sign(sit());
+        const Box interpBox = m_cfivs[dit()].at(std::make_pair(dir, sit()));
 
-        a_finePhi(fineIV, a_fineVar) = a_coarPhi(coarIV, a_coarVar);
+        // Coarse-side interpolation stencil. This does interpolation orthogonal to direction 'dir'
+        const CoarseInterpQuadCF& coarseStencils = (sit() == Side::Lo) ? m_loCoarseInterpCF[dir][dit()]
+                                                                       : m_hiCoarseInterpCF[dir][dit()];
 
-        // Displacement vector from coarse-grid cell to fine-grid ghost cell. Note that this is normalized by
-        // the coarse grid cell size.
-        const RealVect delta = (RealVect(fineIV) - m_refRat * RealVect(coarIV) + 0.5 * (1.0 - m_refRat)) / m_refRat;
+        // Adds first derivative to the Taylor expansion.
+        auto applyDerivs = [&](const IntVect& fineIV) -> void {
+          const IntVect coarIV = coarsen(fineIV, m_refRat);
 
-        // Add contributions from first and second derivatives.
-        for (int d = 0; d < SpaceDim; d++) {
-          if (d != dir) {
-            const Real firstDeriv  = coarseStencils.computeFirstDeriv(a_coarPhi, coarIV, d, a_coarVar);
-            const Real secondDeriv = coarseStencils.computeSecondDeriv(a_coarPhi, coarIV, d, a_coarVar);
+          finePhi(fineIV, a_fineVar) = coarPhi(coarIV, a_coarVar);
 
-            a_finePhi(fineIV, a_fineVar) += firstDeriv * delta[d] + 0.5 * secondDeriv * delta[d] * delta[d];
+          // Displacement vector from coarse-grid cell to fine-grid ghost cell. Note that this is normalized by
+          // the coarse grid cell size.
+          const RealVect delta = (RealVect(fineIV) - m_refRat * RealVect(coarIV) + 0.5 * (1.0 - m_refRat)) / m_refRat;
+
+          // Add contributions from first and second derivatives.
+          for (int d = 0; d < SpaceDim; d++) {
+            if (d != dir) {
+              const Real firstDeriv  = coarseStencils.computeFirstDeriv(coarPhi, coarIV, d, a_coarVar);
+              const Real secondDeriv = coarseStencils.computeSecondDeriv(coarPhi, coarIV, d, a_coarVar);
+
+              finePhi(fineIV, a_fineVar) += firstDeriv * delta[d] + 0.5 * secondDeriv * delta[d] * delta[d];
+            }
           }
-        }
 
 #if CH_SPACEDIM == 3
-        // Add contribution from mixed derivative. Only in 3D.
-        Real mixedDeriv = coarseStencils.computeMixedDeriv(a_coarPhi, coarIV, a_coarVar);
-        for (int d = 0; d < SpaceDim; d++) {
-          if (d != dir) {
-            mixedDeriv *= delta[d];
+          // Add contribution from mixed derivative. Only in 3D.
+          Real mixedDeriv = coarseStencils.computeMixedDeriv(coarPhi, coarIV, a_coarVar);
+          for (int d = 0; d < SpaceDim; d++) {
+            if (d != dir) {
+              mixedDeriv *= delta[d];
+            }
           }
-        }
-        a_finePhi(fineIV, a_fineVar) += mixedDeriv;
+          finePhi(fineIV, a_fineVar) += mixedDeriv;
 #endif
-      };
+        };
 
-      // We've put the coarse-grid interpolation into a_finePhi(fineIV, a_fineVar). Now use that value
-      // when doing quadratic interpolation with the additional fine-grid data.
-      auto interpOnFine = [&](const IntVect& fineIV) -> void {
-        const Real phi0 = a_finePhi(fineIV, a_fineVar);
-        const Real phi1 = a_finePhi(fineIV - iHiLo * BASISV(dir), a_fineVar);
-        const Real phi2 = a_finePhi(fineIV - 2 * iHiLo * BASISV(dir), a_fineVar);
+        // We've put the coarse-grid interpolation into finePhi(fineIV, a_fineVar). Now use that value
+        // when doing quadratic interpolation with the additional fine-grid data.
+        auto interpOnFine = [&](const IntVect& fineIV) -> void {
+          const Real phi0 = finePhi(fineIV, a_fineVar);
+          const Real phi1 = finePhi(fineIV - iHiLo * BASISV(dir), a_fineVar);
+          const Real phi2 = finePhi(fineIV - 2 * iHiLo * BASISV(dir), a_fineVar);
 
-        a_finePhi(fineIV, a_fineVar) = phi0 * L0 + phi1 * L1 + phi2 * L2;
-      };
+          finePhi(fineIV, a_fineVar) = phi0 * L0 + phi1 * L1 + phi2 * L2;
+        };
 
-      CH_START(t1);
-      BoxLoops::loop(interpBox, applyDerivs);
-      CH_STOP(t1);
+        CH_START(t1);
+        BoxLoops::loop(interpBox, applyDerivs);
+        CH_STOP(t1);
 
-      CH_START(t2);
-      BoxLoops::loop(interpBox, interpOnFine);
-      CH_STOP(t2);
+        CH_START(t2);
+        BoxLoops::loop(interpBox, interpOnFine);
+        CH_STOP(t2);
+      }
     }
   }
 }

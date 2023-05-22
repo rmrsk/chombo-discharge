@@ -326,21 +326,6 @@ protected:
                           const BoxLayoutData<EBCellFAB>& a_coarPhi,
                           const int                       a_fineVar,
                           const int                       a_coarVar) const noexcept;
-
-  /*!
-    @brief Do regular coarse-fine interpolation as if the EB is not there.
-    @param[inout] a_finePhi Fine-level data.
-    @param[in] a_coarPhi Coarse-grid data.
-    @param[in] a_fineVar Fine variable
-    @param[in] a_coarVar Coarse variable
-    @param[in] a_dit Grid index on the fine (this) level
-  */
-  virtual void
-  regularCoarseFineInterp(FArrayBox&       a_finePhi,
-                          const FArrayBox& a_coarPhi,
-                          const int        a_fineVar,
-                          const int        a_coarVar,
-                          const DataIndex& a_dit) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
