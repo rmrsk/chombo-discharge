@@ -43,7 +43,6 @@
   
   will have a coarse and and a fine grid stencil, but the fine stencil does not reach out of the ghosted fine-grid patch. The fine-grid part of the stencil is thus
   allowed to use the ghost cells in the patch that are filled from neighboring patches. 
-  @note This class includes, as an option, usage of Chombos QuadCFInterp for doing the regular interpolation. To enable that, pass EBLeastSquaresMultigridInterpolator.use_quad_cfi = true in your input script. 
 */
 class EBLeastSquaresMultigridInterpolator : public EBMultigridInterpolator
 {
@@ -164,6 +163,11 @@ protected:
   EBLevelGrid m_eblgCoFi;
 
   /*!
+    @brief Copier for making copying into m_coarData go faster
+  */
+  Copier m_copier;
+
+  /*!
     @brief Buffer data on the coarsened fine grid (i.e., THIS level). 
   */
   mutable BoxLayoutData<EBCellFAB> m_coarData;
@@ -262,7 +266,7 @@ protected:
     @brief Define buffer data holder. 
   */
   virtual void
-  defineBuffers() const noexcept;
+  defineBuffers() noexcept;
 
   /*!
     @brief Define the coarse-sided interpolation stencils for doing the orthogonal derivatives. 
