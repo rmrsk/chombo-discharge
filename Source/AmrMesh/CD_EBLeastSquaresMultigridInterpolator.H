@@ -164,11 +164,6 @@ protected:
   EBLevelGrid m_eblgCoFi;
 
   /*!
-    @brief Coarsened data
-  */
-  mutable LevelData<EBCellFAB>* m_grownCoarData;
-
-  /*!
     @brief Buffer data on the coarsened fine grid (i.e., THIS level). 
   */
   mutable BoxLayoutData<EBCellFAB> m_coarData;
@@ -268,12 +263,6 @@ protected:
   */
   virtual void
   defineBuffers() const noexcept;
-
-  /*!
-    @brief Define buffer data holder. 
-  */
-  virtual void
-  undefineBuffers() const noexcept;
 
   /*!
     @brief Define the coarse-sided interpolation stencils for doing the orthogonal derivatives. 
