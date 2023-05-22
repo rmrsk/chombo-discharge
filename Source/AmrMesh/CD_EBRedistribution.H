@@ -116,6 +116,11 @@ protected:
   int m_refToFine;
 
   /*!
+    @brief Redistribution radius
+  */
+  int m_redistRadius;
+
+  /*!
     @brief Grids on coarser level
   */
   EBLevelGrid m_eblgCoar;
@@ -157,6 +162,12 @@ protected:
     @note Defined on this level (m_eblg), but the stencils contain VoFs on the fine level
   */
   LayoutData<BaseIVFAB<VoFStencil>> m_redistStencilsFine;
+
+  /*!
+    @brief Define redistribution stencils
+  */
+  virtual void
+  defineStencils() noexcept;
 };
 
 #include <CD_NamespaceFooter.H>

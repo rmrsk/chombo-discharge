@@ -66,12 +66,22 @@ EBRedistribution::define(const EBLevelGrid& a_eblgCoar,
   CH_assert(a_eblg.isDefined());
   CH_assert(a_redistributionRadius >= 1);
 
+  a_refToCoar = -1;
+  a_refToFine = -1;
+
+  m_hasCoar = false;
+  m_hasFine = false;
+
+  m_eblg         = a_eblg;
+  m_redistRadius = a_redistributionRadius;
+
   if (a_eblgCoar.isDefined()) {
     CH_assert(a_refToCoar >= 2);
     CH_assert(a_refToCoar % 2 == 0);
     CH_assert(a_eblgRefinedCoar.isDefined());
 
-    m_hasCoar = true;
+    m_refToCoar = a_refToCoar;
+    m_hasCoar   = true;
   }
 
   if (a_eblgFine.isDefined()) {
@@ -79,10 +89,22 @@ EBRedistribution::define(const EBLevelGrid& a_eblgCoar,
     CH_assert(a_refToFine % 2 == 0);
     CH_assert(a_eblgCoarsenedFine.isDefined());
 
-    m_hasFine = true;
+    m_refToFine = a_refToFine;
+    m_hasFine   = true;
   }
 
+  this->defineStencils();
+
   m_isDefined = true;
+}
+
+void
+EBRedistribution::defineStencils() noexcept
+{
+  CH_TIMERS("EBRedistribution::defineStencils");
+
+  const DisjointBoxLayout& dbl   = m_eblg.getDBL();
+  const EBISLayout&        ebisl = m_eblg.getEBISL();
 }
 
 #include <CD_NamespaceFooter.H>
