@@ -144,13 +144,6 @@ protected:
   static constexpr int m_comp = 0;
 
   /*!
-    @brief For regular interpolation of scalar quantities
-    @note By default this is discontinued, but supported by adding EBLeastSquaresMultigridInterpolator.use_quad_cfi = true to
-    your input script. 
-  */
-  RefCountedPtr<QuadCFInterp> m_quadCFInterp;
-
-  /*!
     @brief How to interpret data locations. 
   */
   CellLocation m_dataLocation;
@@ -175,6 +168,9 @@ protected:
   */
   mutable LevelData<EBCellFAB>* m_grownCoarData;
 
+  /*!
+    @brief Buffer data on the coarsened fine grid (i.e., THIS level). 
+  */
   mutable BoxLayoutData<EBCellFAB> m_coarData;
 
   /*!
@@ -186,11 +182,6 @@ protected:
     @brief Is defined or not
   */
   bool m_isDefined;
-
-  /*!
-    @brief If true, will use QuadCFInterp for interpolating ghost cells. Default is false
-  */
-  bool m_useQuadCFI;
 
   /*!
     @brief Minimum number of ghost cells in input data. 
@@ -339,13 +330,28 @@ protected:
     @param[inout] a_finePhi Fine-level data.
     @param[in] a_coarPhi Coarse-grid data.
     @param[in] a_fineVar Fine variable
-    @param[in] a_coarVar Coarse variables
+    @param[in] a_coarVar Coarse variable
   */
   virtual void
-  regularCoarseFineInterp(LevelData<FArrayBox>&       a_finePhi,
-                          const LevelData<FArrayBox>& a_coarPhi,
-                          const int                   a_fineVar,
-                          const int                   a_coarVar) const noexcept;
+  regularCoarseFineInterp(LevelData<EBCellFAB>&           a_finePhi,
+                          const BoxLayoutData<EBCellFAB>& a_coarPhi,
+                          const int                       a_fineVar,
+                          const int                       a_coarVar) const noexcept;
+
+  /*!
+    @brief Do regular coarse-fine interpolation as if the EB is not there.
+    @param[inout] a_finePhi Fine-level data.
+    @param[in] a_coarPhi Coarse-grid data.
+    @param[in] a_fineVar Fine variable
+    @param[in] a_coarVar Coarse variable
+    @param[in] a_dit Grid index on the fine (this) level
+  */
+  virtual void
+  regularCoarseFineInterp(FArrayBox&       a_finePhi,
+                          const FArrayBox& a_coarPhi,
+                          const int        a_fineVar,
+                          const int        a_coarVar,
+                          const DataIndex& a_dit) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>

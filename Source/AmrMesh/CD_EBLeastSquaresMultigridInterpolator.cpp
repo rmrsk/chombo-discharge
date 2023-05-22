@@ -56,9 +56,8 @@ EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator(const E
     MayDay::Error("EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator - not enough ghost cells!");
   }
 
-  // Build the regular stencil objects for regular-grid interpolation. For now, we use QuadCFInterp for this. I also leave
-  // a timer in place until performance and scalability has been investigated. To check performance, add
-  // EBLeastSquaresMultigridInterpolator.profile=true to your input script.
+  // Build the regular stencil objects for regular-grid interpolation. I also leave a timer in place until performance and
+  // scalability has been investigated. To check performance, add EBLeastSquaresMultigridInterpolator.profile=true to your input script.
   CH_START(t1);
   m_refRat       = a_refRat;
   m_ghostCF      = a_ghostCF;
@@ -69,19 +68,6 @@ EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator(const E
   m_eblgFine     = a_eblgFine;
   m_eblgCoFi     = a_eblgCoFi;
   m_eblgCoar     = a_eblgCoar;
-  m_useQuadCFI   = false;
-
-  const DisjointBoxLayout& gridsFine = a_eblgFine.getDBL();
-  const DisjointBoxLayout& gridsCoar = a_eblgCoar.getDBL();
-
-  ParmParse pp("EBLeastSquaresMultigridInterpolator");
-  pp.query("use_quad_cfi", m_useQuadCFI);
-
-  if (m_useQuadCFI) {
-    pout() << "EBLeastSquaresMultigridInterpolator - using QuadCFInterp for regular interpolation" << endl;
-    m_quadCFInterp = RefCountedPtr<QuadCFInterp>(
-      new QuadCFInterp(gridsFine, &gridsCoar, 1.0, a_refRat, 1, a_eblgFine.getDomain()));
-  }
   CH_STOP(t1);
 
   CH_START(t2);
@@ -132,35 +118,19 @@ EBLeastSquaresMultigridInterpolator::coarseFineInterp(LevelData<EBCellFAB>&     
   // patch. Note that m_grownCoarData provides a LOCAL view of the coarse grid around each fine-level patch, so we can apply the stencils directly.
   for (int icomp = a_variables.begin(); icomp <= a_variables.end(); icomp++) {
 
-    // Can we get rid of a copy here? I don't think so, but
     CH_START(t1);
     const Interval srcInterv = Interval(icomp, icomp);
     const Interval dstInterv = Interval(m_comp, m_comp);
-    a_phiCoar.copyTo(srcInterv, (*m_grownCoarData), dstInterv);
     a_phiCoar.copyTo(srcInterv, m_coarData, dstInterv);
     CH_STOP(t1);
 
     // Do the regular interpolation as if the EB is not there.
     CH_START(t2);
-    LevelData<FArrayBox> fineAlias;
-    LevelData<FArrayBox> coarAlias;
-    LevelData<FArrayBox> fineAliasOneComp;
-    LevelData<FArrayBox> coarAliasOneComp;
+    LevelData<EBCellFAB> fineAliasOneComp;
 
-    aliasEB(fineAlias, (LevelData<EBCellFAB>&)a_phiFine);
-    aliasEB(coarAlias, (LevelData<EBCellFAB>&)*m_grownCoarData);
+    aliasLevelData(fineAliasOneComp, &a_phiFine, Interval(icomp, icomp));
+    this->regularCoarseFineInterp(a_phiFine, m_coarData, 0, 0);
 
-    aliasLevelData(fineAliasOneComp, &fineAlias, Interval(icomp, icomp));
-    aliasLevelData(coarAliasOneComp, &coarAlias, Interval(m_comp, m_comp));
-
-    if (m_useQuadCFI) {
-      aliasEB(coarAlias, (LevelData<EBCellFAB>&)a_phiCoar);
-      aliasLevelData(coarAliasOneComp, &coarAlias, Interval(icomp, icomp));
-      m_quadCFInterp->coarseFineInterp(fineAliasOneComp, coarAliasOneComp);
-    }
-    else {
-      this->regularCoarseFineInterp(fineAliasOneComp, coarAliasOneComp, m_comp, m_comp);
-    }
     CH_STOP(t2);
 
     // Go through each grid patch and the to-be-interpolated ghost cells across the refinement boundary. We simply
@@ -169,7 +139,7 @@ EBLeastSquaresMultigridInterpolator::coarseFineInterp(LevelData<EBCellFAB>&     
     for (DataIterator dit = a_phiFine.dataIterator(); dit.ok(); ++dit) {
       EBCellFAB&       dstFine = a_phiFine[dit()];
       const EBCellFAB& srcFine = a_phiFine[dit()];
-      const EBCellFAB& srcCoar = (*m_grownCoarData)[dit()];
+      const EBCellFAB& srcCoar = m_coarData[dit()];
 
       // Apply the coarse and fine stencils
       constexpr int numComp = 1;
@@ -350,7 +320,7 @@ EBLeastSquaresMultigridInterpolator::defineBuffers() const noexcept
   coarGrid.coarsen(m_refRat);
   coarGrid.grow(coarRadius);
   coarGrid.close();
-  
+
   m_coarData.define(coarGrid, 1, EBCellFactory(coFiEBISL));
 }
 
@@ -727,14 +697,36 @@ EBLeastSquaresMultigridInterpolator::makeAggStencils() noexcept
 }
 
 void
-EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(LevelData<FArrayBox>&       a_finePhi,
-                                                             const LevelData<FArrayBox>& a_coarPhi,
-                                                             const int                   a_fineVar,
-                                                             const int                   a_coarVar) const noexcept
+EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(LevelData<EBCellFAB>&           a_finePhi,
+                                                             const BoxLayoutData<EBCellFAB>& a_coarPhi,
+                                                             const int                       a_fineVar,
+                                                             const int                       a_coarVar) const noexcept
 {
-  CH_TIMERS("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp");
-  CH_TIMER("EBLeastSquaresMultigridInterpolator::coarse_interp", t1);
-  CH_TIMER("EBLeastSquaresMultigridInterpolator::fine_interp", t2);
+  CH_TIME("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(level");
+
+  const DisjointBoxLayout& dblFine    = m_eblgFine.getDBL();
+  const ProblemDomain&     domainCoar = m_eblgCoFi.getDomain();
+
+  for (DataIterator dit(dblFine); dit.ok(); ++dit) {
+    const Box fineBox = dblFine[dit()];
+
+    FArrayBox&       finePhi = a_finePhi[dit()].getFArrayBox();
+    const FArrayBox& coarPhi = a_coarPhi[dit()].getFArrayBox();
+
+    this->regularCoarseFineInterp(finePhi, coarPhi, a_fineVar, a_coarVar, dit());
+  }
+}
+
+void
+EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(FArrayBox&       a_finePhi,
+                                                             const FArrayBox& a_coarPhi,
+                                                             const int        a_fineVar,
+                                                             const int        a_coarVar,
+                                                             const DataIndex& a_dit) const noexcept
+{
+  CH_TIMERS("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(patch)");
+  CH_TIMER("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(patch)::coarse_interp", t1);
+  CH_TIMER("EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(patch)::fine_interp", t2);
 
   // We are interpolating the first layer of ghost cells to O(h^3). To do this, we must first do an interpolation on the
   // coarse grid, and then cubic interpolation on the fine grid.
@@ -757,70 +749,66 @@ EBLeastSquaresMultigridInterpolator::regularCoarseFineInterp(LevelData<FArrayBox
   const DisjointBoxLayout& dblFine    = m_eblgFine.getDBL();
   const ProblemDomain&     domainCoar = m_eblgCoFi.getDomain();
 
-  for (DataIterator dit(dblFine); dit.ok(); ++dit) {
-    const Box fineBox = dblFine[dit()];
+  const Box fineBox = dblFine[a_dit];
 
-    FArrayBox&       finePhi = a_finePhi[dit()];
-    const FArrayBox& coarPhi = a_coarPhi[dit()];
+  for (int dir = 0; dir < SpaceDim; dir++) {
+    for (SideIterator sit; sit.ok(); ++sit) {
+      const int iHiLo     = sign(sit());
+      const Box interpBox = m_cfivs[a_dit].at(std::make_pair(dir, sit()));
 
-    for (int dir = 0; dir < SpaceDim; dir++) {
-      for (SideIterator sit; sit.ok(); ++sit) {
-        const int iHiLo     = sign(sit());
-        const Box interpBox = m_cfivs[dit()].at(std::make_pair(dir, sit()));
+      // Coarse-side interpolation stencil. This does interpolation orthogonal to direction 'dir'
+      const CoarseInterpQuadCF& coarseStencils = (sit() == Side::Lo) ? m_loCoarseInterpCF[dir][a_dit]
+                                                                     : m_hiCoarseInterpCF[dir][a_dit];
 
-        // Coarse-side interpolation stencil. This does interpolation orthogonal to direction 'dir'
-        const CoarseInterpQuadCF& coarseStencils = (sit() == Side::Lo) ? m_loCoarseInterpCF[dir][dit()]
-                                                                       : m_hiCoarseInterpCF[dir][dit()];
+      // Adds first derivative to the Taylor expansion.
+      auto applyDerivs = [&](const IntVect& fineIV) -> void {
+        const IntVect coarIV = coarsen(fineIV, m_refRat);
 
-        // Adds first derivative to the Taylor expansion.
-        auto applyDerivs = [&](const IntVect& fineIV) -> void {
-          const IntVect coarIV = coarsen(fineIV, m_refRat);
+        a_finePhi(fineIV, a_fineVar) = a_coarPhi(coarIV, a_coarVar);
 
-          finePhi(fineIV, a_fineVar) = coarPhi(coarIV, a_coarVar);
+        // Displacement vector from coarse-grid cell to fine-grid ghost cell. Note that this is normalized by
+        // the coarse grid cell size.
+        const RealVect delta = (RealVect(fineIV) - m_refRat * RealVect(coarIV) + 0.5 * (1.0 - m_refRat)) / m_refRat;
 
-          // Displacement vector from coarse-grid cell to fine-grid ghost cell. Note that this is normalized by
-          // the coarse grid cell size.
-          const RealVect delta = (RealVect(fineIV) - m_refRat * RealVect(coarIV) + 0.5 * (1.0 - m_refRat)) / m_refRat;
+        // Add contributions from first and second derivatives.
+        for (int d = 0; d < SpaceDim; d++) {
+          if (d != dir) {
+            const Real firstDeriv  = coarseStencils.computeFirstDeriv(a_coarPhi, coarIV, d, a_coarVar);
+            const Real secondDeriv = coarseStencils.computeSecondDeriv(a_coarPhi, coarIV, d, a_coarVar);
 
-          // Add contributions from first and second derivatives.
-          for (int d = 0; d < SpaceDim; d++) {
-            if (d != dir) {
-              const Real firstDeriv  = coarseStencils.computeFirstDeriv(coarPhi, coarIV, d, a_coarVar);
-              const Real secondDeriv = coarseStencils.computeSecondDeriv(coarPhi, coarIV, d, a_coarVar);
-
-              finePhi(fineIV, a_fineVar) += firstDeriv * delta[d] + 0.5 * secondDeriv * delta[d] * delta[d];
-            }
+            a_finePhi(fineIV, a_fineVar) += firstDeriv * delta[d] + 0.5 * secondDeriv * delta[d] * delta[d];
           }
+        }
 
 #if CH_SPACEDIM == 3
-          // Add contribution from mixed derivative. Only in 3D.
-          Real mixedDeriv = coarseStencils.computeMixedDeriv(coarPhi, coarIV, a_coarVar);
-          for (int d = 0; d < SpaceDim; d++) {
-            if (d != dir) {
-              mixedDeriv *= delta[d];
-            }
+        // Add contribution from mixed derivative. Only in 3D.
+        Real mixedDeriv = coarseStencils.computeMixedDeriv(a_coarPhi, coarIV, a_coarVar);
+        for (int d = 0; d < SpaceDim; d++) {
+          if (d != dir) {
+            mixedDeriv *= delta[d];
           }
-          finePhi(fineIV, a_fineVar) += mixedDeriv;
+        }
+        a_finePhi(fineIV, a_fineVar) += mixedDeriv;
 #endif
-        };
+      };
 
-        // We've put the coarse-grid interpolation into finePhi(fineIV, a_fineVar). Now use that value
-        // when doing quadratic interpolation with the additional fine-grid data.
-        auto interpOnFine = [&](const IntVect& fineIV) -> void {
-          const Real phi0 = finePhi(fineIV, a_fineVar);
-          const Real phi1 = finePhi(fineIV - iHiLo * BASISV(dir), a_fineVar);
-          const Real phi2 = finePhi(fineIV - 2 * iHiLo * BASISV(dir), a_fineVar);
+      // We've put the coarse-grid interpolation into a_finePhi(fineIV, a_fineVar). Now use that value
+      // when doing quadratic interpolation with the additional fine-grid data.
+      auto interpOnFine = [&](const IntVect& fineIV) -> void {
+        const Real phi0 = a_finePhi(fineIV, a_fineVar);
+        const Real phi1 = a_finePhi(fineIV - iHiLo * BASISV(dir), a_fineVar);
+        const Real phi2 = a_finePhi(fineIV - 2 * iHiLo * BASISV(dir), a_fineVar);
 
-          finePhi(fineIV, a_fineVar) = phi0 * L0 + phi1 * L1 + phi2 * L2;
-        };
+        a_finePhi(fineIV, a_fineVar) = phi0 * L0 + phi1 * L1 + phi2 * L2;
+      };
 
-        CH_START(t1);
-        BoxLoops::loop(interpBox, applyDerivs);
-        CH_STOP(t1);
-        CH_START(t2);
-        BoxLoops::loop(interpBox, interpOnFine);
-        CH_STOP(t2);
-      }
+      CH_START(t1);
+      BoxLoops::loop(interpBox, applyDerivs);
+      CH_STOP(t1);
+
+      CH_START(t2);
+      BoxLoops::loop(interpBox, interpOnFine);
+      CH_STOP(t2);
     }
   }
 }
