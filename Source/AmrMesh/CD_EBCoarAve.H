@@ -124,8 +124,6 @@ public:
     @param[in]    a_fineData  Fine data
     @param[in]    a_variables Variables to coarsen
     @param[in]    a_average   Averaging method
-    @note This version creates it's own buffer on the coarsened fine grids. If you already have those, call 
-    the other version if you want to save some memory. 
   */
   virtual void
   averageData(LevelData<EBFluxFAB>&       a_coarData,
@@ -139,26 +137,9 @@ public:
     @param[in]    a_fineData  Fine data
     @param[in]    a_variables Variables to coarsen
     @param[in]    a_average   Averaging method
-    @note This version creates it's own buffer on the coarsened fine grids. If you already have those, call 
-    the other version if you want to save some memory. 
   */
   virtual void
   averageData(LevelData<BaseIVFAB<Real>>&       a_coarData,
-              const LevelData<BaseIVFAB<Real>>& a_fineData,
-              const Interval&                   a_variables,
-              const Average&                    a_average) const noexcept;
-
-  /*!
-    @brief Do an average of EB data. 
-    @param[inout] a_coarData  Coarse data
-    @param[in]    a_fineData  Fine data
-    @param[in]    a_coFiData  Coarsened fine grid data
-    @param[in]    a_variables Variables to coarsen
-    @param[in]    a_average   Averaging method
-  */
-  virtual void
-  averageData(LevelData<BaseIVFAB<Real>>&       a_coarData,
-              LevelData<BaseIVFAB<Real>>&       a_coFiData,
               const LevelData<BaseIVFAB<Real>>& a_fineData,
               const Interval&                   a_variables,
               const Average&                    a_average) const noexcept;
@@ -208,16 +189,6 @@ protected:
     @brief Irregular faces on the coarsened fine layout
   */
   mutable LayoutData<std::map<int, FaceIterator>> m_irregFacesCoFi;
-
-  /*!
-    @brief Buffer storage on the coarsened fine grids
-  */
-  mutable LevelData<EBCellFAB> m_cellBufferCoFi;
-
-  /*!
-    @brief Buffer storage on the coarsened fine grids
-  */
-  mutable LevelData<EBFluxFAB> m_faceBufferCoFi;
 
   /*!
     @brief Stencils for arithmetic coarsening of volume data
@@ -429,10 +400,6 @@ protected:
                       const DataIndex&       a_datInd,
                       const int&             a_coarVar,
                       const int&             a_fineVar) const noexcept;
-
-  DisjointBoxLayout m_dblCoar;
-  DisjointBoxLayout m_dblFine;
-  DisjointBoxLayout m_dblCoFi;
 };
 
 #include <CD_NamespaceFooter.H>
