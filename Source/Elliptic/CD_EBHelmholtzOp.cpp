@@ -494,7 +494,10 @@ EBHelmholtzOp::assign(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a
 {
   CH_TIME("EBHelmholtzOp::assign");
 
-  a_rhs.copyTo(a_lhs);
+  if(!(m_copier.isDefined())){
+    m_copier.define(a_rhs.disjointBoxLayout(), a_lhs.disjointBoxLayout(), a_lhs.ghostVect());
+  }
+  a_rhs.copyTo(a_lhs, m_copier);
 }
 
 void

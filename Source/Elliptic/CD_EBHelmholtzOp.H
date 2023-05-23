@@ -891,6 +891,11 @@ protected:
   RealVect m_probLo;
 
   /*!
+    @brief Copier for making assign function go faster
+  */
+  Copier m_copier;
+
+  /*!
     @brief Fine level grid (if the operator has a fine level)
   */
   EBLevelGrid m_eblgFine;

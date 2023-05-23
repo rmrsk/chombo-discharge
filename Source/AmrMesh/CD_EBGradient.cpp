@@ -715,14 +715,14 @@ EBGradient::defineBuffers() noexcept
 {
   CH_TIME("EBGradient::defineBuffers");
 
-  const DisjointBoxLayout& dbl     = m_eblg.getDBL();
+  const DisjointBoxLayout& dblFine = m_eblgFine.getDBL();
   const DisjointBoxLayout& dblFiCo = m_eblgFiCo.getDBL();
 
   const EBISLayout& ebisl     = m_eblg.getEBISL();
   const EBISLayout& ebislFiCo = m_eblgFiCo.getEBISL();
 
   m_bufferFiCo.define(dblFiCo, 1, m_ghostVector, EBCellFactory(ebislFiCo));
-  m_copier.define(dbl, dblFiCo, m_ghostVector);
+  m_copier.define(dblFine, dblFiCo, m_ghostVector);
 }
 
 bool
