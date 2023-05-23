@@ -168,11 +168,6 @@ protected:
   Copier m_copier;
 
   /*!
-    @brief Buffer data on the coarsened fine grid (i.e., THIS level). 
-  */
-  mutable LevelData<EBCellFAB> m_grownCoarData;
-
-  /*!
     @brief Iterator over ghost cells
   */
   mutable LayoutData<VoFIterator> m_ghostIterFine;
@@ -185,7 +180,13 @@ protected:
   /*!
     @brief Minimum number of ghost cells in input data. 
   */
-  IntVect m_ghostVector;
+  IntVect m_ghostVectorFine;
+
+  /*!
+    @brief Number of ghost cells on the coarsened-fine grids. Needed because the fine grids need some of
+    the coarse grid cells.
+  */
+  IntVect m_ghostVectorCoFi;
 
   /*!
     @brief Refinement factor between fine and coarse level. 

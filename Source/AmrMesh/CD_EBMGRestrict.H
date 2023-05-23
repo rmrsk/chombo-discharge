@@ -106,11 +106,6 @@ protected:
   Copier m_copier;
 
   /*!
-    @brief Data on the coarsened fine grid. Exists for performance reasons
-  */
-  mutable LevelData<EBCellFAB> m_dataCoFi;
-
-  /*!
     @brief Iterator for iterating over cut-cells on the coarse level
   */
   mutable LayoutData<VoFIterator> m_vofitCoar;

@@ -156,14 +156,7 @@ EBGhostCellInterpolator::defineBuffers() noexcept
 {
   CH_TIME("EBGhostCellInterpolator::defineBuffers");
 
-  const DisjointBoxLayout& coarGrids = m_eblgCoar.getDBL();
-  const DisjointBoxLayout& coFiGrids = m_eblgCoFi.getDBL();
-
-  const EBISLayout& coarEBISL = m_eblgCoar.getEBISL();
-  const EBISLayout& coFiEBISL = m_eblgCoFi.getEBISL();
-
-  m_bufferCoFi.define(coFiGrids, 1, m_ghostCF * IntVect::Unit, EBCellFactory(coFiEBISL));
-  m_copier.define(coarGrids, coFiGrids, m_ghostCF * IntVect::Unit);
+  m_copier.define(m_eblgCoar.getDBL(), m_eblgCoFi.getDBL(), m_ghostCF * IntVect::Unit);
 }
 
 void
@@ -182,16 +175,18 @@ EBGhostCellInterpolator::interpolate(LevelData<EBCellFAB>&       a_phiFine,
   CH_assert(a_phiCoar.nComp() > a_variables.end());
   CH_assert(a_phiFine.nComp() == a_phiCoar.nComp());
 
+  LevelData<EBCellFAB> phiCoFi(m_eblgCoFi.getDBL(), 1, m_ghostCF * IntVect::Unit, EBCellFactory(m_eblgCoFi.getEBISL()));
+
   for (int icomp = a_variables.begin(); icomp <= a_variables.end(); icomp++) {
     const Interval srcInterv = Interval(icomp, icomp);
     const Interval dstInterv = Interval(0, 0);
 
-    a_phiCoar.copyTo(srcInterv, m_bufferCoFi, dstInterv, m_copier);
+    a_phiCoar.copyTo(srcInterv, phiCoFi, dstInterv, m_copier);
 
     // Fill invalid regions.
     for (DataIterator dit(m_eblgFine.getDBL()); dit.ok(); ++dit) {
       EBCellFAB&       phiFine = a_phiFine[dit()];
-      const EBCellFAB& phiCoar = m_bufferCoFi[dit()];
+      const EBCellFAB& phiCoar = phiCoFi[dit()];
 
       FArrayBox&       phiFineReg = phiFine.getFArrayBox();
       const FArrayBox& phiCoarReg = phiCoar.getFArrayBox();

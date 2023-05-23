@@ -145,9 +145,6 @@ EBHelmholtzOp::EBHelmholtzOp(const Location::Cell                             a_
   m_domainBc->define(m_dataLocation, m_eblg, m_probLo, m_dx);
   m_ebBc->define(m_dataLocation, m_eblg, m_probLo, m_dx, ghostCF);
 
-  // Define transient storage for holding the flux.
-  m_flux.define(m_eblg.getDBL(), m_nComp, m_ghostPhi, EBFluxFactory(m_eblg.getEBISL()));
-
   // Define stencils and compute relaxation terms.
   this->defineStencils();
 }
@@ -236,12 +233,28 @@ EBHelmholtzOp::turnOnCoarsening()
   m_doCoarsen = true;
 }
 
+void
+EBHelmholtzOp::allocateFlux() const noexcept
+{
+  CH_TIME("EBHelmholtzOp::allocateFlux");
+
+  m_flux = new LevelData<EBFluxFAB>(m_eblg.getDBL(), m_nComp, IntVect::Zero, EBFluxFactory(m_eblg.getEBISL()));
+}
+
+void
+EBHelmholtzOp::deallocateFlux() const noexcept
+{
+  CH_TIME("EBHelmholtzOp::deallocateFlux");
+
+  delete m_flux;
+}
+
 LevelData<EBFluxFAB>&
 EBHelmholtzOp::getFlux() const
 {
   CH_TIME("EBHelmholtzOp::getFlux()");
 
-  return m_flux;
+  return *m_flux;
 }
 
 void
@@ -717,6 +730,8 @@ EBHelmholtzOp::refluxFreeAMROperator(LevelData<EBCellFAB>&             a_Lphi,
     fineOp->coarsenCell((LevelData<EBCellFAB>&)a_phi, a_phiFine);
   }
 
+  this->allocateFlux();
+
   // Make sure this level has updated ghost cells. The guards around these calls
   // are there because MFHelmholtzOp might decide to update ghost cells for us, in
   // which case we won't redo them.
@@ -738,18 +753,22 @@ EBHelmholtzOp::refluxFreeAMROperator(LevelData<EBCellFAB>&             a_Lphi,
   if (m_hasFine) {
     EBHelmholtzOp* fineOp = (EBHelmholtzOp*)a_finerOp;
 
+    fineOp->allocateFlux();
+
     LevelData<EBCellFAB>& phiFine = (LevelData<EBCellFAB>&)a_phiFine;
 
     phiFine.exchange();
     fineOp->inhomogeneousCFInterp(phiFine, a_phi);
 
     fineOp->computeFlux(a_phiFine);
-    fineOp->coarsenFlux(m_flux, fineOp->getFlux());
+    fineOp->coarsenFlux(*m_flux, fineOp->getFlux());
+
+    fineOp->deallocateFlux();
   }
 
   // Fill the domain fluxes.
   for (DataIterator dit(m_eblg.getDBL()); dit.ok(); ++dit) {
-    this->fillDomainFlux((m_flux)[dit()], a_phi[dit()], m_eblg.getDBL()[dit()], dit());
+    this->fillDomainFlux((*m_flux)[dit()], a_phi[dit()], m_eblg.getDBL()[dit()], dit());
   }
 
   // The above calls replaced the fluxes on this level by (conservative) averages of the fluxes on
@@ -765,7 +784,7 @@ EBHelmholtzOp::refluxFreeAMROperator(LevelData<EBCellFAB>&             a_Lphi,
     const EBCellFAB& phi  = a_phi[dit()];
     const EBCellFAB& Aco  = (*m_Acoef)[dit()];
     const EBFluxFAB& Bco  = (*m_Bcoef)[dit()];
-    const EBFluxFAB& flux = (m_flux)[dit()];
+    const EBFluxFAB& flux = (*m_flux)[dit()];
 
     const BaseIVFAB<Real>&       BcoIrreg      = (*m_BcoefIrreg)[dit()];
     const BaseIVFAB<VoFStencil>& ebFluxStencil = m_ebBc->getGradPhiStencils()[dit()];
@@ -845,6 +864,8 @@ EBHelmholtzOp::refluxFreeAMROperator(LevelData<EBCellFAB>&             a_Lphi,
     // Finally, add in the inhomogeneous EB flux.
     m_ebBc->applyEBFlux(m_vofIterIrreg[dit()], Lphi, phi, BcoIrreg, dit(), m_beta, a_homogeneousPhysBC);
   }
+
+  this->deallocateFlux();
 }
 
 void
@@ -2013,7 +2034,7 @@ EBHelmholtzOp::computeFlux(const LevelData<EBCellFAB>& a_phi)
 
   for (DataIterator dit(dbl); dit.ok(); ++dit) {
     for (int dir = 0; dir < SpaceDim; dir++) {
-      this->computeFlux((m_flux)[dit()][dir], a_phi[dit()], dbl[dit()], dit(), dir);
+      this->computeFlux((*m_flux)[dit()][dir], a_phi[dit()], dbl[dit()], dit(), dir);
     }
   }
 }
@@ -2036,6 +2057,9 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
   //  phiFine.exchange(); Apparently this one is unecessary.
   finerOp.inhomogeneousCFInterp(phiFine, a_phi);
 
+  this->allocateFlux();
+  finerOp.allocateFlux();
+
   // Compute flux on both levels and then reflux into this level.
   CH_START(t1);
   this->computeFlux(a_phi);
@@ -2047,7 +2071,10 @@ EBHelmholtzOp::reflux(LevelData<EBCellFAB>&             a_Lphi,
 
   const Real scale = 1.0 / m_dx;
 
-  m_fluxReg->reflux(a_Lphi, m_flux, finerOp.getFlux(), Interval(0, 0), scale, scale);
+  m_fluxReg->reflux(a_Lphi, *m_flux, finerOp.getFlux(), Interval(0, 0), scale, scale);
+
+  finerOp.deallocateFlux();
+  this->deallocateFlux();
 }
 
 void

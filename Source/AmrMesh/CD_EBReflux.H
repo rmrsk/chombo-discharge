@@ -137,16 +137,6 @@ protected:
   LayoutData<std::map<std::pair<int, Side::LoHiSide>, DenseIntVectSet>> m_regularCoarseFineRegions;
 
   /*!
-    @brief Fluxes defined on the coarsened fine grid
-  */
-  mutable LevelData<EBFluxFAB> m_fluxCoFi;
-
-  /*!
-    @brief Fluxes defined on the coarse grid
-  */
-  mutable LevelData<EBFluxFAB> m_fluxCoar;
-
-  /*!
     @brief Stencils for conservatively coarsening fine-grid fluxes onto the coarse grid
   */
   mutable LayoutData<std::map<std::pair<int, Side::LoHiSide>, FaceIterator>> m_fluxCoarseningRegions;

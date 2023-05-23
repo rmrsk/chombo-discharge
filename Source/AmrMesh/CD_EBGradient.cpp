@@ -290,12 +290,14 @@ EBGradient::computeAMRGradient(LevelData<EBCellFAB>&       a_gradient,
     const EBISLayout& ebisl     = m_eblg.getEBISL();
     const EBISLayout& ebislFiCo = m_eblgFiCo.getEBISL();
 
-    a_phiFine.copyTo(m_bufferFiCo, m_copier);
+    LevelData<EBCellFAB> phiFiCo(dblFiCo, 1, m_ghostVector, EBCellFactory(ebislFiCo));
+
+    a_phiFine.copyTo(phiFiCo, m_copier);
 
     for (DataIterator dit(dbl); dit.ok(); ++dit) {
       EBCellFAB&       gradient = a_gradient[dit()];
       const EBCellFAB& phi      = a_phi[dit()];
-      const EBCellFAB& phiFine  = m_bufferFiCo[dit()];
+      const EBCellFAB& phiFine  = phiFiCo[dit()];
 
       const BaseIVFAB<VoFStencil>& stencilsCoar = m_ebcfStencilsCoar[dit()];
       const BaseIVFAB<VoFStencil>& stencilsFine = m_ebcfStencilsFine[dit()];
@@ -715,14 +717,7 @@ EBGradient::defineBuffers() noexcept
 {
   CH_TIME("EBGradient::defineBuffers");
 
-  const DisjointBoxLayout& dblFine = m_eblgFine.getDBL();
-  const DisjointBoxLayout& dblFiCo = m_eblgFiCo.getDBL();
-
-  const EBISLayout& ebisl     = m_eblg.getEBISL();
-  const EBISLayout& ebislFiCo = m_eblgFiCo.getEBISL();
-
-  m_bufferFiCo.define(dblFiCo, 1, m_ghostVector, EBCellFactory(ebislFiCo));
-  m_copier.define(dblFine, dblFiCo, m_ghostVector);
+  m_copier.define(m_eblgFine.getDBL(), m_eblgFiCo.getDBL(), m_ghostVector);
 }
 
 bool

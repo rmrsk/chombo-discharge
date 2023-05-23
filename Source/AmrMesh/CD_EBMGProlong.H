@@ -105,11 +105,6 @@ protected:
   LayoutData<BaseIVFAB<VoFStencil>> m_prolongStencils;
 
   /*!
-    @brief Buffer on the coarsened fine grid
-  */
-  mutable LevelData<EBCellFAB> m_bufferCoFi;
-
-  /*!
     @brief Iterator for iterating over cut-cells on the fine level
   */
   mutable LayoutData<VoFIterator> m_vofitFine;

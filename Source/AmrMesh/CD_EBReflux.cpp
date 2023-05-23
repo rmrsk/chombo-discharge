@@ -231,16 +231,8 @@ EBReflux::defineBuffers() noexcept
 {
   CH_TIME("EBReflux::defineBuffers");
 
-  const DisjointBoxLayout& dbl     = m_eblg.getDBL();
-  const DisjointBoxLayout& dblCoFi = m_eblgCoFi.getDBL();
-
-  const EBISLayout& ebisl     = m_eblg.getEBISL();
-  const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
-
-  m_fluxCoFi.define(dblCoFi, 1, IntVect::Zero, EBFluxFactory(ebislCoFi));
-  m_fluxCoar.define(dbl, 1, IntVect::Unit, EBFluxFactory(ebisl));
-
-  m_copier.define(dblCoFi, dbl, IntVect::Unit);
+  // Note: MUST have the same number of ghost cells as the buffers being defined.
+  m_copier.define(m_eblgCoFi.getDBL(), m_eblg.getDBL(), IntVect::Unit);
 }
 
 void
@@ -259,19 +251,28 @@ EBReflux::reflux(LevelData<EBCellFAB>&       a_Lphi,
   CH_assert(a_flux.nComp() > a_variables.end());
   CH_assert(a_fineFlux.nComp() > a_variables.end());
 
+  const DisjointBoxLayout& dbl     = m_eblg.getDBL();
+  const DisjointBoxLayout& dblCoFi = m_eblgCoFi.getDBL();
+
+  const EBISLayout& ebisl     = m_eblg.getEBISL();
+  const EBISLayout& ebislCoFi = m_eblgCoFi.getEBISL();
+
+  LevelData<EBFluxFAB> fluxCoFi(dblCoFi, 1, IntVect::Zero, EBFluxFactory(ebislCoFi));
+  LevelData<EBFluxFAB> fluxCoar(dbl, 1, IntVect::Unit, EBFluxFactory(ebisl));
+
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
 
     // Coarsen fluxes
-    this->coarsenFluxesCF(m_fluxCoFi, a_fineFlux, 0, ivar);
+    this->coarsenFluxesCF(fluxCoFi, a_fineFlux, 0, ivar);
 
     // Copy fluxes to coarse grids
     const Interval srcInterv = Interval(0, 0);
     const Interval dstInterv = Interval(0, 0);
 
-    m_fluxCoFi.copyTo(srcInterv, m_fluxCoar, dstInterv, m_copier);
+    fluxCoFi.copyTo(srcInterv, fluxCoar, dstInterv, m_copier);
 
     // Reflux the coarse level.
-    this->refluxIntoCoarse(a_Lphi, a_flux, m_fluxCoar, ivar, 0, ivar, a_scaleCoarFlux, a_scaleFineFlux);
+    this->refluxIntoCoarse(a_Lphi, a_flux, fluxCoar, ivar, 0, ivar, a_scaleCoarFlux, a_scaleFineFlux);
   }
 }
 

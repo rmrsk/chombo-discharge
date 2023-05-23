@@ -146,11 +146,8 @@ EBCoarseToFineInterp::defineBuffers() noexcept
 {
   CH_TIME("EBCoarseToFineInterp::defineBuffers");
 
-  const DisjointBoxLayout& dblCoFi   = m_eblgCoFi.getDBL();
-  const EBISLayout&        ebislCoFi = m_eblgCoFi.getEBISL();
-
-  m_bufferCoFi.define(dblCoFi, 1, IntVect::Unit, EBCellFactory(ebislCoFi));
-  m_copier.define(m_eblgCoar.getDBL(), dblCoFi, IntVect::Unit);
+  // Note --same number of ghost cells as in EBCoarseToFineInterp. Must be one because of the slopes!
+  m_copier.define(m_eblgCoar.getDBL(), m_eblgCoFi.getDBL(), IntVect::Unit);
 }
 
 void
@@ -166,34 +163,35 @@ EBCoarseToFineInterp::interpolate(LevelData<EBCellFAB>&             a_fineData,
   CH_assert(a_fineData.nComp() > a_variables.end());
   CH_assert(a_coarData.nComp() > a_variables.end());
 
+  LevelData<EBCellFAB> m_coFiData(m_eblgCoFi.getDBL(), 1, IntVect::Unit, EBCellFactory(m_eblgCoFi.getEBISL()));
+
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
     const Interval srcInterv = Interval(ivar, ivar);
     const Interval dstInterv = Interval(0, 0);
 
-    a_coarData.copyTo(srcInterv, m_bufferCoFi, dstInterv); //, m_copier);
+    a_coarData.copyTo(srcInterv, m_coFiData, dstInterv, m_copier);
 
     CH_START(t1);
     for (DataIterator dit(m_eblgCoFi.getDBL()); dit.ok(); ++dit) {
       switch (a_interpType) {
       case EBCoarseToFineInterp::Type::PWC: {
-        this->interpolatePWC(a_fineData[dit()], m_bufferCoFi[dit()], dit(), ivar, 0);
+        this->interpolatePWC(a_fineData[dit()], m_coFiData[dit()], dit(), ivar, 0);
 
         break;
       }
       case EBCoarseToFineInterp::Type::ConservativePWC: {
-        this->interpolateConservativePWC(a_fineData[dit()], m_bufferCoFi[dit()], dit(), ivar, 0);
+        this->interpolateConservativePWC(a_fineData[dit()], m_coFiData[dit()], dit(), ivar, 0);
 
         break;
       }
       case EBCoarseToFineInterp::Type::ConservativeMinMod: {
-        this
-          ->interpolateConservativeSlope(a_fineData[dit()], m_bufferCoFi[dit()], dit(), ivar, 0, SlopeLimiter::MinMod);
+        this->interpolateConservativeSlope(a_fineData[dit()], m_coFiData[dit()], dit(), ivar, 0, SlopeLimiter::MinMod);
 
         break;
       }
       case EBCoarseToFineInterp::Type::ConservativeMonotonizedCentral: {
         this->interpolateConservativeSlope(a_fineData[dit()],
-                                           m_bufferCoFi[dit()],
+                                           m_coFiData[dit()],
                                            dit(),
                                            ivar,
                                            0,

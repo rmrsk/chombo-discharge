@@ -188,11 +188,6 @@ protected:
   LevelData<BaseIVFAB<Real>> m_areaWeights;
 
   /*!
-    @brief Buffer data defined on the coarsened fine grids
-  */
-  mutable LevelData<EBCellFAB> m_bufferCoFi;
-
-  /*!
     @brief Data holder for holding data on the coarsened fine grids. 
     @note I'm letting this live as a permanent buffer, simply because its memory footprint is so small. 
   */

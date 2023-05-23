@@ -67,7 +67,8 @@ EBMGRestrict::define(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoa
   // Figure out the EB restriction stencils.
   m_vofitCoar.define(dblCoFi);
   m_restrictStencils.define(dblCoFi);
-  m_dataCoFi.define(dblCoFi, 1, IntVect::Zero, EBCellFactory(ebislCoFi));
+
+  // Note: MUST have the same number of ghost cells as the buffer being defined in the restriction function.
   m_copier.ghostDefine(dblCoFi, m_eblgCoar.getDBL(), m_eblgCoar.getDomain(), IntVect::Zero);
 
   for (DataIterator dit(dblCoFi); dit.ok(); ++dit) {
@@ -116,11 +117,14 @@ EBMGRestrict::restrictResidual(LevelData<EBCellFAB>&       a_coarData,
   const Box  refineBox     = Box(IntVect::Zero, (m_refRat - 1) * IntVect::Unit);
   const Real regFineWeight = 1.0 / std::pow(m_refRat, SpaceDim);
 
-  const DisjointBoxLayout& dblCoFi = m_eblgCoFi.getDBL();
+  const DisjointBoxLayout& dblCoFi   = m_eblgCoFi.getDBL();
+  const EBISLayout&        ebislCoFi = m_eblgCoFi.getEBISL();
+
+  LevelData<EBCellFAB> coFiData(dblCoFi, 1, IntVect::Zero, EBCellFactory(ebislCoFi));
 
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
     for (DataIterator dit(dblCoFi); dit.ok(); ++dit) {
-      EBCellFAB&       coarData = m_dataCoFi[dit()];
+      EBCellFAB&       coarData = coFiData[dit()];
       const EBCellFAB& fineData = a_fineData[dit()];
 
       FArrayBox&       coarDataReg = coarData.getFArrayBox();
@@ -168,7 +172,7 @@ EBMGRestrict::restrictResidual(LevelData<EBCellFAB>&       a_coarData,
     const Interval srcComps = Interval(0, 0);
     const Interval dstComps = Interval(ivar, ivar);
 
-    m_dataCoFi.copyTo(srcComps, a_coarData, dstComps, m_copier);
+    coFiData.copyTo(srcComps, a_coarData, dstComps, m_copier);
   }
 }
 

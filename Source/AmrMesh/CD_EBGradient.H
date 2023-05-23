@@ -241,11 +241,6 @@ protected:
   LayoutData<RefCountedPtr<AggStencil<EBCellFAB, EBCellFAB>>> m_aggLevelStencils[SpaceDim];
 
   /*!
-    @brief Buffer data on the coarsened fine grids
-  */
-  mutable LevelData<EBCellFAB> m_bufferFiCo;
-
-  /*!
     @brief Iterator for boundary cells (either domain or EB)
     @note Lives on the coarse layout. 
   */

@@ -160,11 +160,6 @@ protected:
   LayoutData<BaseIVFAB<VolIndex>> m_coarsenedFineGhosts;
 
   /*!
-    @brief Buffer data for doing coarse-fine interpolation
-  */
-  mutable LevelData<EBCellFAB> m_bufferCoFi;
-
-  /*!
     @brief Fine-grid ghost cells on the coarse-fine interface that overlap an irregular coarse cell. 
   */
   mutable LayoutData<VoFIterator> m_fineIrregCells;
