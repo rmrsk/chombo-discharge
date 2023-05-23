@@ -475,9 +475,6 @@ EBHelmholtzOp::preCond(LevelData<EBCellFAB>& a_corr, const LevelData<EBCellFAB>&
 {
   CH_TIME("EBHelmholtzOp::preCond");
 
-  EBLevelDataOps::assign(a_corr, a_residual);
-  EBLevelDataOps::scale(a_corr, m_relCoef);
-
   this->relax(a_corr, a_residual, 40);
 }
 
@@ -494,7 +491,7 @@ EBHelmholtzOp::assign(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a
 {
   CH_TIME("EBHelmholtzOp::assign");
 
-  if(!(m_copier.isDefined())){
+  if (!(m_copier.isDefined())) {
     m_copier.define(a_rhs.disjointBoxLayout(), a_lhs.disjointBoxLayout(), a_lhs.ghostVect());
   }
   a_rhs.copyTo(a_lhs, m_copier);

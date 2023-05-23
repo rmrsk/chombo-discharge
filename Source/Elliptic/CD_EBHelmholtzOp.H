@@ -456,7 +456,7 @@ public:
     @param[in]  a_rhs. Data
   */
   void
-  assignLocal(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs) override final;  
+  assignLocal(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs) override final;
 
   /*!
     @brief Compute the dot product??

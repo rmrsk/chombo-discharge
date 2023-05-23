@@ -156,6 +156,11 @@ protected:
   int m_refRat;
 
   /*!
+    @brief Copier for making copying from m_eblg to m_eblgCoFi go faster
+  */
+  Copier m_copier;
+
+  /*!
     @brief Fine grid.
   */
   EBLevelGrid m_eblgFine;
@@ -183,6 +188,11 @@ protected:
   LevelData<BaseIVFAB<Real>> m_areaWeights;
 
   /*!
+    @brief Buffer data defined on the coarsened fine grids
+  */
+  mutable LevelData<EBCellFAB> m_bufferCoFi;
+
+  /*!
     @brief Data holder for holding data on the coarsened fine grids. 
     @note I'm letting this live as a permanent buffer, simply because its memory footprint is so small. 
   */
@@ -204,6 +214,12 @@ protected:
   */
   virtual void
   defineWeights() noexcept;
+
+  /*!
+    @brief Define buffer storage
+  */
+  virtual void
+  defineBuffers() noexcept;
 
   /*!
     @brief Piecewise constant interpolation of an EBCellFAB. This ignores the volume fraction. This sets
