@@ -163,14 +163,14 @@ protected:
   EBLevelGrid m_eblgCoFi;
 
   /*!
-    @brief Copier for making copying into m_coarData go faster
+    @brief Copier for making copying into m_grownCoarData go faster
   */
   Copier m_copier;
 
   /*!
     @brief Buffer data on the coarsened fine grid (i.e., THIS level). 
   */
-  mutable BoxLayoutData<EBCellFAB> m_coarData;
+  mutable LevelData<EBCellFAB> m_grownCoarData;
 
   /*!
     @brief Iterator over ghost cells
@@ -326,10 +326,10 @@ protected:
     @param[in] a_coarVar Coarse variable
   */
   virtual void
-  regularCoarseFineInterp(LevelData<EBCellFAB>&           a_finePhi,
-                          const BoxLayoutData<EBCellFAB>& a_coarPhi,
-                          const int                       a_fineVar,
-                          const int                       a_coarVar) const noexcept;
+  regularCoarseFineInterp(LevelData<EBCellFAB>&       a_finePhi,
+                          const LevelData<EBCellFAB>& a_coarPhi,
+                          const int                   a_fineVar,
+                          const int                   a_coarVar) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
