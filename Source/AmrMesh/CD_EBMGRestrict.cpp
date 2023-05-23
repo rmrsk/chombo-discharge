@@ -26,25 +26,19 @@ EBMGRestrict::EBMGRestrict() noexcept
   m_isDefined = false;
 }
 
-EBMGRestrict::EBMGRestrict(const EBLevelGrid& a_eblgFine,
-                           const EBLevelGrid& a_eblgCoar,
-                           const int&         a_refRat,
-                           const IntVect&     a_ghostPhi) noexcept
+EBMGRestrict::EBMGRestrict(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoar, const int& a_refRat) noexcept
 {
   CH_TIME("EBMGRestrict::EBMGRestrict(full)");
 
   m_isDefined = false;
 
-  this->define(a_eblgFine, a_eblgCoar, a_refRat, a_ghostPhi);
+  this->define(a_eblgFine, a_eblgCoar, a_refRat);
 }
 
 EBMGRestrict::~EBMGRestrict() noexcept { CH_TIME("EBMGRestrict::~EBMGRestrict"); }
 
 void
-EBMGRestrict::define(const EBLevelGrid& a_eblgFine,
-                     const EBLevelGrid& a_eblgCoar,
-                     const int&         a_refRat,
-                     const IntVect&     a_ghostPhi) noexcept
+EBMGRestrict::define(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoar, const int& a_refRat) noexcept
 {
   CH_TIME("EBMGRestrict::define");
 
@@ -54,7 +48,6 @@ EBMGRestrict::define(const EBLevelGrid& a_eblgFine,
   m_refRat   = a_refRat;
   m_eblgFine = a_eblgFine;
   m_eblgCoar = a_eblgCoar;
-  m_ghostPhi = a_ghostPhi;
 
   if (!(a_eblgFine.getDBL().coarsenable(m_refRat))) {
     MayDay::Abort("EBMGRestrict::define -- the input grid is not coarsenable. We need to adopt a new strategy!");
@@ -75,7 +68,7 @@ EBMGRestrict::define(const EBLevelGrid& a_eblgFine,
   m_vofitCoar.define(dblCoFi);
   m_restrictStencils.define(dblCoFi);
   m_dataCoFi.define(dblCoFi, 1, IntVect::Zero, EBCellFactory(ebislCoFi));
-  m_copier.define(dblCoFi, m_eblgCoar.getDBL(), m_ghostPhi);
+  m_copier.ghostDefine(dblCoFi, m_eblgCoar.getDBL(), m_eblgCoar.getDomain(), IntVect::Zero);
 
   for (DataIterator dit(dblCoFi); dit.ok(); ++dit) {
     const Box&       cellBox = dblCoFi[dit()];
@@ -118,7 +111,6 @@ EBMGRestrict::restrictResidual(LevelData<EBCellFAB>&       a_coarData,
   CH_assert(m_isDefined);
   CH_assert(a_coarData.nComp() > a_variables.end());
   CH_assert(a_fineData.nComp() > a_variables.end());
-  CH_assert(a_coarData.ghostVect() == m_ghostPhi);
 
   // Needed for single-valued data kernels.
   const Box  refineBox     = Box(IntVect::Zero, (m_refRat - 1) * IntVect::Unit);

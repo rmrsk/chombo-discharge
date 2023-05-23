@@ -400,7 +400,7 @@ EBReflux::refluxIntoCoarse(LevelData<EBCellFAB>&       a_Lphi,
   CH_TIMER("EBReflux::refluxIntoCoarse::irregular_cells", t2);
 
   CH_assert(m_isDefined);
-  CH_assert(a_Lphi.nComp() > a_phivar);
+  CH_assert(a_Lphi.nComp() > a_phiVar);
   CH_assert(a_oldFluxes.nComp() > a_oldFluxVar);
   CH_assert(a_newFluxes.nComp() > a_newFluxVar);
 

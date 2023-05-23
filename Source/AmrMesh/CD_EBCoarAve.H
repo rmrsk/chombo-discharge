@@ -25,8 +25,7 @@
 /*!
   @brief Class which replaces data at coarse level of refinement with average
   at fine level of refinement. 
-  @details When defining this class, use the EBLevelGrid-based constructors if the coarsened grids are available. The averageData functions
-  come in two flavors; one which defines its own buffer data and one that uses an externally defined buffer data. 
+  @details When defining this class, use the EBLevelGrid-based constructors if the coarsened grids are available. 
 */
 class EBCoarAve
 {
@@ -72,10 +71,10 @@ public:
 
   /*!
     @brief Defining constructor. Calls the define function. 
-    @param[in] a_eblgFine Fine grids
-    @param[in] a_eblgCoar Coarse grids
-    @param[in] a_eblgCoFi Coarsened fine grids
-    @param[in] a_refRat   Refinement ratio between coarse and level
+    @param[in] a_eblgFine  Fine grids
+    @param[in] a_eblgCoar  Coarse grids
+    @param[in] a_eblgCoFi  Coarsened fine grids
+    @param[in] a_refRat    Refinement ratio between coarse and level
   */
   EBCoarAve(const EBLevelGrid& a_eblgFine,
             const EBLevelGrid& a_eblgCoar,
@@ -112,26 +111,9 @@ public:
     @param[in]    a_fineData  Fine data
     @param[in]    a_variables Variables to coarsen
     @param[in]    a_average   Averaging method
-    @note This version creates it's own buffer on the coarsened fine grids. If you already have those, call 
-    the other version if you want to save some memory. 
   */
   virtual void
   averageData(LevelData<EBCellFAB>&       a_coarData,
-              const LevelData<EBCellFAB>& a_fineData,
-              const Interval&             a_variables,
-              const Average&              a_average) const noexcept;
-
-  /*!
-    @brief Do an average of cell data. 
-    @param[inout] a_coarData   Coarse data
-    @param[inout] a_coFiBuffer Data defined over the coarsened fine grids. Must have 1 component. 
-    @param[in]    a_fineData   Fine data
-    @param[in]    a_variables  Variables to coarsen
-    @param[in]    a_average    Averaging method
-  */
-  virtual void
-  averageData(LevelData<EBCellFAB>&       a_coarData,
-              LevelData<EBCellFAB>&       a_coFiData,
               const LevelData<EBCellFAB>& a_fineData,
               const Interval&             a_variables,
               const Average&              a_average) const noexcept;
@@ -147,21 +129,6 @@ public:
   */
   virtual void
   averageData(LevelData<EBFluxFAB>&       a_coarData,
-              const LevelData<EBFluxFAB>& a_fineData,
-              const Interval&             a_variables,
-              const Average&              a_average) const noexcept;
-
-  /*!
-    @brief Do an average of face data. 
-    @param[inout] a_coarData  Coarse data
-    @param[inout] a_coFiData  Coarsened fine data
-    @param[in]    a_fineData  Fine data
-    @param[in]    a_variables Variables to coarsen
-    @param[in]    a_average   Averaging method
-  */
-  virtual void
-  averageData(LevelData<EBFluxFAB>&       a_coarData,
-              LevelData<EBFluxFAB>&       a_coFiData,
               const LevelData<EBFluxFAB>& a_fineData,
               const Interval&             a_variables,
               const Average&              a_average) const noexcept;
@@ -223,6 +190,11 @@ protected:
   EBLevelGrid m_eblgCoFi;
 
   /*!
+    @brief Pre-built copier for copying from m_eblgCoFi to m_eblgCoar
+  */
+  Copier m_copier;
+
+  /*!
     @brief Irregular cells on the coarsened fine layout
   */
   LayoutData<IntVectSet> m_irregSetsCoFi;
@@ -236,6 +208,16 @@ protected:
     @brief Irregular faces on the coarsened fine layout
   */
   mutable LayoutData<std::map<int, FaceIterator>> m_irregFacesCoFi;
+
+  /*!
+    @brief Buffer storage on the coarsened fine grids
+  */
+  mutable LevelData<EBCellFAB> m_cellBufferCoFi;
+
+  /*!
+    @brief Buffer storage on the coarsened fine grids
+  */
+  mutable LevelData<EBFluxFAB> m_faceBufferCoFi;
 
   /*!
     @brief Stencils for arithmetic coarsening of volume data
@@ -301,6 +283,12 @@ protected:
   */
   virtual void
   defineEBStencils() noexcept;
+
+  /*!
+    @brief Define buffer storage
+  */
+  virtual void
+  defineBuffers() noexcept;
 
   /*!
     @brief Do an arithmetic average of cell-centered data when coarsening. 
@@ -441,6 +429,10 @@ protected:
                       const DataIndex&       a_datInd,
                       const int&             a_coarVar,
                       const int&             a_fineVar) const noexcept;
+
+  DisjointBoxLayout m_dblCoar;
+  DisjointBoxLayout m_dblFine;
+  DisjointBoxLayout m_dblCoFi;
 };
 
 #include <CD_NamespaceFooter.H>

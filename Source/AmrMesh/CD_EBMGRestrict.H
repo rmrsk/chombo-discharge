@@ -39,12 +39,8 @@ public:
     @param[in] a_eblgFine Fine level
     @param[in] a_eblgCoar Coarse level
     @param[in] a_refRat   Refinement factor between levels.
-    @param[in] a_ghostPhi Ghost cells in data holders
   */
-  EBMGRestrict(const EBLevelGrid& a_eblgFine,
-               const EBLevelGrid& a_eblgCoar,
-               const int&         a_refRat,
-               const IntVect&     a_ghostPhi) noexcept;
+  EBMGRestrict(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoar, const int& a_refRat) noexcept;
 
   /*!
     @brief Destructor
@@ -56,13 +52,9 @@ public:
     @param[in] a_eblgFine Fine level
     @param[in] a_eblgCoar Coarse level
     @param[in] a_refRat   Refinement factor between levels.
-    @param[in] a_ghostPhi Ghost cells in data holders
   */
   virtual void
-  define(const EBLevelGrid& a_eblgFine,
-         const EBLevelGrid& a_eblgCoar,
-         const int&         a_refRat,
-         const IntVect&     a_ghostPhi) noexcept;
+  define(const EBLevelGrid& a_eblgFine, const EBLevelGrid& a_eblgCoar, const int& a_refRat) noexcept;
 
   /*!
     @brief Restrict residual onto the coarse grid.
@@ -111,7 +103,7 @@ protected:
   /*!
     @brief Copier for making copying from the coarsened fine grids to the coarse grid go faster.
   */
-  mutable Copier m_copier;
+  Copier m_copier;
 
   /*!
     @brief Data on the coarsened fine grid. Exists for performance reasons

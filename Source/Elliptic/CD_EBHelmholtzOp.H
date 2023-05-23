@@ -758,18 +758,6 @@ public:
           Real                        a_scale) override final;
 
   /*!
-    @brief Allocate m_flux
-  */
-  void
-  allocateFlux() const noexcept;
-
-  /*!
-    @brief Deallocate m_flux
-  */
-  void
-  deallocateFlux() const noexcept;
-
-  /*!
     @brief Returns m_flux. This is used in refluxing routines. 
   */
   LevelData<EBFluxFAB>&
@@ -987,7 +975,7 @@ protected:
   /*!
     @brief For holding fluxes
   */
-  mutable LevelData<EBFluxFAB>* m_flux;
+  mutable LevelData<EBFluxFAB> m_flux;
 
   /*!
     @brief Interpolant for when we want centroid fluxes
