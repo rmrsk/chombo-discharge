@@ -72,6 +72,8 @@ MFHelmholtzOp::MFHelmholtzOp(const Location::Cell                             a_
   m_Acoef        = a_Acoef;
   m_Bcoef        = a_Bcoef;
   m_BcoefIrreg   = a_BcoefIrreg;
+  m_ghostPhi     = a_ghostPhi;
+  m_ghostRhs     = a_ghostRhs;
 
   if (a_hasCoar) {
     m_mflgCoFi = a_mflgCoFi;
@@ -357,19 +359,18 @@ MFHelmholtzOp::assign(LevelData<MFCellFAB>& a_lhs, const LevelData<MFCellFAB>& a
 {
   CH_TIME("MFHelmholtzOp::assign");
 
-#if 1
-  a_rhs.copyTo(a_lhs);
-#else
-  for (auto& op : m_helmOps) {
-    LevelData<EBCellFAB> lhs;
-    LevelData<EBCellFAB> rhs;
-
-    MultifluidAlias::aliasMF(lhs, op.first, a_lhs);
-    MultifluidAlias::aliasMF(rhs, op.first, a_rhs);
-
-    op.second->assign(lhs, rhs);
+  if (!(m_copier.isDefined())) {
+    m_copier.define(a_rhs.disjointBoxLayout(), a_lhs.disjointBoxLayout(), m_ghostPhi);
   }
-#endif
+  a_rhs.copyTo(a_lhs, m_copier);
+}
+
+void
+MFHelmholtzOp::assignLocal(LevelData<MFCellFAB>& a_lhs, const LevelData<MFCellFAB>& a_rhs)
+{
+  CH_TIME("MFHelmholtzOp::assignLocal");
+
+  a_rhs.localCopyTo(a_lhs);
 }
 
 Real

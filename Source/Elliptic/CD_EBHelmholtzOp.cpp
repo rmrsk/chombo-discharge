@@ -497,6 +497,14 @@ EBHelmholtzOp::assign(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a
   a_rhs.copyTo(a_lhs);
 }
 
+void
+EBHelmholtzOp::assignLocal(LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs)
+{
+  CH_TIME("EBHelmholtzOp::assignLocal");
+
+  a_rhs.localCopyTo(a_lhs);
+}
+
 Real
 EBHelmholtzOp::dotProduct(const LevelData<EBCellFAB>& a_lhs, const LevelData<EBCellFAB>& a_rhs)
 {
