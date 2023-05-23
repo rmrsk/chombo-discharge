@@ -872,6 +872,10 @@ Driver::run(const Real a_startTime, const Real a_endTime, const int a_maxSteps)
             pout() << "Driver::run -- Writing plot file" << endl;
           }
 
+          // TimeStepper does pre-plot calculations.
+          m_timeStepper->prePlot();
+
+          // Write plot file.
           this->writePlotFile();
         }
       }
@@ -1299,6 +1303,9 @@ Driver::setup(const std::string a_inputFile,
         if (m_writeLoads) {
           this->writeComputationalLoads();
         }
+
+        m_timeStepper->prePlot();
+
         this->writePlotFile();
       }
 #endif
