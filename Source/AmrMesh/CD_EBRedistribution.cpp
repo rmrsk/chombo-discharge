@@ -119,6 +119,17 @@ EBRedistribution::defineStencils() noexcept
   const DisjointBoxLayout& dbl   = m_eblg.getDBL();
   const EBISLayout&        ebisl = m_eblg.getEBISL();
 
+  EBISLayout ebislCoar;
+  EBISLayout ebislFine;
+
+  const Real dx     = 1.0;
+  const Real dxCoar = dx * m_refToCoar;
+  const Real dxFine = dx / m_refToFine;
+
+  const Real vol     = std::pow(dx, SpaceDim);
+  const Real volCoar = std::pow(dxCoar, SpaceDim);
+  const Real volFine = std::pow(dxFine, SpaceDim);
+
   // These are maps of the valid cells on this level, and cells that lie on the interface. The interfaceCells data is used to figure out
   // which cells we will redistribute to when we redistribute from a cut-cell and across the coarse-fine interface into a coarse-grid cell. The
   // validCells is used for 1) restricting which cells we redistribute from, and 2) which fine-grid cells redistribute to.
@@ -164,8 +175,48 @@ EBRedistribution::defineStencils() noexcept
 
       // Get the VoFs in the neighborhood of this VoF. When we redistribute, also permit self-redistribution back into this cell.
       const bool             includeSelf = true;
-      const Vector<VolIndex> neighborVofs =
+      const Vector<VolIndex> neighborVoFs =
         VofUtils::getVofsInRadius(vof, ebisbox, m_redistRadius, VofUtils::Connectivity::SimplyConnected, includeSelf);
+
+      Vector<VolIndex> fineVoFs;
+      Vector<VolIndex> levelVoFs;
+      Vector<VolIndex> coarVoFs;
+
+      Real totalVolume = 0.0;
+
+      for (int i = 0; i < neighborVoFs.size(); i++) {
+        const VolIndex& curVoF = neighborVoFs[i];
+        const IntVect&  curIV  = curVoF.gridIndex();
+
+        if (m_hasFine) {
+          if (!(validCells(curIV))) {
+            fineVoFs.append(ebisl.refine(curVoF, m_refToFine, dit()));
+
+            for (int i = 0; i < fineVoFs.size(); i++) {
+              //              totalVolume +=
+            }
+
+            break;
+          }
+        }
+        if (m_hasCoar) {
+          if (interfaceCells(curIV)) {
+            coarVoFs.push_back(ebisl.coarsen(curVoF, m_refToCoar, dit()));
+
+            break;
+          }
+        }
+
+        levelVoFs.push_back(curVoF);
+
+        totalVolume += ebisbox.volFrac(curVoF) * vol;
+      }
+
+      // Compute the total volume of the in
+
+      VoFStencil& coarStencil  = stencilsCoar(vof, 0);
+      VoFStencil& levelStencil = stencilsLevel(vof, 0);
+      VoFStencil& fineStencil  = stencilsFine(vof, 0);
     }
   }
 }
@@ -295,7 +346,7 @@ EBRedistribution::redistributeCoar(LevelData<EBCellFAB>&             a_phiCoar,
                                    const Real&                       a_scaleCoar,
                                    const Interval&                   a_variables) const noexcept
 {
-  CH_TIME("EBRedistributino::redistributeCoar");
+  CH_TIME("EBRedistribution::redistributeCoar");
 
   CH_assert(m_isDefined);
   CH_assert(a_phiCoar.isDefined());
@@ -309,7 +360,7 @@ EBRedistribution::redistributeLevel(LevelData<EBCellFAB>&             a_phi,
                                     const Real&                       a_scale,
                                     const Interval&                   a_variables) const noexcept
 {
-  CH_TIME("EBRedistributino::redistributeLevel");
+  CH_TIME("EBRedistribution::redistributeLevel");
 
   CH_assert(m_isDefined);
   CH_assert(a_phi.isDefined());
@@ -324,7 +375,7 @@ EBRedistribution::redistributeFine(LevelData<EBCellFAB>&             a_phiFine,
                                    const Real&                       a_scaleFine,
                                    const Interval&                   a_variables) const noexcept
 {
-  CH_TIME("EBRedistributino::redistributeFine");
+  CH_TIME("EBRedistribution::redistributeFine");
 
   CH_assert(m_isDefined);
   CH_assert(a_phiFine.isDefined());
