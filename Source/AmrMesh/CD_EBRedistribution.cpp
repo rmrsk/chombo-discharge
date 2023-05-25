@@ -9,9 +9,6 @@
   @author Robert Marskar
 */
 
-#ifndef CD_EBRedistribution_H
-#define CD_EBRedistribution_H
-
 // Chombo includes
 #include <CH_Timer.H>
 #include <EBCellFactory.H>
@@ -20,7 +17,8 @@
 #include <CD_EBRedistribution.H>
 #include <CD_NamespaceHeader.H>
 
-EBRedistribution::EBRedistribution() noexcept {
+EBRedistribution::EBRedistribution() noexcept
+{
   CH_TIME("EBRedistribution::EBRedistribution(weak)");
 
   m_isDefined = false;
@@ -66,8 +64,8 @@ EBRedistribution::define(const EBLevelGrid& a_eblgCoar,
   CH_assert(a_eblg.isDefined());
   CH_assert(a_redistributionRadius >= 1);
 
-  a_refToCoar = -1;
-  a_refToFine = -1;
+  m_refToCoar = -1;
+  m_refToFine = -1;
 
   m_hasCoar = false;
   m_hasFine = false;
@@ -94,6 +92,7 @@ EBRedistribution::define(const EBLevelGrid& a_eblgCoar,
   }
 
   this->defineStencils();
+  this->defineBuffers();
 
   m_isDefined = true;
 }
@@ -103,8 +102,99 @@ EBRedistribution::defineStencils() noexcept
 {
   CH_TIMERS("EBRedistribution::defineStencils");
 
+  // TLDR: This is a bit involved since we need to define stencils on the valid cut-cells on this level. If there's an EBCF interface we
+  //       need to know about it because we don't want to:
+  //       1) Redistribute from this level into ghost cells on the other side of the coarse-fine interface. That mass should go on the coarse level.
+  //       2) Redistribute from this level into regions covered by the finer grid. That mass should go on the fine level instead.
+
   const DisjointBoxLayout& dbl   = m_eblg.getDBL();
   const EBISLayout&        ebisl = m_eblg.getEBISL();
+
+  if (m_hasCoar) {
+    m_redistStencilsCoar.define(dbl);
+  }
+
+  m_redistStencilsLevel.define(dbl);
+
+  if (m_hasFine) {
+    m_redistStencilsFine.define(dbl);
+  }
+}
+
+void
+EBRedistribution::defineBuffers() noexcept
+{
+  CH_TIMERS("EBRedistribution::defineBuffers");
+}
+
+void
+EBRedistribution::redistributeAMR(LevelData<EBCellFAB>*             a_phiCoar,
+                                  LevelData<EBCellFAB>*             a_phi,
+                                  LevelData<EBCellFAB>*             a_phiFine,
+                                  const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                                  const Real                        a_scaleCoar,
+                                  const Real                        a_scale,
+                                  const Real                        a_scaleFine,
+                                  const Interval&                   a_variables) const noexcept
+{
+  CH_TIME("EBRedistribution::redistributeAMR");
+
+  CH_assert(a_phi != nullptr);
+
+  if (m_hasCoar) {
+    CH_assert(a_phiCoar != nullptr);
+
+    this->redistributeCoar(*a_phiCoar, a_deltaM, a_scaleCoar, a_variables);
+  }
+
+  this->redistributeLevel(*a_phi, a_deltaM, a_scale, a_variables);
+
+  if (m_hasFine) {
+    CH_assert(a_phiFine != nullptr);
+
+    this->redistributeFine(*a_phiFine, a_deltaM, a_scaleFine, a_variables);
+  }
+}
+
+void
+EBRedistribution::redistributeCoar(LevelData<EBCellFAB>&             a_phiCoar,
+                                   const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                                   const Real&                       a_scaleCoar,
+                                   const Interval&                   a_variables) const noexcept
+{
+  CH_TIME("EBRedistributino::redistributeCoar");
+
+  CH_assert(a_phiCoar.isDefined());
+  CH_assert(a_deltaM.isDefined());
+  CH_assert(a_phiCoar.nComp() > a_variables.end());
+  CH_assert(a_deltaM.nComp() > a_variables.end());
+}
+void
+EBRedistribution::redistributeLevel(LevelData<EBCellFAB>&             a_phi,
+                                    const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                                    const Real&                       a_scale,
+                                    const Interval&                   a_variables) const noexcept
+{
+  CH_TIME("EBRedistributino::redistributeLevel");
+
+  CH_assert(a_phi.isDefined());
+  CH_assert(a_deltaM.isDefined());
+  CH_assert(a_phi.nComp() > a_variables.end());
+  CH_assert(a_deltaM.nComp() > a_variables.end());
+}
+
+void
+EBRedistribution::redistributeFine(LevelData<EBCellFAB>&             a_phiFine,
+                                   const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                                   const Real&                       a_scaleFine,
+                                   const Interval&                   a_variables) const noexcept
+{
+  CH_TIME("EBRedistributino::redistributeFine");
+
+  CH_assert(a_phiFine.isDefined());
+  CH_assert(a_deltaM.isDefined());
+  CH_assert(a_phiFine.nComp() > a_variables.end());
+  CH_assert(a_deltaM.nComp() > a_variables.end());
 }
 
 #include <CD_NamespaceFooter.H>

@@ -89,6 +89,68 @@ public:
          const int          a_refToFine,
          const int          a_redistributionRadius) noexcept;
 
+  /*!
+    @brief Redistribute the input quantity into the coarse level, this level, and the fine level.
+    @details If calling this, pass in a_phiFine/a_phiCoar = nullptr if there is no finer/coarser level. The a_scaleCoar and a_scaleFine arguments
+    do not matter if there is no coarser/finer level.
+    @param[inout] a_phiCoar   Data on coarse level
+    @param[inout] a_phi       Data on this level
+    @param[inout] a_phiFine   Data on finer level
+    @param[in]    a_deltaM    Redistribution data on this level
+    @param[in]    a_scaleCoar Scaling factor for redistribution into the coarse level
+    @param[in]    a_scale     Scaling factor for redistribution into this level
+    @param[in]    a_scaleFine Scaling factor for redistribution into the fine level
+    @param[in]    a_variables Variables to redistribute
+  */
+  virtual void
+  redistributeAMR(LevelData<EBCellFAB>*             a_phiCoar,
+                  LevelData<EBCellFAB>*             a_phi,
+                  LevelData<EBCellFAB>*             a_phiFine,
+                  const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                  const Real                        a_scaleCoar,
+                  const Real                        a_scale,
+                  const Real                        a_scaleFine,
+                  const Interval&                   a_variables) const noexcept;
+
+  /*!
+    @brief Redistribute the input quantity to the coarse level.
+    @param[inout] a_phiCoar   Data on coarse level
+    @param[in]    a_deltaM    Redistribution data on this level
+    @param[in]    a_scaleCoar Scaling factor for redistribution into the coarse level
+    @param[in]    a_variables Variables to redistribute
+  */
+  virtual void
+  redistributeCoar(LevelData<EBCellFAB>&             a_phiCoar,
+                   const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                   const Real&                       a_scaleCoar,
+                   const Interval&                   a_variables) const noexcept;
+
+  /*!
+    @brief Redistribute the input quantity to this level.
+    @param[inout] a_phi       Data on this level
+    @param[in]    a_deltaM    Redistribution data on this level
+    @param[in]    a_scale     Scaling factor for redistribution on this level
+    @param[in]    a_variables Variables to redistribute
+  */
+  virtual void
+  redistributeLevel(LevelData<EBCellFAB>&             a_phi,
+                    const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                    const Real&                       a_scale,
+                    const Interval&                   a_variables) const noexcept;
+
+  /*!
+    @brief Redistribute the input quantity to the coarse level.
+    @param[inout] a_phiCoar   Data on fine level
+    @param[in]    a_deltaM    Redistribution data on this level
+    @param[in]    a_scaleFine Scaling factor for redistribution into the fine level
+    @param[in]    a_variables Variables to redistribute
+  */
+  virtual void
+  redistributeFine(LevelData<EBCellFAB>&             a_phiFine,
+                   const LevelData<BaseIVFAB<Real>>& a_deltaM,
+                   const Real&                       a_scaleFine,
+                   const Interval&                   a_variables) const noexcept;
+
 protected:
   /*!
     @brief Is defined or not
@@ -155,7 +217,7 @@ protected:
     @brief Stencils for redistribution into valid grid cells on this level. 
     @note Defined on this level (m_eblg), and the stnecils contain VoFs on this level also.
   */
-  LayoutData<BaseIVFAB<VoFStencil>> m_redistStencils;
+  LayoutData<BaseIVFAB<VoFStencil>> m_redistStencilsLevel;
 
   /*!
     @brief Stencils for redistribution into valid grid cells on the fine level. 
@@ -168,6 +230,14 @@ protected:
   */
   virtual void
   defineStencils() noexcept;
+
+  /*!
+    @brief Define buffer storages
+  */
+  virtual void
+  defineBuffers() noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
+
+#endif

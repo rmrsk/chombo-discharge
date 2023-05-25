@@ -552,6 +552,11 @@ protected:
   mutable Vector<RefCountedPtr<EBFineToCoarRedist>> m_fineToCoarRedist;
 
   /*!
+    @brief Redistribution utilities
+  */
+  Vector<RefCountedPtr<EBRedistribution>> m_redistributionOp;
+
+  /*!
     @brief Gradient operator
   */
   mutable Vector<RefCountedPtr<EBGradient>> m_gradientOp;

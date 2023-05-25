@@ -728,6 +728,7 @@ PhaseRealm::defineRedistOper(const int a_lmin, const int a_regsize)
   const bool doThisOperator = this->queryOperator(s_eb_redist);
 
   m_levelRedist.resize(1 + m_finestLevel);
+  m_redistributionOp.resize(1 + m_finestLevel);
 
   if (doThisOperator) {
 
@@ -737,6 +738,45 @@ PhaseRealm::defineRedistOper(const int a_lmin, const int a_regsize)
         m_levelRedist[lvl] = RefCountedPtr<EBLevelRedist>(
           new EBLevelRedist(m_grids[lvl], m_ebisl[lvl], m_domains[lvl], a_regsize, m_redistributionRadius));
       }
+    }
+
+    for (int lvl = std::max(0, a_lmin - 2); lvl <= m_finestLevel; lvl++) {
+      const bool hasCoar = lvl > 0;
+      const bool hasFine = lvl < m_finestLevel;
+
+      int refToCoar = -1;
+      int refToFine = -1;
+
+      EBLevelGrid eblgCoar;
+      EBLevelGrid eblgRefinedCoar;
+      EBLevelGrid eblg;
+      EBLevelGrid eblgCoarsenedFine;
+      EBLevelGrid eblgFine;
+
+      if (hasCoar) {
+        eblgCoar        = *m_eblg[lvl - 1];
+        eblgRefinedCoar = *m_eblgFiCo[lvl];
+
+        refToCoar = m_refinementRatios[lvl - 1];
+      }
+
+      eblg = *m_eblg[lvl];
+
+      if (hasFine) {
+        eblgCoarsenedFine = *m_eblgCoFi[lvl];
+        eblgFine          = *m_eblg[lvl + 1];
+
+        refToFine = m_refinementRatios[lvl];
+      }
+
+      m_redistributionOp[lvl] = RefCountedPtr<EBRedistribution>(new EBRedistribution(eblgCoar,
+                                                                                     eblgRefinedCoar,
+                                                                                     eblg,
+                                                                                     eblgCoarsenedFine,
+                                                                                     eblgFine,
+                                                                                     refToCoar,
+                                                                                     refToFine,
+                                                                                     m_redistributionRadius));
     }
   }
 }
