@@ -24,7 +24,7 @@
 /*!
   @brief Class for redistribution ala Chombo's flux redistribution. 
   @details This uses the same algorithm as the core Chombo code, but includes much faster define functions and smaller memory footprint. Because
-  this class is used in a non-subcycling context, it has way fewer bells and whistles.
+  this class is used in a non-subcycling context, it has way fewer bells and whistles. This class permits redistribution outside of the domain, in which case some mass will (correctly) be lost
 */
 class EBRedistribution
 {
@@ -41,25 +41,25 @@ public:
 
   /*!
     @brief Full constructor. Calls the define function and puts object in usable state. 
-    @details If there is a finer level, a_eblgFine and a_eblgCoarsenedFine must be defined. If there is a coarser grid level then
-    a_eblgCoar and a_eblgRefinedCoar must be defined. 
+    @details If there is a finer level, a_eblgFine and a_eblgRefined must be defined. If there is a coarser grid level then
+    a_eblgCoar and a_eblgCoarsened must be defined. 
     @param[in] a_eblgCoar             Coarser grid level
-    @param[in] a_eblgRefinedCoar      Refined coarse grid
+    @param[in] a_eblgCoarsened        Coarsened grid
     @param[in] a_eblg                 Grids on this level
-    @param[in] a_eblgCoarsenedFined   Coarsened fine grid
-    @param[in] a_eblgCoarsenedFined   Coarsened fine grid
+    @param[in] a_eblgRefinedd         Refined grid
+    @param[in] a_eblgFine             Fine grid
     @param[in] a_refToCoar            Refinement factor between this level and the coarse level
     @param[in] a_refToFine            Refinement factor between this level and the fine level
-    @param[in] a_redistributionRadius Redistribution radius. Must be >= 1
+    @param[in] a_redistributeOutside  Turn on/off redistribution outside domain. 
   */
   EBRedistribution(const EBLevelGrid& a_eblgCoar,
-                   const EBLevelGrid& a_eblgRefinedCoar,
+                   const EBLevelGrid& a_eblgCoarsened,
                    const EBLevelGrid& a_eblg,
-                   const EBLevelGrid& a_eblgCoarsenedFine,
+                   const EBLevelGrid& a_eblgRefined,
                    const EBLevelGrid& a_eblgFine,
                    const int          a_refToCoar,
                    const int          a_refToFine,
-                   const int          a_redistributionRadius) noexcept;
+                   const bool         a_redistributeOutside) noexcept;
 
   /*!
     @brief Destructor (does nothing)
@@ -68,26 +68,26 @@ public:
 
   /*!
     @brief Define fucntion. Puts object in usable state. 
-    @details If there is a finer level, a_eblgFine and a_eblgCoarsenedFine must be defined. If there is a coarser grid level then
-    a_eblgCoar and a_eblgRefinedCoar must be defined. 
+    @details If there is a finer level, a_eblgFine and a_eblgRefined must be defined. If there is a coarser grid level then
+    a_eblgCoar and a_eblgCoarsened must be defined. 
     @param[in] a_eblgCoar             Coarser grid level
-    @param[in] a_eblgRefinedCoar      Refined coarse grid
+    @param[in] a_eblgCoarsened        Coarsened grids
     @param[in] a_eblg                 Grids on this level
-    @param[in] a_eblgCoarsenedFined   Coarsened fine grid
-    @param[in] a_eblgCoarsenedFined   Coarsened fine grid
+    @param[in] a_eblgRefined          Refined grids
+    @param[in] a_eblgFine             Fine grid
     @param[in] a_refToCoar            Refinement factor between this level and the coarse level
     @param[in] a_refToFine            Refinement factor between this level and the fine level
-    @param[in] a_redistributionRadius Redistribution radius. Must be >= 1
+    @param[in] a_redistributeOutside  Turn on/off redistribution outside domain. 
   */
   virtual void
   define(const EBLevelGrid& a_eblgCoar,
-         const EBLevelGrid& a_eblgRefinedCoar,
+         const EBLevelGrid& a_eblgCoarsened,
          const EBLevelGrid& a_eblg,
-         const EBLevelGrid& a_eblgCoarsenedFine,
+         const EBLevelGrid& a_eblgRefined,
          const EBLevelGrid& a_eblgFine,
          const int          a_refToCoar,
          const int          a_refToFine,
-         const int          a_redistributionRadius) noexcept;
+         const bool         a_redistributeOutside) noexcept;
 
   /*!
     @brief Redistribute the input quantity into the coarse level, this level, and the fine level.
@@ -158,6 +158,11 @@ protected:
   bool m_isDefined;
 
   /*!
+    @brief If true, redistribute to the outside. Otherwise, do interior redistribution.
+  */
+  bool m_redistributeOutside;
+
+  /*!
     @brief Has coarse level or not
   */
   bool m_hasCoar;
@@ -178,7 +183,7 @@ protected:
   int m_refToFine;
 
   /*!
-    @brief Redistribution radius
+    @brief Redistribution radius. Always one.
   */
   int m_redistRadius;
 
@@ -190,7 +195,7 @@ protected:
   /*!
     @brief Grids on this level that are a refinement of the coarser level
   */
-  EBLevelGrid m_eblgRefinedCoar;
+  EBLevelGrid m_eblgCoarsened;
 
   /*!
     @brief Grids on this level
@@ -200,12 +205,27 @@ protected:
   /*!
     @brief Grids on this level that are a coarsening of the fine level
   */
-  EBLevelGrid m_eblgCoarsenedFine;
+  EBLevelGrid m_eblgRefined;
 
   /*!
     @brief Fine grids
   */
   EBLevelGrid m_eblgFine;
+
+  /*!
+    @brief Copier for copying from the coarsening of this level to the coarse level. 
+  */
+  Copier m_coarCopier;
+
+  /*!
+    @brief Copier for adding data from this level to this level (yes, really).
+  */
+  Copier m_levelCopier;
+
+  /*!
+    @brief Copier for copying from the refinement of this level to the fine level.
+  */
+  Copier m_fineCopier;
 
   /*!
     @brief Stencils for redistribution into valid grid cells on the coarse level. 
@@ -215,7 +235,7 @@ protected:
 
   /*!
     @brief Stencils for redistribution into valid grid cells on this level. 
-    @note Defined on this level (m_eblg), and the stnecils contain VoFs on this level also.
+    @note Defined on this level (m_eblg), and the stencils contain VoFs on this level also.
   */
   LayoutData<BaseIVFAB<VoFStencil>> m_redistStencilsLevel;
 

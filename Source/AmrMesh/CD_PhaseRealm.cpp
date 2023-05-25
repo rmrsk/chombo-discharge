@@ -748,14 +748,14 @@ PhaseRealm::defineRedistOper(const int a_lmin, const int a_regsize)
       int refToFine = -1;
 
       EBLevelGrid eblgCoar;
-      EBLevelGrid eblgRefinedCoar;
+      EBLevelGrid eblgCoarsened;
       EBLevelGrid eblg;
-      EBLevelGrid eblgCoarsenedFine;
+      EBLevelGrid eblgRefined;
       EBLevelGrid eblgFine;
 
       if (hasCoar) {
-        eblgCoar        = *m_eblg[lvl - 1];
-        eblgRefinedCoar = *m_eblgFiCo[lvl];
+        eblgCoar      = *m_eblg[lvl - 1];
+        eblgCoarsened = *m_eblgCoFi[lvl - 1];
 
         refToCoar = m_refinementRatios[lvl - 1];
       }
@@ -763,20 +763,22 @@ PhaseRealm::defineRedistOper(const int a_lmin, const int a_regsize)
       eblg = *m_eblg[lvl];
 
       if (hasFine) {
-        eblgCoarsenedFine = *m_eblgCoFi[lvl];
-        eblgFine          = *m_eblg[lvl + 1];
+        eblgRefined = *m_eblgFiCo[lvl + 1];
+        eblgFine    = *m_eblg[lvl + 1];
 
         refToFine = m_refinementRatios[lvl];
       }
 
+      const bool redistributeOutside = true;
+
       m_redistributionOp[lvl] = RefCountedPtr<EBRedistribution>(new EBRedistribution(eblgCoar,
-                                                                                     eblgRefinedCoar,
+                                                                                     eblgCoarsened,
                                                                                      eblg,
-                                                                                     eblgCoarsenedFine,
+                                                                                     eblgRefined,
                                                                                      eblgFine,
                                                                                      refToCoar,
                                                                                      refToFine,
-                                                                                     m_redistributionRadius));
+                                                                                     redistributeOutside));
     }
   }
 }

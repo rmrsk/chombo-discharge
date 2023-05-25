@@ -18,6 +18,7 @@
 #include <CD_EBRedistribution.H>
 #include <CD_VofUtils.H>
 #include <CD_BoxLoops.H>
+#include <CD_EBAddOp.H>
 #include <CD_NamespaceHeader.H>
 
 EBRedistribution::EBRedistribution() noexcept
@@ -28,24 +29,24 @@ EBRedistribution::EBRedistribution() noexcept
 }
 
 EBRedistribution::EBRedistribution(const EBLevelGrid& a_eblgCoar,
-                                   const EBLevelGrid& a_eblgRefinedCoar,
+                                   const EBLevelGrid& a_eblgCoarsened,
                                    const EBLevelGrid& a_eblg,
-                                   const EBLevelGrid& a_eblgCoarsenedFine,
+                                   const EBLevelGrid& a_eblgRefined,
                                    const EBLevelGrid& a_eblgFine,
                                    const int          a_refToCoar,
                                    const int          a_refToFine,
-                                   const int          a_redistributionRadius) noexcept
+                                   const bool         a_redistributeOutside) noexcept
 {
   CH_TIME("EBRedistribution::EBRedistribution(full)");
 
   this->define(a_eblgCoar,
-               a_eblgRefinedCoar,
+               a_eblgCoarsened,
                a_eblg,
-               a_eblgCoarsenedFine,
+               a_eblgRefined,
                a_eblgFine,
                a_refToCoar,
                a_refToFine,
-               a_redistributionRadius);
+               a_redistributeOutside);
 }
 
 EBRedistribution::~EBRedistribution() noexcept {
@@ -54,50 +55,62 @@ EBRedistribution::~EBRedistribution() noexcept {
 
 void
 EBRedistribution::define(const EBLevelGrid& a_eblgCoar,
-                         const EBLevelGrid& a_eblgRefinedCoar,
+                         const EBLevelGrid& a_eblgCoarsened,
                          const EBLevelGrid& a_eblg,
-                         const EBLevelGrid& a_eblgCoarsenedFine,
+                         const EBLevelGrid& a_eblgRefined,
                          const EBLevelGrid& a_eblgFine,
                          const int          a_refToCoar,
                          const int          a_refToFine,
-                         const int          a_redistributionRadius) noexcept
+                         const bool         a_redistributeOutside) noexcept
 {
   CH_TIME("EBRedistribution::define");
 
   CH_assert(a_eblg.isDefined());
-  CH_assert(a_redistributionRadius >= 1);
 
-  m_refToCoar = -1;
-  m_refToFine = -1;
+  m_redistRadius = 1;
+  m_refToCoar    = -1;
+  m_refToFine    = -1;
 
   m_hasCoar = false;
   m_hasFine = false;
 
-  m_eblg         = a_eblg;
-  m_redistRadius = a_redistributionRadius;
-
   if (a_eblgCoar.isDefined()) {
     CH_assert(a_refToCoar >= 2);
     CH_assert(a_refToCoar % 2 == 0);
-    CH_assert(a_eblgRefinedCoar.isDefined());
+    CH_assert(a_eblgCoarsened.isDefined());
 
-    m_eblgRefinedCoar = a_eblgRefinedCoar;
-    m_eblgCoar        = a_eblgCoar;
+    m_eblgCoar      = a_eblgCoar;
+    m_eblgCoarsened = a_eblgCoarsened;
 
     m_refToCoar = a_refToCoar;
     m_hasCoar   = true;
   }
 
+  m_eblg = a_eblg;
+
   if (a_eblgFine.isDefined()) {
     CH_assert(a_refToFine >= 2);
     CH_assert(a_refToFine % 2 == 0);
-    CH_assert(a_eblgCoarsenedFine.isDefined());
+    CH_assert(a_eblgFine.isDefined());
 
-    m_eblgCoarsenedFine = a_eblgCoarsenedFine;
-    m_eblgFine          = a_eblgFine;
-
+    m_eblgFine  = a_eblgFine;
     m_refToFine = a_refToFine;
     m_hasFine   = true;
+
+    // Gods how I hate filling EBISLayouts. But in this case we need it because if the user has asked for
+    // a larger refinement ratio than we have ghost cells, we need to explicity fetch the necessary geometric
+    // data in a larger radius than what is available in the input arguments.
+    if (m_refToFine > a_eblgRefined.getGhost()) {
+      DisjointBoxLayout dblRefined;
+
+      refine(dblRefined, m_eblg.getDBL(), m_refToFine);
+      m_eblgRefined.define(dblRefined, m_eblgFine.getDomain(), m_refToFine, m_eblg.getEBIS());
+    }
+    else {
+      CH_assert(a_eblgRefined.isDefined());
+
+      m_eblgRefined = a_eblgRefined;
+    }
   }
 
   this->defineStencils();
@@ -119,8 +132,9 @@ EBRedistribution::defineStencils() noexcept
   const DisjointBoxLayout& dbl   = m_eblg.getDBL();
   const EBISLayout&        ebisl = m_eblg.getEBISL();
 
-  EBISLayout ebislCoar;
-  EBISLayout ebislFine;
+  const ProblemDomain& domain     = m_eblg.getDomain();
+  const ProblemDomain  domainCoar = m_hasCoar ? m_eblgCoar.getDomain() : ProblemDomain();
+  const ProblemDomain  domainFine = m_hasFine ? m_eblgFine.getDomain() : ProblemDomain();
 
   const Real dx     = 1.0;
   const Real dxCoar = dx * m_refToCoar;
@@ -146,11 +160,21 @@ EBRedistribution::defineStencils() noexcept
 
   for (DataIterator dit(dbl); dit.ok(); ++dit) {
     const Box            box            = dbl[dit()];
-    const EBISBox&       ebisbox        = ebisl[dit()];
-    const EBGraph&       ebgraph        = ebisbox.getEBGraph();
-    const IntVectSet     irregIVS       = ebisbox.getIrregIVS(box);
+    const EBISBox&       ebisBox        = ebisl[dit()];
+    const EBGraph&       ebgraph        = ebisBox.getEBGraph();
+    const IntVectSet     irregIVS       = ebisBox.getIrregIVS(box);
     const BaseFab<bool>& validCells     = validCellsLD[dit()];
     const BaseFab<bool>& interfaceCells = interfaceCellsLD[dit()];
+
+    EBISBox ebisBoxCoar;
+    EBISBox ebisBoxFine;
+
+    if (m_hasCoar) {
+      ebisBoxCoar = m_eblgCoarsened.getEBISL()[dit()];
+    }
+    if (m_hasFine) {
+      ebisBoxFine = m_eblgRefined.getEBISL()[dit()];
+    }
 
     IntVectSet redistCells;
     for (IVSIterator ivsIt(irregIVS); ivsIt.ok(); ++ivsIt) {
@@ -176,7 +200,7 @@ EBRedistribution::defineStencils() noexcept
       // Get the VoFs in the neighborhood of this VoF. When we redistribute, also permit self-redistribution back into this cell.
       const bool             includeSelf = true;
       const Vector<VolIndex> neighborVoFs =
-        VofUtils::getVofsInRadius(vof, ebisbox, m_redistRadius, VofUtils::Connectivity::SimplyConnected, includeSelf);
+        VofUtils::getVofsInRadius(vof, ebisBox, m_redistRadius, VofUtils::Connectivity::SimplyConnected, includeSelf);
 
       Vector<VolIndex> fineVoFs;
       Vector<VolIndex> levelVoFs;
@@ -184,39 +208,84 @@ EBRedistribution::defineStencils() noexcept
 
       Real totalVolume = 0.0;
 
+      // Go through the cells in the redistribution neighborhood of the current cut-cell. If the cell lies on
+      // the coarse-side of the interface, we fetch the corresponding coarse cell. If the cell lie underneath
+      // the finer level, we refine the cell.
       for (int i = 0; i < neighborVoFs.size(); i++) {
         const VolIndex& curVoF = neighborVoFs[i];
         const IntVect&  curIV  = curVoF.gridIndex();
 
+        // If we only redistribute to cells inside the domain, skip this cell.
+        if (!(domain.contains(curIV)) && !m_redistributeOutside) {
+          continue;
+        }
+
         if (m_hasFine) {
           if (!(validCells(curIV))) {
-            fineVoFs.append(ebisl.refine(curVoF, m_refToFine, dit()));
+            const Vector<VolIndex>& refinedVoFs = ebisl.refine(curVoF, m_refToFine, dit());
 
-            for (int i = 0; i < fineVoFs.size(); i++) {
-              //              totalVolume +=
+            fineVoFs.append(refinedVoFs);
+
+            for (int i = 0; i < refinedVoFs.size(); i++) {
+              totalVolume += volFine * ebisBoxFine.volFrac(refinedVoFs[i]);
             }
 
             break;
           }
         }
+
         if (m_hasCoar) {
           if (interfaceCells(curIV)) {
-            coarVoFs.push_back(ebisl.coarsen(curVoF, m_refToCoar, dit()));
+            const VolIndex& coarsenedVoF = ebisl.coarsen(curVoF, m_refToCoar, dit());
+
+            coarVoFs.push_back(coarsenedVoF);
+
+            totalVolume += volCoar * ebisBoxCoar.volFrac(coarsenedVoF);
 
             break;
           }
         }
 
+        // Leaving in place in case I missed something above. Hopefully I'm not THAT stupid.
+        CH_assert(!m_hasCoar);
+        CH_assert(!m_hasFine);
+
         levelVoFs.push_back(curVoF);
 
-        totalVolume += ebisbox.volFrac(curVoF) * vol;
+        totalVolume += ebisBox.volFrac(curVoF) * vol;
       }
-
-      // Compute the total volume of the in
 
       VoFStencil& coarStencil  = stencilsCoar(vof, 0);
       VoFStencil& levelStencil = stencilsLevel(vof, 0);
       VoFStencil& fineStencil  = stencilsFine(vof, 0);
+
+      if (m_hasCoar) {
+        for (int i = 0; i < coarVoFs.size(); i++) {
+          const VolIndex& coarVoF = coarVoFs[i];
+
+          if (domainCoar.contains(coarVoF.gridIndex())) {
+            coarStencil.add(coarVoF, volCoar * ebisBoxCoar.volFrac(coarVoF));
+          }
+        }
+      }
+
+      for (int i = 0; i < levelVoFs.size(); i++) {
+        const VolIndex& levelVoF = levelVoFs[i];
+
+        if (domain.contains(levelVoF.gridIndex())) {
+          levelStencil.add(levelVoF, vol * ebisBox.volFrac(levelVoF));
+        }
+      }
+
+      if (m_hasFine) {
+        for (int i = 0; i < fineVoFs.size(); i++) {
+          const VolIndex& fineVoF = fineVoFs[i];
+
+          if (domainFine.contains(fineVoF.gridIndex())) {
+            fineStencil.add(fineVoF, volFine * ebisBoxFine.volFrac(fineVoF));
+          }
+        }
+      }
     }
   }
 }
@@ -236,7 +305,8 @@ EBRedistribution::defineValidCells(LevelData<BaseFab<bool>>& a_validCells) const
   // If there's a finer level we need to figure out which cells on the fine level overlap with this level. Then we set those cells
   // to 'false'. If there's no finer level then all cells on this level are valid cells.
   if (m_hasFine) {
-    const DisjointBoxLayout& dblCoFi = m_eblgCoarsenedFine.getDBL();
+    DisjointBoxLayout dblCoFi;
+    coarsen(dblCoFi, m_eblgFine.getDBL(), m_refToFine);
 
     // Create some data = 0 on the coarse grid and = 1 on the fine grid.
     LevelData<FArrayBox> data(dbl, 1, IntVect::Zero);
@@ -308,6 +378,31 @@ void
 EBRedistribution::defineBuffers() noexcept
 {
   CH_TIME("EBRedistribution::defineBuffers");
+
+  const DisjointBoxLayout& dbl    = m_eblg.getDBL();
+  const ProblemDomain&     domain = m_eblg.getDomain();
+
+  // ghostDefine implies that we copy from valid+ghost to valid. Which is what we want since we
+  // also redistribute over patch boundaries (duh). Note that the ghost cells we define here MUST
+  // match the ghost cells in the buffers that are defined in the actual redistribution routines.
+
+  if (m_hasCoar) {
+    const DisjointBoxLayout& dblCoar      = m_eblgCoar.getDBL();
+    const DisjointBoxLayout& dblCoarsened = m_eblgCoarsened.getDBL();
+    const ProblemDomain&     domainCoar   = m_eblgCoar.getDomain();
+
+    m_coarCopier.ghostDefine(dblCoarsened, dblCoar, domainCoar, m_redistRadius * IntVect::Unit);
+  }
+
+  m_levelCopier.ghostDefine(dbl, dbl, domain, m_redistRadius * IntVect::Unit);
+
+  if (m_hasFine) {
+    const DisjointBoxLayout& dblFine    = m_eblgFine.getDBL();
+    const DisjointBoxLayout& dblRefined = m_eblgRefined.getDBL();
+    const ProblemDomain&     domainFine = m_eblgFine.getDomain();
+
+    m_fineCopier.ghostDefine(dblRefined, dblFine, domainFine, m_redistRadius * IntVect::Unit);
+  }
 }
 
 void
@@ -346,13 +441,53 @@ EBRedistribution::redistributeCoar(LevelData<EBCellFAB>&             a_phiCoar,
                                    const Real&                       a_scaleCoar,
                                    const Interval&                   a_variables) const noexcept
 {
-  CH_TIME("EBRedistribution::redistributeCoar");
+  CH_TIMERS("EBRedistribution::redistributeCoar");
+  CH_TIMER("EBRedistribution::redistributeCoar::irreg_cells", t1);
 
   CH_assert(m_isDefined);
+  CH_assert(m_hasCoar);
   CH_assert(a_phiCoar.isDefined());
   CH_assert(a_deltaM.isDefined());
+  CH_assert(a_deltaM.disjointBoxLayout() == m_eblg.getDBL());
+  CH_assert(a_phiCoar.disjointBoxLayout() == m_eblgCoar.getDBL());
   CH_assert(a_phiCoar.nComp() > a_variables.end());
   CH_assert(a_deltaM.nComp() > a_variables.end());
+
+  const DisjointBoxLayout& dblCoar    = m_eblgCoarsened.getDBL();
+  const EBISLayout&        ebislCoar  = m_eblgCoarsened.getEBISL();
+  const ProblemDomain&     domainCoar = m_eblgCoarsened.getDomain();
+
+  LevelData<EBCellFAB> coarBuffer(dblCoar, 1, m_redistRadius * IntVect::Unit, EBCellFactory(ebislCoar));
+
+  for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
+    for (DataIterator dit(dblCoar); dit.ok(); ++dit) {
+      const BaseIVFAB<Real>&       deltaM   = a_deltaM[dit()];
+      const BaseIVFAB<VoFStencil>& stencils = m_redistStencilsCoar[dit()];
+
+      EBCellFAB& buffer = coarBuffer[dit()];
+      buffer.setVal(0.0);
+
+      // Apply stencil into buffer.
+      CH_START(t1);
+      VoFIterator& vofit = m_vofit[dit()];
+      for (vofit.reset(); vofit.ok(); ++vofit) {
+        const VolIndex&   vof      = vofit();
+        const VoFStencil& stencil  = stencils(vof, 0);
+        const Real&       massDiff = deltaM(vof, ivar);
+
+        for (int i = 0; i < stencil.size(); i++) {
+          buffer(stencil.vof(i), 0) += a_scaleCoar * stencil.weight(i) * massDiff;
+        }
+      }
+      CH_STOP(t1);
+    }
+
+    // Increment a_phi by the result.
+    const Interval srcInterv = Interval(0, 0);
+    const Interval dstInterv = Interval(ivar, ivar);
+
+    coarBuffer.copyTo(srcInterv, a_phiCoar, dstInterv, m_coarCopier, EBAddOp());
+  }
 }
 void
 EBRedistribution::redistributeLevel(LevelData<EBCellFAB>&             a_phi,
@@ -360,13 +495,52 @@ EBRedistribution::redistributeLevel(LevelData<EBCellFAB>&             a_phi,
                                     const Real&                       a_scale,
                                     const Interval&                   a_variables) const noexcept
 {
-  CH_TIME("EBRedistribution::redistributeLevel");
+  CH_TIMERS("EBRedistribution::redistributeLevel");
+  CH_TIMER("EBRedistribution::redistributeLevel::irreg_cells", t1);
 
   CH_assert(m_isDefined);
   CH_assert(a_phi.isDefined());
   CH_assert(a_deltaM.isDefined());
+  CH_assert(a_deltaM.disjointBoxLayout() == m_eblg.getDBL());
+  CH_assert(a_phi.disjointBoxLayout() == m_eblg.getDBL());
   CH_assert(a_phi.nComp() > a_variables.end());
   CH_assert(a_deltaM.nComp() > a_variables.end());
+
+  const DisjointBoxLayout& dbl    = m_eblg.getDBL();
+  const EBISLayout&        ebisl  = m_eblg.getEBISL();
+  const ProblemDomain&     domain = m_eblg.getDomain();
+
+  LevelData<EBCellFAB> levelBuffer(dbl, 1, m_redistRadius * IntVect::Unit, EBCellFactory(ebisl));
+
+  for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      const BaseIVFAB<Real>&       deltaM   = a_deltaM[dit()];
+      const BaseIVFAB<VoFStencil>& stencils = m_redistStencilsLevel[dit()];
+
+      EBCellFAB& buffer = levelBuffer[dit()];
+      buffer.setVal(0.0);
+
+      // Apply stencil into buffer.
+      CH_START(t1);
+      VoFIterator& vofit = m_vofit[dit()];
+      for (vofit.reset(); vofit.ok(); ++vofit) {
+        const VolIndex&   vof      = vofit();
+        const VoFStencil& stencil  = stencils(vof, 0);
+        const Real&       massDiff = deltaM(vof, ivar);
+
+        for (int i = 0; i < stencil.size(); i++) {
+          buffer(stencil.vof(i), 0) += a_scale * stencil.weight(i) * massDiff;
+        }
+      }
+      CH_STOP(t1);
+    }
+
+    // Increment a_phi by the result.
+    const Interval srcInterv = Interval(0, 0);
+    const Interval dstInterv = Interval(ivar, ivar);
+
+    levelBuffer.copyTo(srcInterv, a_phi, dstInterv, m_levelCopier, EBAddOp());
+  }
 }
 
 void
@@ -375,13 +549,52 @@ EBRedistribution::redistributeFine(LevelData<EBCellFAB>&             a_phiFine,
                                    const Real&                       a_scaleFine,
                                    const Interval&                   a_variables) const noexcept
 {
-  CH_TIME("EBRedistribution::redistributeFine");
+  CH_TIMERS("EBRedistribution::redistributeFine");
+  CH_TIMER("EBRedistribution::redistributeFine::irreg_cells", t1);
 
   CH_assert(m_isDefined);
+  CH_assert(m_hasFine);
   CH_assert(a_phiFine.isDefined());
   CH_assert(a_deltaM.isDefined());
+  CH_assert(a_deltaM.disjointBoxLayout() == m_eblg.getDBL());
+  CH_assert(a_phiFine.disjointBoxLayout() == m_eblgFine.getDBL());
   CH_assert(a_phiFine.nComp() > a_variables.end());
   CH_assert(a_deltaM.nComp() > a_variables.end());
+
+  const DisjointBoxLayout& dblFine   = m_eblgRefined.getDBL();
+  const EBISLayout&        ebislFine = m_eblgRefined.getEBISL();
+
+  LevelData<EBCellFAB> fineBuffer(dblFine, 1, m_redistRadius * IntVect::Unit, EBCellFactory(ebislFine));
+
+  for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
+    for (DataIterator dit(dblFine); dit.ok(); ++dit) {
+      const BaseIVFAB<Real>&       deltaM   = a_deltaM[dit()];
+      const BaseIVFAB<VoFStencil>& stencils = m_redistStencilsFine[dit()];
+
+      EBCellFAB& buffer = fineBuffer[dit()];
+      buffer.setVal(0.0);
+
+      // Apply stencil into buffer.
+      CH_START(t1);
+      VoFIterator& vofit = m_vofit[dit()];
+      for (vofit.reset(); vofit.ok(); ++vofit) {
+        const VolIndex&   vof      = vofit();
+        const VoFStencil& stencil  = stencils(vof, 0);
+        const Real&       massDiff = deltaM(vof, ivar);
+
+        for (int i = 0; i < stencil.size(); i++) {
+          buffer(stencil.vof(i), 0) += a_scaleFine * stencil.weight(i) * massDiff;
+        }
+      }
+      CH_STOP(t1);
+    }
+
+    // Increment a_phi by the result.
+    const Interval srcInterv = Interval(0, 0);
+    const Interval dstInterv = Interval(ivar, ivar);
+
+    fineBuffer.copyTo(srcInterv, a_phiFine, dstInterv, m_fineCopier, EBAddOp());
+  }
 }
 
 #include <CD_NamespaceFooter.H>
