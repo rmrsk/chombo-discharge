@@ -226,6 +226,11 @@ protected:
   LayoutData<BaseIVFAB<VoFStencil>> m_redistStencilsFine;
 
   /*!
+    @brief Iterator for going through all cells on this level that we redistribute from
+  */
+  mutable LayoutData<VoFIterator> m_vofit;
+
+  /*!
     @brief Define redistribution stencils
   */
   virtual void
@@ -236,6 +241,20 @@ protected:
   */
   virtual void
   defineBuffers() noexcept;
+
+  /*!
+    @brief Define the valid region of this level.
+    @param[inout] a_validCells Valid grid cells on this level. 
+  */
+  virtual void
+  defineValidCells(LevelData<BaseFab<bool>>& a_validCells) const noexcept;
+
+  /*!
+    @brief Define the cells on the coarse side of the CF interface that we would redistribute to. 
+    @param[inout] a_validCells Valid grid cells on this level. 
+  */
+  virtual void
+  defineInterfaceCells(LevelData<BaseFab<bool>>& a_interfaceCells) const noexcept;
 };
 
 #include <CD_NamespaceFooter.H>
