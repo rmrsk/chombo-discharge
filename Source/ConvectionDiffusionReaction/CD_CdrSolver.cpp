@@ -323,8 +323,7 @@ CdrSolver::allocate()
 
   // Allocate stuff for holding fluxes -- this data is used when computing advection and diffusion fluxes.
   if (m_isDiffusive || m_isMobile) {
-    m_amr->allocate(m_scratchFluxOne, m_realm, m_phase, m_nComp);
-    m_amr->allocate(m_scratchFluxTwo, m_realm, m_phase, m_nComp);
+
   }
 
   // These don't consume (much) memory so we always allocate them.
@@ -356,15 +355,13 @@ CdrSolver::deallocate()
   m_amr->deallocate(m_phi);
   m_amr->deallocate(m_source);
   m_amr->deallocate(m_faceVelocity);
+  m_amr->deallocate(m_faceStates);  
   m_amr->deallocate(m_cellVelocity);
   m_amr->deallocate(m_ebFlux);
   m_amr->deallocate(m_cellCenteredDiffusionCoefficient);
   m_amr->deallocate(m_faceCenteredDiffusionCoefficient);
   m_amr->deallocate(m_ebCenteredDiffusionCoefficient);
   m_amr->deallocate(m_scratch);
-  m_amr->deallocate(m_scratchFluxOne);
-  m_amr->deallocate(m_scratchFluxTwo);
-  m_amr->deallocate(m_faceStates);
 }
 
 void
@@ -3034,18 +3031,23 @@ CdrSolver::gwnDiffusionSource(EBAMRCellData& a_noiseSource, const EBAMRCellData&
   // compute Div(G).
 
   if (m_isDiffusive) {
+    EBAMRFluxData scratchFluxOne;
+    EBAMRFluxData scratchFluxTwo;
 
-    // m_scratchFluxOne = phis on faces (smoothing as to avoid negative densities)
-    this->smoothHeavisideFaces(m_scratchFluxOne, a_cellPhi);
-    DataOps::multiply(m_scratchFluxOne, m_faceCenteredDiffusionCoefficient); // m_scratchFluxOne = D*phis
-    DataOps::scale(m_scratchFluxOne, 2.0);                                   // m_scratchFluxOne = 2*D*phis
-    DataOps::squareRoot(m_scratchFluxOne);                                   // m_scratchFluxOne = sqrt(2*D*phis)
+    m_amr->allocate(scratchFluxOne, m_realm, m_phase, m_nComp);
+    m_amr->allocate(scratchFluxTwo, m_realm, m_phase, m_nComp);    
+
+    // scratchFluxOne = phis on faces (smoothing as to avoid negative densities)
+    this->smoothHeavisideFaces(scratchFluxOne, a_cellPhi);
+    DataOps::multiply(scratchFluxOne, m_faceCenteredDiffusionCoefficient); // scratchFluxOne = D*phis
+    DataOps::scale(scratchFluxOne, 2.0);                                   // scratchFluxOne = 2*D*phis
+    DataOps::squareRoot(scratchFluxOne);                                   // scratchFluxOne = sqrt(2*D*phis)
 
 #if 0 // Debug, check if we have negative face values
     for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++){
       for (int dir = 0; dir <SpaceDim; dir++){
 	Real max, min;
-	EBLevelDataOps::getMaxMin(max, min, *m_scratchFluxOne[lvl], 0, dir);
+	EBLevelDataOps::getMaxMin(max, min, *scratchFluxOne[lvl], 0, dir);
 	if(min < 0.0 || max < 0.0){
 	  MayDay::Abort("CdrSolver::gwnDiffusionSource - negative face value");
 	}
@@ -3053,12 +3055,12 @@ CdrSolver::gwnDiffusionSource(EBAMRCellData& a_noiseSource, const EBAMRCellData&
     }
 #endif
 
-    this->fillGwn(m_scratchFluxTwo, 1.0); // Gaussian White Noise = W/sqrt(dV)
+    this->fillGwn(scratchFluxTwo, 1.0); // Gaussian White Noise = W/sqrt(dV)
     DataOps::
-      multiply(m_scratchFluxOne,
-               m_scratchFluxTwo); // Now m_scratchFluxOne holds the fluctuating cell-centered flux Z*sqrt(2*D*phi).
+      multiply(scratchFluxOne,
+               scratchFluxTwo); // Now scratchFluxOne holds the fluctuating cell-centered flux Z*sqrt(2*D*phi).
     this->computeDivG(a_noiseSource,
-                      m_scratchFluxOne,
+                      scratchFluxOne,
                       m_ebZero,
                       false); // Compute the finite volume approximation and make it into a source term.
 
