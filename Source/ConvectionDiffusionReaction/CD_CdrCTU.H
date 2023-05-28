@@ -133,14 +133,14 @@ protected:
   */
   virtual void
   parseSlopeLimiter();
-  n
-    /*!
+
+  /*!
     @brief minmod slope function. 
     @param[in] dwl Left slope
     @param[in] dwr Right slope
   */
-    Real
-    minmod(const Real& dwl, const Real& dwr) const noexcept;
+  Real
+  minmod(const Real& dwl, const Real& dwr) const noexcept;
 
   /*!
     @brief Superbee slope limiter. 
