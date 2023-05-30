@@ -1706,6 +1706,14 @@ public:
   getFluxRegister(const std::string a_realm, const phase::which_phase a_phase) const;
 
   /*!
+    @brief Get the redistribution operators
+    @param[in] a_realm Realm name
+    @param[in] a_phase Phase (gas or solid)
+  */
+  Vector<RefCountedPtr<EBRedistribution>>&
+  getRedistributionOp(const std::string a_realm, const phase::which_phase a_phase) const;
+
+  /*!
     @brief Get redistribution
     @param[in] a_realm Realm name
     @param[in] a_phase Phase (gas or solid)

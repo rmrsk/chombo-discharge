@@ -17,6 +17,7 @@
 #include <CD_AdvectionDiffusionStepper.H>
 #include <CD_AdvectionDiffusionSpecies.H>
 #include <CD_DataOps.H>
+#include <CD_DischargeIO.H>
 #include <CD_NamespaceHeader.H>
 
 using namespace Physics::AdvectionDiffusion;
@@ -461,6 +462,38 @@ AdvectionDiffusionStepper::advance(const Real a_dt)
     std::cout << "step = " << m_timeStep + 1 << "\t\t\t"
               << "mass conservation % = " << 100. * (finalMass - initialMass) / initialMass << std::endl;
   }
+
+#if 1
+  MayDay::Warning("Development code in CD_AdvectionDiffusionStepper.cpp -- remove before merging");
+
+  EBAMRCellData phi;
+  EBAMRIVData   deltaM;
+
+  m_amr->allocate(phi, m_realm, m_phase, 1);
+  m_amr->allocate(deltaM, m_realm, m_phase, 1);
+
+  DataOps::setValue(phi, 0.0);
+  DataOps::setValue(deltaM, 1.0);
+
+  Vector<RefCountedPtr<EBRedistribution>>& redistOps = m_amr->getRedistributionOp(m_realm, m_phase);
+
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    const RefCountedPtr<EBRedistribution>& redistOp = redistOps[lvl];
+
+    LevelData<EBCellFAB>* coarPhi  = (lvl > 0) ? &(*phi[lvl - 1]) : nullptr;
+    LevelData<EBCellFAB>* levelPhi = &(*phi[lvl]);
+    LevelData<EBCellFAB>* finePhi  = (lvl < m_amr->getFinestLevel()) ? &(*phi[lvl + 1]) : nullptr;
+
+    const Real coarVol  = (lvl > 0) ? std::pow(m_amr->getDx()[lvl - 1], SpaceDim) : -1.0;
+    const Real levelVol = std::pow(m_amr->getDx()[lvl], SpaceDim);
+    const Real fineVol  = (lvl > m_amr->getFinestLevel()) ? std::pow(m_amr->getDx()[lvl + 1], SpaceDim) : -1.0;
+
+    redistOp->redistributeAMR(coarPhi, levelPhi, finePhi, *deltaM[lvl], 1.0 / 4.0, 1.0, 4.0, Interval(0, 0));
+  }
+
+  m_amr->average(phi, m_realm, m_phase, Average::Conservative);
+  DischargeIO::writeEBHDF5(phi, "phi.hdf5");
+#endif
 
   return a_dt;
 }

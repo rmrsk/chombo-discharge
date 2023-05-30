@@ -338,6 +338,13 @@ public:
   getFluxRegister(const phase::which_phase a_phase);
 
   /*!
+    @brief Get the redistribution operators
+    @param[in] a_phase Phase (gas or solid)
+  */
+  Vector<RefCountedPtr<EBRedistribution>>&
+  getRedistributionOp(const phase::which_phase a_phase);
+
+  /*!
     @brief Get level redistribution utility
     @param[in] a_phase Phase
   */

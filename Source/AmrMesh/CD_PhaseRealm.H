@@ -329,6 +329,13 @@ public:
   getFluxRegister() const;
 
   /*!
+    @brief Get the redistribution operators
+    @param[in] a_phase Phase (gas or solid)
+  */
+  Vector<RefCountedPtr<EBRedistribution>>&
+  getRedistributionOp() const;
+
+  /*!
     @brief Get level redistribution utility
   */
   Vector<RefCountedPtr<EBLevelRedist>>&
@@ -554,7 +561,7 @@ protected:
   /*!
     @brief Redistribution utilities
   */
-  Vector<RefCountedPtr<EBRedistribution>> m_redistributionOp;
+  mutable Vector<RefCountedPtr<EBRedistribution>> m_redistributionOp;
 
   /*!
     @brief Gradient operator

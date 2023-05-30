@@ -3014,6 +3014,23 @@ AmrMesh::getFluxRegister(const std::string a_realm, const phase::which_phase a_p
   return m_realms[a_realm]->getFluxRegister(a_phase);
 }
 
+Vector<RefCountedPtr<EBRedistribution>>&
+AmrMesh::getRedistributionOp(const std::string a_realm, const phase::which_phase a_phase) const
+{
+  CH_TIME("AmrMesh::getRedistributionOp");
+  if (m_verbosity > 1) {
+    pout() << "AmrMesh::getRedistributionOp" << endl;
+  }
+
+  if (!this->queryRealm(a_realm)) {
+    const std::string str = "AmrMesh::getRedistributionOp(string, phase::which_phase) - could not find realm '" +
+                            a_realm + "'";
+    MayDay::Abort(str.c_str());
+  }
+
+  return m_realms[a_realm]->getRedistributionOp(a_phase);
+}
+
 Vector<RefCountedPtr<EBLevelRedist>>&
 AmrMesh::getLevelRedist(const std::string a_realm, const phase::which_phase a_phase) const
 {

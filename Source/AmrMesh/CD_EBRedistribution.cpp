@@ -13,6 +13,7 @@
 #include <CH_Timer.H>
 #include <EBCellFactory.H>
 #include <NeighborIterator.H>
+#include <EBFastFR.cpp>
 
 // Our includes
 #include <CD_EBRedistribution.H>
@@ -49,9 +50,7 @@ EBRedistribution::EBRedistribution(const EBLevelGrid& a_eblgCoar,
                a_redistributeOutside);
 }
 
-EBRedistribution::~EBRedistribution() noexcept {
-  CH_TIME("EBRedistribution::~EBRedistribution");
-}
+EBRedistribution::~EBRedistribution() noexcept { CH_TIME("EBRedistribution::~EBRedistribution"); }
 
 void
 EBRedistribution::define(const EBLevelGrid& a_eblgCoar,
@@ -230,7 +229,7 @@ EBRedistribution::defineStencils() noexcept
               totalVolume += volFine * ebisBoxFine.volFrac(refinedVoFs[i]);
             }
 
-            break;
+            continue;
           }
         }
 
@@ -242,7 +241,7 @@ EBRedistribution::defineStencils() noexcept
 
             totalVolume += volCoar * ebisBoxCoar.volFrac(coarsenedVoF);
 
-            break;
+            continue;
           }
         }
 
@@ -252,7 +251,7 @@ EBRedistribution::defineStencils() noexcept
 
         levelVoFs.push_back(curVoF);
 
-        totalVolume += ebisBox.volFrac(curVoF) * vol;
+        totalVolume += vol * ebisBox.volFrac(curVoF);
       }
 
       VoFStencil& coarStencil  = stencilsCoar(vof, 0);
@@ -297,7 +296,7 @@ EBRedistribution::defineValidCells(LevelData<BaseFab<bool>>& a_validCells) const
 
   const DisjointBoxLayout& dbl = m_eblg.getDBL();
 
-  a_validCells.define(dbl, 1, IntVect::Zero);
+  a_validCells.define(dbl, 1, m_redistRadius * IntVect::Unit);
   for (DataIterator dit(dbl); dit.ok(); ++dit) {
     a_validCells[dit()].setVal(true);
   }
@@ -401,7 +400,7 @@ EBRedistribution::defineBuffers() noexcept
     const DisjointBoxLayout& dblRefined = m_eblgRefined.getDBL();
     const ProblemDomain&     domainFine = m_eblgFine.getDomain();
 
-    m_fineCopier.ghostDefine(dblRefined, dblFine, domainFine, m_redistRadius * IntVect::Unit);
+    m_fineCopier.ghostDefine(dblRefined, dblFine, domainFine, m_refToFine * m_redistRadius * IntVect::Unit);
   }
 }
 
@@ -564,7 +563,7 @@ EBRedistribution::redistributeFine(LevelData<EBCellFAB>&             a_phiFine,
   const DisjointBoxLayout& dblFine   = m_eblgRefined.getDBL();
   const EBISLayout&        ebislFine = m_eblgRefined.getEBISL();
 
-  LevelData<EBCellFAB> fineBuffer(dblFine, 1, m_redistRadius * IntVect::Unit, EBCellFactory(ebislFine));
+  LevelData<EBCellFAB> fineBuffer(dblFine, 1, m_refToFine * m_redistRadius * IntVect::Unit, EBCellFactory(ebislFine));
 
   for (int ivar = a_variables.begin(); ivar <= a_variables.end(); ivar++) {
     for (DataIterator dit(dblFine); dit.ok(); ++dit) {

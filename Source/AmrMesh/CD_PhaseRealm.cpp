@@ -1188,6 +1188,16 @@ PhaseRealm::getFluxRegister() const
   return m_ebReflux;
 }
 
+Vector<RefCountedPtr<EBRedistribution>>&
+PhaseRealm::getRedistributionOp() const
+{
+  if (!this->queryOperator(s_eb_redist)) {
+    MayDay::Error("PhaseRealm::getRedistributionOp - operator not registered!");
+  }
+
+  return m_redistributionOp;
+}
+
 Vector<RefCountedPtr<EBLevelRedist>>&
 PhaseRealm::getLevelRedist() const
 {
