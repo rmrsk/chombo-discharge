@@ -413,7 +413,7 @@ Realm::defineValidCells()
           }
         };
 
-        BoxLoops::loop(cellBox, kernel);
+        BoxLoops::loop(fabMask.box(), kernel);
       }
     }
   }

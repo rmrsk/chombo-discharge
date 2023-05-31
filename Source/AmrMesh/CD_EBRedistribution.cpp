@@ -66,12 +66,12 @@ EBRedistribution::define(const EBLevelGrid& a_eblgCoar,
 
   CH_assert(a_eblg.isDefined());
 
-  m_redistRadius = 1;
-  m_refToCoar    = -1;
-  m_refToFine    = -1;
-
-  m_hasCoar = false;
-  m_hasFine = false;
+  m_redistRadius        = 1;
+  m_refToCoar           = -1;
+  m_refToFine           = -1;
+  m_hasCoar             = false;
+  m_hasFine             = false;
+  m_redistributeOutside = false; //a_redistributeOutside;
 
   if (a_eblgCoar.isDefined()) {
     CH_assert(a_refToCoar >= 2);
@@ -219,35 +219,31 @@ EBRedistribution::defineStencils() noexcept
           continue;
         }
 
-        if (m_hasFine) {
-          if (!(validCells(curIV))) {
-            const Vector<VolIndex>& refinedVoFs = ebisl.refine(curVoF, m_refToFine, dit());
+        if (!(validCells(curIV))) {
+          CH_assert(m_hasFine);
 
-            fineVoFs.append(refinedVoFs);
+          const Vector<VolIndex>& refinedVoFs = ebisl.refine(curVoF, m_refToFine, dit());
 
-            for (int i = 0; i < refinedVoFs.size(); i++) {
-              totalVolume += volFine * ebisBoxFine.volFrac(refinedVoFs[i]);
-            }
+          fineVoFs.append(refinedVoFs);
 
-            continue;
+          for (int i = 0; i < refinedVoFs.size(); i++) {
+            totalVolume += volFine * ebisBoxFine.volFrac(refinedVoFs[i]);
           }
+
+          continue;
         }
 
-        if (m_hasCoar) {
-          if (interfaceCells(curIV)) {
-            const VolIndex& coarsenedVoF = ebisl.coarsen(curVoF, m_refToCoar, dit());
+        if (interfaceCells(curIV)) {
+          CH_assert(m_hasCoar);
 
-            coarVoFs.push_back(coarsenedVoF);
+          const VolIndex& coarsenedVoF = ebisl.coarsen(curVoF, m_refToCoar, dit());
 
-            totalVolume += volCoar * ebisBoxCoar.volFrac(coarsenedVoF);
+          coarVoFs.push_back(coarsenedVoF);
 
-            continue;
-          }
+          totalVolume += volCoar * ebisBoxCoar.volFrac(coarsenedVoF);
+
+          continue;
         }
-
-        // Leaving in place in case I missed something above. Hopefully I'm not THAT stupid.
-        CH_assert(!m_hasCoar);
-        CH_assert(!m_hasFine);
 
         levelVoFs.push_back(curVoF);
 
@@ -258,13 +254,13 @@ EBRedistribution::defineStencils() noexcept
       VoFStencil& levelStencil = stencilsLevel(vof, 0);
       VoFStencil& fineStencil  = stencilsFine(vof, 0);
 
-      if (m_hasCoar) {
-        for (int i = 0; i < coarVoFs.size(); i++) {
-          const VolIndex& coarVoF = coarVoFs[i];
+      const Real inverseVolume = 1.0 / totalVolume;
 
-          if (domainCoar.contains(coarVoF.gridIndex())) {
-            coarStencil.add(coarVoF, volCoar * ebisBoxCoar.volFrac(coarVoF));
-          }
+      for (int i = 0; i < coarVoFs.size(); i++) {
+        const VolIndex& coarVoF = coarVoFs[i];
+
+        if (domainCoar.contains(coarVoF.gridIndex())) {
+          coarStencil.add(coarVoF, inverseVolume);
         }
       }
 
@@ -272,17 +268,15 @@ EBRedistribution::defineStencils() noexcept
         const VolIndex& levelVoF = levelVoFs[i];
 
         if (domain.contains(levelVoF.gridIndex())) {
-          levelStencil.add(levelVoF, vol * ebisBox.volFrac(levelVoF));
+          levelStencil.add(levelVoF, inverseVolume);
         }
       }
 
-      if (m_hasFine) {
-        for (int i = 0; i < fineVoFs.size(); i++) {
-          const VolIndex& fineVoF = fineVoFs[i];
+      for (int i = 0; i < fineVoFs.size(); i++) {
+        const VolIndex& fineVoF = fineVoFs[i];
 
-          if (domainFine.contains(fineVoF.gridIndex())) {
-            fineStencil.add(fineVoF, volFine * ebisBoxFine.volFrac(fineVoF));
-          }
+        if (domainFine.contains(fineVoF.gridIndex())) {
+          fineStencil.add(fineVoF, inverseVolume);
         }
       }
     }
@@ -308,8 +302,8 @@ EBRedistribution::defineValidCells(LevelData<BaseFab<bool>>& a_validCells) const
     coarsen(dblCoFi, m_eblgFine.getDBL(), m_refToFine);
 
     // Create some data = 0 on the coarse grid and = 1 on the fine grid.
-    LevelData<FArrayBox> data(dbl, 1, IntVect::Zero);
-    LevelData<FArrayBox> dataCoFi(dblCoFi, 1, IntVect::Zero);
+    LevelData<FArrayBox> data(dbl, 1, m_redistRadius * IntVect::Unit);
+    LevelData<FArrayBox> dataCoFi(dblCoFi, 1, m_redistRadius * IntVect::Unit);
 
     for (DataIterator dit(dbl); dit.ok(); ++dit) {
       data[dit()].setVal(0.0);
@@ -333,7 +327,7 @@ EBRedistribution::defineValidCells(LevelData<BaseFab<bool>>& a_validCells) const
         }
       };
 
-      BoxLoops::loop(cellBox, kernel);
+      BoxLoops::loop(mask.box(), kernel);
     }
   }
 }

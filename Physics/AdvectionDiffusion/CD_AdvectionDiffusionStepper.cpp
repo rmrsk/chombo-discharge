@@ -460,7 +460,7 @@ AdvectionDiffusionStepper::advance(const Real a_dt)
 
   if (procID() == 0 && m_debug) {
     std::cout << "step = " << m_timeStep + 1 << "\t\t\t"
-              << "mass conservation % = " << 100. * (finalMass - initialMass) / initialMass << std::endl;
+              << "mass loss % = " << 100. * (finalMass - initialMass) / initialMass << std::endl;
   }
 
 #if 1
@@ -475,6 +475,10 @@ AdvectionDiffusionStepper::advance(const Real a_dt)
   DataOps::setValue(phi, 0.0);
   DataOps::setValue(deltaM, 1.0);
 
+  if (m_amr->getFinestLevel() >= 1) {
+    DataOps::setValue(*deltaM[1], 0.0);
+  }
+
   Vector<RefCountedPtr<EBRedistribution>>& redistOps = m_amr->getRedistributionOp(m_realm, m_phase);
 
   for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
@@ -488,10 +492,58 @@ AdvectionDiffusionStepper::advance(const Real a_dt)
     const Real levelVol = std::pow(m_amr->getDx()[lvl], SpaceDim);
     const Real fineVol  = (lvl > m_amr->getFinestLevel()) ? std::pow(m_amr->getDx()[lvl + 1], SpaceDim) : -1.0;
 
-    redistOp->redistributeAMR(coarPhi, levelPhi, finePhi, *deltaM[lvl], 1.0 / 4.0, 1.0, 4.0, Interval(0, 0));
+    redistOp->redistributeAMR(coarPhi,
+                              levelPhi,
+                              finePhi,
+                              *deltaM[lvl],
+                              1.0 / levelVol,
+                              1.0 / levelVol,
+                              1.0 / levelVol,
+                              Interval(0, 0));
   }
 
-  m_amr->average(phi, m_realm, m_phase, Average::Conservative);
+  Real sumPhi    = 0.0;
+  Real sumDeltaM = 0.0;
+
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    const DisjointBoxLayout& dbl   = m_amr->getGrids(m_realm)[lvl];
+    const EBISLayout&        ebisl = m_amr->getEBISLayout(m_realm, m_phase)[lvl];
+    const Real               dx    = m_amr->getDx()[lvl];
+    const Real               vol   = std::pow(dx, SpaceDim);
+
+    for (DataIterator dit(dbl); dit.ok(); ++dit) {
+      const BaseFab<bool>& validCells = (*m_amr->getValidCells(m_realm)[lvl])[dit()];
+      const EBCellFAB&     phiDit     = (*phi[lvl])[dit()];
+      const FArrayBox&     phiDitReg  = phiDit.getFArrayBox();
+      const EBISBox&       ebisbox    = ebisl[dit()];
+
+      for (BoxIterator bit(dbl[dit()]); bit.ok(); ++bit) {
+        if (validCells(bit()) && ebisbox.isRegular(bit())) {
+          sumPhi += phiDitReg(bit(), 0) * vol;
+        }
+      }
+
+      VoFIterator& vofit = (*m_amr->getVofIterator(m_realm, m_phase)[lvl])[dit()];
+
+      for (vofit.reset(); vofit.ok(); ++vofit) {
+        const VolIndex& vof = vofit();
+        const IntVect   iv  = vof.gridIndex();
+
+        if (validCells(iv)) {
+          sumDeltaM += (*deltaM[lvl])[dit()](vof, 0);
+          sumPhi += phiDit(vof, 0) * ebisbox.volFrac(vof) * vol;
+        }
+      }
+    }
+  }
+
+  sumDeltaM = ParallelOps::sum(sumDeltaM);
+  sumPhi    = ParallelOps::sum(sumPhi);
+  if (procID() == 0) {
+    std::cout << sumDeltaM << "\t" << sumPhi << std::endl;
+  }
+
+  //  m_amr->average(phi, m_realm, m_phase, Average::Conservative);
   DischargeIO::writeEBHDF5(phi, "phi.hdf5");
 #endif
 

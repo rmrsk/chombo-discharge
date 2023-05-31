@@ -23,8 +23,21 @@
 
 /*!
   @brief Class for redistribution ala Chombo's flux redistribution. 
-  @details This uses the same algorithm as the core Chombo code, but includes much faster define functions and smaller memory footprint. Because
-  this class is used in a non-subcycling context, it has way fewer bells and whistles. This class permits redistribution outside of the domain, in which case some mass will (correctly) be lost
+  @details This uses the same algorithm as the core Chombo code, but includes much faster define functions and smaller memory 
+  footprint. Because this class is used in a non-subcycling context, it has way fewer bells and whistles. Note that this class
+  permits redistribution outside of the domain, in which case some mass will (correctly) be lost.
+
+  The underlying stencils for in this class can be understood as follows: Assume that we have some quantity deltaM_i that we
+  want to redistribute from cell i to nearby cells. We fetch all cells that are within a radius of 1 around this cell. If one
+  of these cells lie on other side of the refinement boundary, we coarsen it and fetch the corresponding coarse-grid cell. 
+  Likewise, if a neighborhood cell lies underneath the fine grid, we refine it and redistribute to the fine grid cells. In each
+  cut-cell we thus compute the total volume of the surrounding neighborhood as
+
+     totalVolume = sum_(level_cells) kappa_j + 1/NrefToFine^D * sum_(fine_cells) kappa_j + Nref*ToCoar^D * sum(coar_cells) kappa_j.
+
+  Every cell in the neighborhood of cell i gets a weight 1/totalVolume. Note that proper division by the grid resolution is not
+  made here; the user will have to ensure proper scaling of his/her variables when calling the actual redistribution functions. 
+  The scaling factors depend on what is actually being redistributed, and the user will need to work this out on paper. 
 */
 class EBRedistribution
 {
