@@ -475,7 +475,6 @@ public:
   virtual void
   regrid(const int a_lmin, const int a_oldFinestLevel, const int a_newFinestLevel);
 
-
   /*!
     @brief Get the realm where this solver is registered. 
     @return Returns realm name. 

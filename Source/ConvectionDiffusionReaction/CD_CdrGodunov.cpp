@@ -197,7 +197,7 @@ CdrGodunov::allocate()
 
       // Note: There is a "bug" in the function signature in Chombo. The second-to-last argument is the slope limiter and not the EBCF things.
       const EBIndexSpace* const ebis = eblgs[lvl]->getEBIS();
-      
+
       m_levelAdvect[lvl] = RefCountedPtr<EBAdvectLevelIntegrator>(new EBAdvectLevelIntegrator(*eblgs[lvl],
                                                                                               coarEblg,
                                                                                               refRat,
