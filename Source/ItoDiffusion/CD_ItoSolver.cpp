@@ -1723,17 +1723,23 @@ ItoSolver::redistributeAMR(EBAMRCellData& a_phi) const
   if (m_useRedistribution) {
     this->depositNonConservative(m_depositionNC, a_phi);    // Compute m_depositionNC = sum(kappa*Wc)/sum(kappa)
     this->depositHybrid(a_phi, m_massDiff, m_depositionNC); // Compute hybrid deposition, including mass differnce
-    this->incrementRedist(m_massDiff);                      // Increment level redistribution register
 
-    // Do the redistribution magic
-    const bool ebcf = m_amr->getEbCf();
-    if (ebcf) {                              // Mucho stuff to do here...
-      this->coarseFineIncrement(m_massDiff); // Compute C2F, F2C, and C2C mass transfers.
-      this->levelRedist(a_phi);              // Level redistribution.
-      this->coarseFineRedistribution(a_phi); // Do the coarse-fine redistribution.
-    }
-    else { // Very simple, just redistribute this level.
-      this->levelRedist(a_phi);
+    Vector<RefCountedPtr<EBRedistribution>>& redistOps = m_amr->getRedistributionOp(m_realm, m_phase);
+    for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+      const Real     scale     = 1.0;
+      const Interval variables = Interval(0, 0);
+      const bool     hasCoar   = lvl > 0;
+      const bool     hasFine   = lvl < m_amr->getFinestLevel();
+
+      if (hasCoar) {
+        redistOps[lvl]->redistributeCoar(*a_phi[lvl - 1], *m_massDiff[lvl], scale, variables);
+      }
+
+      redistOps[lvl]->redistributeLevel(*a_phi[lvl], *m_massDiff[lvl], scale, variables);
+
+      if (hasFine) {
+        redistOps[lvl]->redistributeFine(*a_phi[lvl + 1], *m_massDiff[lvl], scale, variables);
+      }
     }
   }
 }
@@ -1796,124 +1802,6 @@ ItoSolver::depositHybrid(EBAMRCellData&     a_depositionH,
       };
 
       BoxLoops::loop(vofit, kernel);
-    }
-  }
-}
-
-void
-ItoSolver::incrementRedist(const EBAMRIVData& a_massDifference) const
-{
-  CH_TIME("ItoSolver::incrementRedist");
-  if (m_verbosity > 5) {
-    pout() << m_name + "::incrementRedist" << endl;
-  }
-
-  const Interval interv(m_comp, m_comp);
-
-  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
-    const DisjointBoxLayout& dbl = m_amr->getGrids(m_realm)[lvl];
-
-    EBLevelRedist& levelRedist = *(m_amr->getLevelRedist(m_realm, m_phase)[lvl]);
-    levelRedist.setToZero();
-
-    for (DataIterator dit(dbl); dit.ok(); ++dit) {
-      levelRedist.increment((*a_massDifference[lvl])[dit()], dit(), interv);
-    }
-  }
-}
-
-void
-ItoSolver::levelRedist(EBAMRCellData& a_phi) const
-{
-  CH_TIME("ItoSolver::levelRedist");
-  if (m_verbosity > 5) {
-    pout() << m_name + "::levelRedist" << endl;
-  }
-
-  const Interval interv(m_comp, m_comp);
-
-  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
-    EBLevelRedist& levelRedist = *(m_amr->getLevelRedist(m_realm, m_phase)[lvl]);
-
-    levelRedist.redistribute(*a_phi[lvl], interv);
-    levelRedist.setToZero();
-  }
-}
-
-void
-ItoSolver::coarseFineIncrement(const EBAMRIVData& a_massDifference) const
-{
-  CH_TIME("ItoSolver::coarseFineIncrement");
-  if (m_verbosity > 5) {
-    pout() << m_name + "::coarseFineIncrement" << endl;
-  }
-
-  const Interval interv(m_comp, m_comp);
-
-  const int finestLevel = m_amr->getFinestLevel();
-
-  for (int lvl = 0; lvl <= finestLevel; lvl++) {
-    const DisjointBoxLayout& dbl = m_amr->getGrids(m_realm)[lvl];
-
-    RefCountedPtr<EBFineToCoarRedist>& fine2coarRedist = m_amr->getFineToCoarRedist(m_realm, m_phase)[lvl];
-    RefCountedPtr<EBCoarToFineRedist>& coar2fineRedist = m_amr->getCoarToFineRedist(m_realm, m_phase)[lvl];
-    RefCountedPtr<EBCoarToCoarRedist>& coar2coarRedist = m_amr->getCoarToCoarRedist(m_realm, m_phase)[lvl];
-
-    const bool hasCoar = lvl > 0;
-    const bool hasFine = lvl < finestLevel;
-
-    if (hasCoar) {
-      fine2coarRedist->setToZero();
-    }
-    if (hasFine) {
-      coar2fineRedist->setToZero();
-      coar2coarRedist->setToZero();
-    }
-
-    for (DataIterator dit(dbl); dit.ok(); ++dit) {
-      if (hasCoar) {
-        fine2coarRedist->increment((*a_massDifference[lvl])[dit()], dit(), interv);
-      }
-      if (hasFine) {
-        coar2fineRedist->increment((*a_massDifference[lvl])[dit()], dit(), interv);
-        coar2coarRedist->increment((*a_massDifference[lvl])[dit()], dit(), interv);
-      }
-    }
-  }
-}
-
-void
-ItoSolver::coarseFineRedistribution(EBAMRCellData& a_phi) const
-{
-  CH_TIME("ItoSolver::coarseFineRedistribution");
-  if (m_verbosity > 5) {
-    pout() << m_name + "::coarseFineRedistribution" << endl;
-  }
-
-  const Interval interv(m_comp, m_comp);
-
-  const int finestLevel = m_amr->getFinestLevel();
-
-  for (int lvl = 0; lvl <= finestLevel; lvl++) {
-
-    const bool hasCoar = lvl > 0;
-    const bool hasFine = lvl < finestLevel;
-
-    RefCountedPtr<EBCoarToFineRedist>& coar2fineRedist = m_amr->getCoarToFineRedist(m_realm, m_phase)[lvl];
-    RefCountedPtr<EBCoarToCoarRedist>& coar2coarRedist = m_amr->getCoarToCoarRedist(m_realm, m_phase)[lvl];
-    RefCountedPtr<EBFineToCoarRedist>& fine2coarRedist = m_amr->getFineToCoarRedist(m_realm, m_phase)[lvl];
-
-    if (hasCoar) {
-      fine2coarRedist->redistribute(*a_phi[lvl - 1], interv);
-      fine2coarRedist->setToZero();
-    }
-
-    if (hasFine) {
-      coar2fineRedist->redistribute(*a_phi[lvl + 1], interv);
-      coar2coarRedist->redistribute(*a_phi[lvl], interv);
-
-      coar2fineRedist->setToZero();
-      coar2coarRedist->setToZero();
     }
   }
 }

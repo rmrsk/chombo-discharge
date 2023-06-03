@@ -14,12 +14,6 @@
 
 // Chombo includes
 #include <DisjointBoxLayout.H>
-#include <EBLevelRedist.H>
-#include <EBCoarToFineRedist.H>
-#include <EBMGInterp.H>
-#include <EBCoarToCoarRedist.H>
-#include <EBFineToCoarRedist.H>
-#include <EBPWLFineInterp.H>
 #include <ProblemDomain.H>
 
 // Our includes
@@ -336,30 +330,6 @@ public:
   getRedistributionOp() const;
 
   /*!
-    @brief Get level redistribution utility
-  */
-  Vector<RefCountedPtr<EBLevelRedist>>&
-  getLevelRedist() const;
-
-  /*!
-    @brief Get coarse-to-fine redistribution utility
-  */
-  Vector<RefCountedPtr<EBCoarToFineRedist>>&
-  getCoarToFineRedist() const;
-
-  /*!
-    @brief Get coarse-to-coarse redistribution utility
-  */
-  Vector<RefCountedPtr<EBCoarToCoarRedist>>&
-  getCoarToCoarRedist() const;
-
-  /*!
-    @brief Get fine-to-coarse redistribution utility
-  */
-  Vector<RefCountedPtr<EBFineToCoarRedist>>&
-  getFineToCoarRedist() const;
-
-  /*!
     @brief Get level-set function
   */
   const EBAMRFAB&
@@ -537,26 +507,6 @@ protected:
     @brief Flux register utility
   */
   mutable Vector<RefCountedPtr<EBReflux>> m_ebReflux;
-
-  /*!
-    @brief Level redistribution utility
-  */
-  mutable Vector<RefCountedPtr<EBLevelRedist>> m_levelRedist;
-
-  /*!
-    @brief Coarse-to-fine redistribution utility
-  */
-  mutable Vector<RefCountedPtr<EBCoarToFineRedist>> m_coarToFineRedist;
-
-  /*!
-    @brief Coarse-to-coarse redistribution utility
-  */
-  mutable Vector<RefCountedPtr<EBCoarToCoarRedist>> m_coarToCoarRedist;
-
-  /*!
-    @brief Fine-to-coarse redistribution utility
-  */
-  mutable Vector<RefCountedPtr<EBFineToCoarRedist>> m_fineToCoarRedist;
 
   /*!
     @brief Redistribution utilities

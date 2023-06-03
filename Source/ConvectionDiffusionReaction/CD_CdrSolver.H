@@ -669,6 +669,14 @@ public:
   virtual void
   extrapolateAdvectiveFluxToEB(EBAMRIVData& a_ebFlux) const noexcept;
 
+  /*!
+    @brief Add data through redistribution into cell-centered holders
+    @param[inout] a_phi   Target data
+    @param[in]    a_delta Data to be redistributed
+  */
+  virtual void
+  redistribute(EBAMRCellData& a_phi, const EBAMRIVData& a_delta) const noexcept;
+
 protected:
   /*!
     @brief Redistribution method

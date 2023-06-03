@@ -477,6 +477,40 @@ CdrSolver::computeDivG(EBAMRCellData&     a_divG,
 }
 
 void
+CdrSolver::redistribute(EBAMRCellData& a_phi, const EBAMRIVData& a_delta) const noexcept
+{
+  CH_TIME("CdrSolver::redistribute");
+  if (m_verbosity > 5) {
+    pout() << m_name + "::redistribute" << endl;
+  }
+
+  CH_assert(a_phi.getRealm() == m_realm);
+  CH_assert(a_delta.getRealm() == m_realm);
+
+  Vector<RefCountedPtr<EBRedistribution>>& redistOps = m_amr->getRedistributionOp(m_realm, m_phase);
+
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    const Real     scale     = 1.0;
+    const Interval variables = Interval(0, 0);
+    const bool     hasCoar   = lvl > 0;
+    const bool     hasFine   = lvl < m_amr->getFinestLevel();
+
+    CH_assert(a_phi[lvl]->nComp() == 1);
+    CH_assert(a_delta[lvl]->nComp() == 1);
+
+    if (hasCoar) {
+      redistOps[lvl]->redistributeCoar(*a_phi[lvl - 1], *a_delta[lvl], scale, variables);
+    }
+
+    redistOps[lvl]->redistributeLevel(*a_phi[lvl], *a_delta[lvl], scale, variables);
+
+    if (hasFine) {
+      redistOps[lvl]->redistributeFine(*a_phi[lvl + 1], *a_delta[lvl], scale, variables);
+    }
+  }
+}
+
+void
 CdrSolver::computeAdvectionFlux(EBAMRFluxData&       a_flux,
                                 const EBAMRFluxData& a_facePhi,
                                 const EBAMRFluxData& a_faceVelocity,

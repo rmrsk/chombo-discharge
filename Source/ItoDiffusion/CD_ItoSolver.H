@@ -1476,34 +1476,6 @@ protected:
   depositHybrid(EBAMRCellData& a_depositionH, EBAMRIVData& a_massDifference, const EBAMRIVData& a_depositionNC) const;
 
   /*!
-    @brief Increment redistribution objects with mass to be redistributed
-    @param[in] a_massDifference mass to be redistributed. 
-  */
-  void
-  incrementRedist(const EBAMRIVData& a_massDifference) const;
-
-  /*!
-    @brief Do redistribution on all levels, no coarse-fine stuff
-    @param[inout] a_phi Data to be redistributed into. 
-  */
-  void
-  levelRedist(EBAMRCellData& a_phi) const;
-
-  /*!
-    @brief Increment the coarse-fine redist with mass difference (only for EB x CF)
-    @param[in] a_massDifference mass to be redistributed. 
-  */
-  void
-  coarseFineIncrement(const EBAMRIVData& m_massDifference) const;
-
-  /*!
-    @brief Do coarse-fine mass redistribution
-    @param[inout] a_phi Data to be redistributed into. 
-  */
-  void
-  coarseFineRedistribution(EBAMRCellData& a_phi) const;
-
-  /*!
     @brief Superparticle merging with BVH trees
     @param[inout] a_particles        Particles to be merged/split
     @param[in]    a_particlesPerCell Target number of particles per cell
