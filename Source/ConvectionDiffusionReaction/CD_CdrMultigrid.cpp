@@ -469,10 +469,6 @@ CdrMultigrid::computeDivJ(EBAMRCellData& a_divJ,
     // Fill ghost cells
     m_amr->interpGhostPwl(a_phi, m_realm, m_phase);
 
-    if (m_whichRedistribution == Redistribution::MassWeighted) {
-      this->setRedistWeights(a_phi);
-    }
-
     // We will let scratchFlux hold the total flux = advection + diffusion fluxes
     DataOps::setValue(scratchFlux, 0.0);
 
@@ -539,10 +535,6 @@ CdrMultigrid::computeDivF(EBAMRCellData& a_divF,
     m_amr->interpGhostPwl(a_phi, m_realm, m_phase);
     m_amr->interpGhostPwl(m_cellVelocity, m_realm, m_phase);
 
-    if (m_whichRedistribution == Redistribution::MassWeighted) {
-      this->setRedistWeights(a_phi);
-    }
-
     // Cell-centered velocities become face-centered velocities.
     this->averageVelocityToFaces();
 
@@ -586,10 +578,6 @@ CdrMultigrid::computeDivD(EBAMRCellData& a_divD,
 
     // Fill ghost cells
     m_amr->interpGhostPwl(a_phi, m_realm, m_phase);
-
-    if (m_whichRedistribution == Redistribution::MassWeighted) {
-      this->setRedistWeights(a_phi);
-    }
 
     this->computeDiffusionFlux(scratchFlux, a_phi, a_domainFlux); // Compute the face-centered diffusion flux
 
