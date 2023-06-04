@@ -369,6 +369,22 @@ BrownianWalkerStepper::preRegrid(const int a_lbase, const int a_oldFinestLevel)
     pout() << "BrownianWalkerStepper::preRegrid" << endl;
   }
 
+  // TLDR: This does two things. The first is to deposit the number of particles per cell (ish) to the mesh. This can be used to load balance the application
+  //       in the regrid step. The second this is that it puts all particle data holders in "regrid" mode.
+  m_amr->allocate(m_regridPPC, m_realm, m_phase, 1);
+
+  // Deposit mass to scratch data holder. Then make sure the number of particles per cell
+  m_solver->depositParticles<ItoParticle, &ItoParticle::weight>(m_regridPPC,
+                                                                m_solver->getParticles(ItoSolver::WhichContainer::Bulk),
+                                                                DepositionType::NGP,
+                                                                CoarseFineDeposition::Interp);
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    const Real dx = m_amr->getDx()[lvl];
+    const Real dV = std::pow(dx, SpaceDim);
+
+    DataOps::scale(*m_regridPPC[lvl], dV);
+  }
+
   // Solver knows what to do.
   m_solver->preRegrid(a_lbase, a_oldFinestLevel);
 }
@@ -517,6 +533,8 @@ BrownianWalkerStepper::postRegrid()
     pout() << "BrownianWalkerStepper::postRegrid" << endl;
   }
 
+  m_regridPPC.clear();
+
   // Update advection-diffusion fields
   this->setAdvectionDiffusion();
 
@@ -572,9 +590,6 @@ BrownianWalkerStepper::loadBalanceBoxesMesh(Vector<Vector<int>>&             a_p
   constexpr int comp  = 0;
   constexpr int nComp = 1;
 
-  // This is the number of particles per cell, but it is stored on the old grids.
-  const EBAMRCellData& oldParticlesPerCell = m_solver->getScratch();
-
   // Make some storage for the number of particles per cell on the new grids.
   EBAMRCellData newParticlesPerCell;
   m_amr->allocate(newParticlesPerCell, a_realm, m_phase, 1);
@@ -586,7 +601,7 @@ BrownianWalkerStepper::loadBalanceBoxesMesh(Vector<Vector<int>>&             a_p
 
   // Copy old mesh data to new mesh data.
   for (int lvl = 0; lvl <= std::max(0, a_lmin - 1); lvl++) {
-    oldParticlesPerCell[lvl]->copyTo(*newParticlesPerCell[lvl]);
+    m_regridPPC[lvl]->copyTo(*newParticlesPerCell[lvl]);
   }
 
   // Now regrid where we got new grids.
@@ -600,8 +615,8 @@ BrownianWalkerStepper::loadBalanceBoxesMesh(Vector<Vector<int>>&             a_p
                              EBCoarseToFineInterp::Type::PWC);
 
       // Replace data where old region overlapped new region.
-      if (lvl < std::min(newParticlesPerCell.size(), oldParticlesPerCell.size())) {
-        oldParticlesPerCell[lvl]->copyTo(*newParticlesPerCell[lvl]);
+      if (lvl < std::min(newParticlesPerCell.size(), m_regridPPC.size())) {
+        m_regridPPC[lvl]->copyTo(*newParticlesPerCell[lvl]);
       }
     }
   }
