@@ -805,6 +805,22 @@ public:
 
 protected:
   /*!
+    @brief Enum for swapping between kernel methods
+  */
+  enum class KernelMethod
+  {
+    BoxIterator,
+    BoxLoop,
+    ChomboFortran,
+    ShapeArray
+  };
+
+  /*!
+    @brief Kernel method for swapping between our boxloops, ChomboFortran, and MD array macros.
+  */
+  KernelMethod m_kernelMethod;
+
+  /*!
     @brief Number of components that we solve for (always one..)
   */
   static constexpr int m_nComp = 1;

@@ -1,0 +1,40 @@
+#include "CONSTANTS.H"
+      subroutine applyopregular(
+     &     chf_fra1[lphi],
+     &     chf_const_fra1[phi],
+     &     chf_const_fra1[aco],
+     &     chf_const_fra1[b0],
+     &     chf_const_fra1[b1],
+     &     chf_const_fra1[b2],
+     &     chf_const_real[alpha],
+     &     chf_const_real[beta],
+     &     chf_const_real[dx],
+     &     chf_box[region])
+
+      integer chf_ddecl[i;j;k]
+      real_t laplphi, dx0
+
+      dx0 = beta/(dx * dx)
+
+#if CH_SPACEDIM==3
+      do k=CHF_LBOUND[region; 2], CHF_UBOUND[region; 2]
+#endif
+         do j=CHF_LBOUND[region; 1], CHF_UBOUND[region; 1]
+            do i = CHF_LBOUND[region; 0], CHF_UBOUND[region; 0]
+               laplphi = CHF_DTERM[
+     &              (b0(CHF_IX[i+1;j  ;k  ])*(phi(chf_ix[i+1;j  ;k  ]) - phi(chf_ix[i  ;j  ;k  ]))
+     &              - b0(CHF_IX[i  ;j  ;k  ])*(phi(chf_ix[i  ;j  ;k  ]) - phi(chf_ix[i-1;j  ;k  ])))*dx0;
+     &              +(b1(CHF_IX[i  ;j+1;k  ])*(phi(chf_ix[i  ;j+1;k  ]) - phi(chf_ix[i  ;j  ;k  ]))
+     &              - b1(CHF_IX[i  ;j  ;k  ])*(phi(chf_ix[i  ;j  ;k  ]) - phi(chf_ix[i  ;j-1;k  ])))*dx0;
+     &              +(b2(CHF_IX[i  ;j  ;k+1])*(phi(chf_ix[i  ;j  ;k+1]) - phi(chf_ix[i  ;j  ;k  ]))
+     &              - b2(CHF_IX[i  ;j  ;k  ])*(phi(chf_ix[i  ;j  ;k  ]) - phi(chf_ix[i  ;j  ;k-1])))*dx0]
+
+               lphi(chf_ix[i;j;k]) = laplphi + alpha * aco(chf_ix[i;j;k]) * phi(chf_ix[i;j;k])
+            enddo
+         enddo
+#if CH_SPACEDIM==3
+      enddo
+#endif
+
+      return
+      end

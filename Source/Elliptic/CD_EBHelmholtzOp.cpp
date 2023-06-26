@@ -23,6 +23,7 @@
 #include <CD_BoxLoops.H>
 #include <CD_EBReflux.H>
 #include <CD_ParallelOps.H>
+#include <CD_EBHelmholtzOpF_F.H>
 #include <CD_NamespaceHeader.H>
 
 constexpr int EBHelmholtzOp::m_nComp;
@@ -147,6 +148,25 @@ EBHelmholtzOp::EBHelmholtzOp(const Location::Cell                             a_
 
   // Define stencils and compute relaxation terms.
   this->defineStencils();
+
+  // Debug code - set the kernel method to BoxLoop (our chombo-discharge version of kernels). Can also use
+  // ChomboFortran or ShapeArray where we access through BaseFab macros.
+  m_kernelMethod = KernelMethod::BoxLoop;
+
+  std::string str;
+  pp.query("kernel", str);
+  if (str == "boxloop") {
+    m_kernelMethod = KernelMethod::BoxLoop;
+  }
+  if (str == "box_iterator") {
+    m_kernelMethod = KernelMethod::BoxIterator;
+  }
+  else if (str == "fortran") {
+    m_kernelMethod = KernelMethod::ChomboFortran;
+  }
+  else if (str == "shape_array") {
+    m_kernelMethod = KernelMethod::ShapeArray;
+  }
 }
 
 void
@@ -1068,7 +1088,9 @@ EBHelmholtzOp::applyOpRegular(EBCellFAB&       a_Lphi,
                               const DataIndex& a_dit,
                               const bool       a_homogeneousPhysBC)
 {
-  CH_TIME("EBHelmholtzOp::applyOpRegular(EBCellFAB, EBCellFAB, Box, DataIndex, bool)");
+  CH_TIMERS("EBHelmholtzOp::applyOpRegular");
+  CH_TIMER("EBHelmholtzOp::pointer_fetch", t1);
+  CH_TIMER("EBHelmholtzOp::regular_kernel", t2);
 
   // TLDR: This is the regular kernel which computes L(phi) using the standard 5/7 point stencil. Since we want a simple kernel,
   //       we first fill the ghost cells on the domain boundary so that the flux through the boundary is consistent with the flux
@@ -1077,20 +1099,26 @@ EBHelmholtzOp::applyOpRegular(EBCellFAB&       a_Lphi,
   // Fill a_phi such that centered differences pushes in the domain flux.
   this->applyDomainFlux(a_phi, a_cellBox, a_dit, a_homogeneousPhysBC);
 
+  CH_START(t1);
   BaseFab<Real>&       Lphi = a_Lphi.getSingleValuedFAB();
   const BaseFab<Real>& phi  = a_phi.getSingleValuedFAB();
   const BaseFab<Real>& aco  = (*m_Acoef)[a_dit].getSingleValuedFAB();
 
   // Need a handle to the regular b-coefficient which also exposes it in the kernel. This is
   // the best that I came up with.
-  const BaseFab<Real>* bco[SpaceDim];
+  BaseFab<Real>        dummy(Box(IntVect::Zero, IntVect::Zero), 1);
+  const BaseFab<Real>* bco[3];
+  for (int dir = 0; dir < 3; dir++) {
+    bco[dir] = &dummy;
+  }
   for (int dir = 0; dir < SpaceDim; dir++) {
     bco[dir] = &(*m_Bcoef)[a_dit][dir].getSingleValuedFAB();
   }
+  CH_STOP(t1);
 
-  // This is the C++ kernel. It adds the diagonal and the Laplacian part.
   const Real factor = m_beta / (m_dx * m_dx);
 
+  // This is the C++ kernel. It adds the diagonal and the Laplacian part.
   auto kernel = [&](const IntVect& iv) -> void {
     Lphi(iv, m_comp) = m_alpha * aco(iv, m_comp) * phi(iv, m_comp) +
                        factor * (+(*bco[0])(iv + BASISV(0), m_comp) * (phi(iv + BASISV(0), m_comp) - phi(iv, m_comp)) -
@@ -1104,8 +1132,67 @@ EBHelmholtzOp::applyOpRegular(EBCellFAB&       a_Lphi,
                                 );
   };
 
-  // Launch the kernel.
-  BoxLoops::loop(a_cellBox, kernel);
+  CH_START(t2);
+  switch (m_kernelMethod) {
+  case KernelMethod::BoxIterator: {
+    for (BoxIterator bit(a_cellBox); bit.ok(); ++bit) {
+      const IntVect iv = bit();
+
+      kernel(iv);
+    }
+
+    break;
+  }
+  case KernelMethod::BoxLoop: {
+    BoxLoops::loop(a_cellBox, kernel);
+
+    break;
+  }
+  case KernelMethod::ChomboFortran: {
+    FORT_APPLYOPREGULAR(CHF_FRA1(Lphi, m_comp),
+                        CHF_CONST_FRA1(phi, m_comp),
+                        CHF_CONST_FRA1(aco, m_comp),
+                        CHF_CONST_FRA1((*bco[0]), m_comp),
+                        CHF_CONST_FRA1((*bco[1]), m_comp),
+                        CHF_CONST_FRA1((*bco[2]), m_comp),
+                        CHF_CONST_REAL(m_alpha),
+                        CHF_CONST_REAL(m_beta),
+                        CHF_CONST_REAL(m_dx),
+                        CHF_BOX(a_cellBox));
+
+    break;
+  }
+  case KernelMethod::ShapeArray: {
+    const int MD_ID(IX, 0);
+    const int MD_ID(IY, 1);
+    const int MD_ID(IZ, 2);
+
+    MD_BOXLOOP(a_cellBox, iv)
+    {
+      // clang-format off
+      Lphi[MD_IX(iv, m_comp)] = m_alpha * aco[MD_IX(iv, m_comp)] * phi[MD_IX(iv, m_comp)]
+	+ factor * (
+		    +((*bco[0])[MD_OFFSETIX(iv, +, IX, m_comp)] * (phi[MD_OFFSETIX(iv, +, IX, m_comp)] - phi[MD_IX(iv, m_comp)]           ))
+		    -((*bco[0])[MD_IX(iv, m_comp)]              * (phi[MD_IX(iv, m_comp)]              - phi[MD_OFFSETIX(iv,-,IX, m_comp)]))
+		    +((*bco[1])[MD_OFFSETIX(iv, +, IY, m_comp)] * (phi[MD_OFFSETIX(iv, +, IY, m_comp)] - phi[MD_IX(iv, m_comp)]           ))
+		    -((*bco[1])[MD_IX(iv, m_comp)]              * (phi[MD_IX(iv, m_comp)]              - phi[MD_OFFSETIX(iv,-,IY, m_comp)]))
+#if CH_SPACEDIM==3
+		    +((*bco[2])[MD_OFFSETIX(iv, +, IZ, m_comp)] * (phi[MD_OFFSETIX(iv, +, IZ, m_comp)] - phi[MD_IX(iv, m_comp)]           ))
+		    -((*bco[2])[MD_IX(iv, m_comp)]              * (phi[MD_IX(iv, m_comp)]              - phi[MD_OFFSETIX(iv,-,IZ, m_comp)]))
+#endif
+		    );
+      // clang-format on
+    }
+
+    break;
+  }
+  default: {
+    MayDay::Error("EBHelmholtzOp::applyOpRegular - unknown kernel method");
+
+    break;
+  }
+  }
+  CH_STOP(t2);
 }
 
 void
