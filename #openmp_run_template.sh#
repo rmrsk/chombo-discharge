@@ -8,7 +8,7 @@
 # Source/Electrostatics -> Exec/Examples/Electrostatics/ProfiledSurface
 # Source/Elliptic -> Exec/Examples/Electrostatics/ProfiledSurface
 # Source/Geometry -> Exec/Tests/Geometry/RodPlaneProfile
-# Source/ItoDiffusion -> Exec/
+# Source/ItoDiffusion -> Exec/Tests/BrownianWalker/DriftDiffusion
 #
 # NOTE: ALL FOLDERS SHOULD BE THREADED BEFORE MERGING
 

@@ -102,14 +102,20 @@ ItoSolver::depositParticlesNGP(LevelData<EBCellFAB>&       a_output,
 
   CH_assert(a_output.disjointBoxLayout() == dbl);
 
-  for (DataIterator dit(dbl); dit.ok(); ++dit) {
-    const Box      cellBox = dbl[dit()];
-    const EBISBox& ebisbox = ebisl[dit()];
+  const DataIterator& dit = dbl.dataIterator();
+
+  const int nbox = dit.size();
+#pragma omp parallel for schedule(runtime)
+  for (int mybox = 0; mybox < nbox; mybox++) {
+    const DataIndex& din = dit[mybox];
+
+    const Box      cellBox = dbl[din];
+    const EBISBox& ebisbox = ebisl[din];
 
     EBParticleMesh particleMesh(domain, cellBox, ebisbox, dx * RealVect::Unit, probLo);
 
-    EBCellFAB&     output    = a_output[dit()];
-    const List<P>& particles = a_particles[a_level][dit()].listItems();
+    EBCellFAB&     output    = a_output[din];
+    const List<P>& particles = a_particles[a_level][din].listItems();
 
     particleMesh.deposit<P, particleScalarField>(particles, output, DepositionType::NGP, true);
   }
@@ -137,14 +143,20 @@ ItoSolver::depositParticlesNGP(LevelData<EBCellFAB>&       a_output,
 
   CH_assert(a_output.disjointBoxLayout() == dbl);
 
-  for (DataIterator dit(dbl); dit.ok(); ++dit) {
-    const Box      cellBox = dbl[dit()];
-    const EBISBox& ebisbox = ebisl[dit()];
+  const DataIterator& dit = dbl.dataIterator();
+
+  const int nbox = dit.size();
+#pragma omp parallel for schedule(runtime)
+  for (int mybox = 0; mybox < nbox; mybox++) {
+    const DataIndex& din = dit[mybox];
+
+    const Box      cellBox = dbl[din];
+    const EBISBox& ebisbox = ebisl[din];
 
     EBParticleMesh particleMesh(domain, cellBox, ebisbox, dx * RealVect::Unit, probLo);
 
-    EBCellFAB&     output    = a_output[dit()];
-    const List<P>& particles = a_particles[a_level][dit()].listItems();
+    EBCellFAB&     output    = a_output[din];
+    const List<P>& particles = a_particles[a_level][din].listItems();
 
     particleMesh.deposit<P, particleScalarField>(particles, output, DepositionType::NGP, true);
   }
