@@ -16,6 +16,7 @@
 // Our includes
 #include <CD_Realm.H>
 #include <CD_BoxLoops.H>
+#include <CD_OpenMP.H>
 #include <CD_MemoryReport.H>
 #include <CD_NamespaceHeader.H>
 
@@ -273,9 +274,9 @@ Realm::defineHaloMask(LevelData<BaseFab<bool>>& a_coarMask,
                       const int                 a_buffer,
                       const int                 a_refRat)
 {
-  CH_TIME("Realm::defineHaloMasks");
+  CH_TIME("Realm::defineHaloMask(level)");
   if (m_verbosity > 5) {
-    pout() << "Realm::defineHaloMasks" << endl;
+    pout() << "Realm::defineHaloMask(level)" << endl;
   }
 
   // TLDR: This routine defines a "mask" of valid coarse-grid cells (i.e., not covered by a finer level) around a fine grid. The mask is a_buffer wide. It is
@@ -310,7 +311,7 @@ Realm::defineHaloMask(LevelData<BaseFab<bool>>& a_coarMask,
     const int           nboxCoFi = ditCoFi.size();
 
     // Go through the cofi grid and set the halo to true
-#pragma omp parallel for schedule(runtime)
+#pragma omp parallel for schedule(runtime) reduction (+: halo)
     for (int mybox = 0; mybox < nboxCoFi; mybox++) {
       const DataIndex& din = ditCoFi[mybox];
 
@@ -325,7 +326,7 @@ Realm::defineHaloMask(LevelData<BaseFab<bool>>& a_coarMask,
       myHalo -= coFiBox;
 
       // Subtract non-ghosted neighboring boxes.
-      NeighborIterator nit(dblCoFi); // Neighbor iterator
+      NeighborIterator nit(dblCoFi);
       for (nit.begin(din); nit.ok(); ++nit) {
         const Box neighborBox = dblCoFi[nit()];
         myHalo -= neighborBox;

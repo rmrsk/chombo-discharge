@@ -18,13 +18,11 @@
 // Our includes
 #include <CD_NamespaceHeader.H>
 
+void
+ThreadSafeIVSUnion(IntVectSet& ivsInOut, const IntVectSet& ivsIn);
+
 // Thread-safe reduction operator for taking the union of IntVectSet
 #ifdef _OPENMP
-void
-ThreadSafeIVSUnion(IntVectSet& ivsInOut, const IntVectSet& ivsIn)
-{
-  ivsInOut |= ivsIn;
-}
 #pragma omp declare reduction(+ : IntVectSet : ThreadSafeIVSUnion(omp_out, omp_in))
 #endif
 

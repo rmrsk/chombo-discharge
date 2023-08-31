@@ -9,9 +9,8 @@ export OMP_SCHEDULE="dynamic"
 
 COMPILE=true
 RUN=true
-PROFILE=true
-INPUT="regression2d.inputs ItoSolver.verbosity=10 BrownianWalker.verbosity=10 Driver.verbosity=10 AmrMesh.verbosity=10"
-# Driver.initial_regrids=1 Driver.write_memory=true Driver.write_loads=true FieldStepper.load_balance=true"
+PROFILE=false
+INPUT="regression2d.inputs ItoSolver.verbosity=10 BrownianWalker.verbosity=10 Driver.verbosity=10 PhaseRealm.verbosity=true Realm.verbosity=10"
 
 # Compile for serial, OpenMP, flat MPI, and MPI+OpenMP
 if $COMPILE
@@ -44,9 +43,7 @@ fi
 # Kernel comparison for Source/AmrMesh
 if $PROFILE
 then
-    for PATTERN in 'ScanShop::buildCoarseLevel(int, int)' \
-		       'ScanShop::buildFinerLevels(int, int)' \
-		       'ScanShop::defineLevel' \
+    for PATTERN in 'ItoSolver::depositParticles(NGP)' \
 		   ; do
 
 	if grep -q "${PATTERN}" time.table.serial
