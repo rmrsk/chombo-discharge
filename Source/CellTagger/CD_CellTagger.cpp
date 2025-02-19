@@ -288,7 +288,14 @@ CellTagger::getManualRefinementLevel(const RealVect a_pos) const
     const RealVect lo = refBox.getLo();
     const RealVect hi = refBox.getHi();
 
-    if (a_pos >= lo && a_pos <= hi) {
+    bool refine = true;
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      if (a_pos[dir] < lo[dir] || a_pos[dir] > hi[dir]) {
+        refine = false;
+      }
+    }
+
+    if (refine) {
       refToThisLevel = std::max(refToThisLevel, refLvl);
     }
   }
