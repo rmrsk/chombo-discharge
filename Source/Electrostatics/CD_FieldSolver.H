@@ -525,6 +525,24 @@ public:
   getPermittivityEB();
 
   /*!
+    @brief Get cell-centered permittivity used in the solver
+  */
+  MFAMRCellData&
+  getSolverPermittivityCell();
+
+  /*!
+    @brief Get face-centered permittivity used in the solver
+  */
+  MFAMRFluxData&
+  getSolverPermittivityFace();
+
+  /*!
+    @brief Get EB-centered permittivity used in the solver
+  */
+  MFAMRIVData&
+  getSolverPermittivityEB();  
+
+  /*!
     @brief Get m_sigma
   */
   EBAMRIVData&

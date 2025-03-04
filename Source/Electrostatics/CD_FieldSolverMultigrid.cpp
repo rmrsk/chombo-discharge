@@ -465,7 +465,7 @@ FieldSolverMultigrid::setPermittivities()
     pout() << "FieldSolverMultigrid::setPermittivities()" << endl;
   }
 
-  // Parent method fills permittivities over the "valid" region.
+  // Parent method fills permittivities over the "valid" region. This will also perform the necessary 
   FieldSolver::setPermittivities();
 
   // With EBHelmholtzOp/MFHelmholtzOp, the stencils can reach out of grid
@@ -478,51 +478,29 @@ FieldSolverMultigrid::setPermittivities()
   const int      tanGhost = 1;
   const Interval interv   = Interval(0, 0);
 
-  EBAMRCellData permCellGas;
-  EBAMRCellData permCellSol;
-  EBAMRFluxData permFluxGas;
-  EBAMRFluxData permFluxSol;
-  EBAMRIVData   permEBGas;
-  EBAMRIVData   permEBSol;
+  // Compute face-centered values as averages of cell-centered values, including one tangential ghost face.
+  for (int iphase = 0; iphase < m_multifluidIndexSpace->numPhases(); iphase++) {
+    const phase::which_phase curPhase = (iphase == 0) ? phase::gas : phase::solid;
 
-  const RefCountedPtr<EBIndexSpace>& ebisGas = m_multifluidIndexSpace->getEBIndexSpace(phase::gas);
-  const RefCountedPtr<EBIndexSpace>& ebisSol = m_multifluidIndexSpace->getEBIndexSpace(phase::solid);
+    EBAMRCellData permCell;
+    EBAMRFluxData permFlux;
+    EBAMRIVData   permEB;
 
-  // Do the gas-phase.
-  if (!(ebisGas.isNull())) {
-    permCellGas = m_amr->alias(phase::gas, m_permittivityCell);
-    permFluxGas = m_amr->alias(phase::gas, m_permittivityFace);
-    permEBGas   = m_amr->alias(phase::gas, m_permittivityEB);
+    permCell = m_amr->alias(curPhase, m_solverPermittivityCell);
+    permFlux = m_amr->alias(curPhase, m_solverPermittivityFace);
+    permEB   = m_amr->alias(curPhase, m_solverPermittivityEB);
 
     // Coarsen cell and EB data.
-    m_amr->average(permCellGas, m_realm, phase::gas, average);
-    m_amr->average(permEBGas, m_realm, phase::gas, average);
+    m_amr->average(permCell, m_realm, curPhase, average);
+    m_amr->average(permEB, m_realm, curPhase, average);
 
     // Interpolate cell-centered permittivities to ghost cells; then average
     // cell-centered data to faces, including one ghost face.
-    m_amr->interpGhost(permCellGas, m_realm, phase::gas);
+    m_amr->interpGhost(permCell, m_realm, curPhase);
 
-    DataOps::averageCellToFace(permFluxGas, permCellGas, m_amr->getDomains(), tanGhost, interv, interv, average);
+    DataOps::averageCellToFace(permFlux, permCell, m_amr->getDomains(), tanGhost, interv, interv, average);
 
-    m_amr->average(permFluxGas, m_realm, phase::gas, average);
-  }
-
-  if (!(ebisSol.isNull())) {
-    permCellSol = m_amr->alias(phase::solid, m_permittivityCell);
-    permFluxSol = m_amr->alias(phase::solid, m_permittivityFace);
-    permEBSol   = m_amr->alias(phase::solid, m_permittivityEB);
-
-    // Coarsen cell and EB data.
-    m_amr->average(permCellSol, m_realm, phase::solid, average);
-    m_amr->average(permEBSol, m_realm, phase::solid, average);
-
-    // Interpolate cell-centered permittivities to ghost cells; then average
-    // cell-centered data to faces, including one ghost face.
-    m_amr->interpGhost(permCellSol, m_realm, phase::solid);
-
-    DataOps::averageCellToFace(permFluxSol, permCellSol, m_amr->getDomains(), tanGhost, interv, interv, average);
-
-    m_amr->average(permFluxSol, m_realm, phase::solid, average);
+    m_amr->average(permFlux, m_realm, curPhase, average);
   }
 }
 
@@ -631,7 +609,7 @@ FieldSolverMultigrid::setupHelmholtzFactory()
   ebbcFactory->setDomainDropOrder(m_domainDropOrder);
   jumpBcFactory->setDomainDropOrder(m_domainDropOrder);
 
-  // Create the factory. Note that we pass m_permittivityCell in through the a-coefficient, but we also set alpha to zero
+  // Create the factory. Note that we pass m_solverPermittivityCell in through the a-coefficient, but we also set alpha to zero
   // so there is no diagonal term in the operator after all.
   m_helmholtzOpFactory = RefCountedPtr<MFHelmholtzOpFactory>(
     new MFHelmholtzOpFactory(m_multifluidIndexSpace,
@@ -645,9 +623,9 @@ FieldSolverMultigrid::setupHelmholtzFactory()
                              mfCoarAve,
                              m_amr->getRefinementRatios(),
                              m_amr->getDx(),
-                             m_permittivityCell.getData(), // Dummy argument (recall m_alpha = 0.0)
-                             m_permittivityFace.getData(),
-                             m_permittivityEB.getData(),
+                             m_solverPermittivityCell.getData(), // Dummy argument (recall m_alpha = 0.0)
+                             m_solverPermittivityFace.getData(),
+                             m_solverPermittivityEB.getData(),
                              domainBcFactory,
                              ebbcFactory,
                              jumpBcFactory,

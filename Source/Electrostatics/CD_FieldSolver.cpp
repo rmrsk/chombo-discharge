@@ -912,6 +912,7 @@ FieldSolver::setPermittivities()
     }
   }
 
+#warning "Pretty sure I DONT want to copy and perform RZ-scaling in setPermittivities"
   // Copy the permittivities to separate data holders which are (potentially) used by solver implementations
   DataOps::copy(m_solverPermittivityCell, m_permittivityCell);
   DataOps::copy(m_solverPermittivityFace, m_permittivityFace);
@@ -922,7 +923,6 @@ FieldSolver::setPermittivities()
     const phase::which_phase curPhase = (iphase == 0) ? phase::gas : phase::solid;
 
     for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
-
       LevelData<EBCellFAB>       cellPerm;
       LevelData<EBFluxFAB>       facePerm;
       LevelData<BaseIVFAB<Real>> ebPerm;
@@ -1750,6 +1750,39 @@ FieldSolver::getPermittivityEB()
   }
 
   return m_permittivityEB;
+}
+
+MFAMRCellData&
+FieldSolver::getSolverPermittivityCell()
+{
+  CH_TIME("FieldSolver::getSolverPermittivityCell()");
+  if (m_verbosity > 5) {
+    pout() << "FieldSolver::getSolverPermittivityCell()" << endl;
+  }
+
+  return m_solverPermittivityCell;
+}
+
+MFAMRFluxData&
+FieldSolver::getSolverPermittivityFace()
+{
+  CH_TIME("FieldSolver::getSolverPermittivityFace()");
+  if (m_verbosity > 5) {
+    pout() << "FieldSolver::getSolverPermittivityFace()" << endl;
+  }
+
+  return m_solverPermittivityFace;
+}
+
+MFAMRIVData&
+FieldSolver::getSolverPermittivityEB()
+{
+  CH_TIME("FieldSolver::getSolverPermittivityEB()");
+  if (m_verbosity > 5) {
+    pout() << "FieldSolver::getSolverPermittivityEB()" << endl;
+  }
+
+  return m_solverPermittivityEB;
 }
 
 #include <CD_NamespaceFooter.H>
