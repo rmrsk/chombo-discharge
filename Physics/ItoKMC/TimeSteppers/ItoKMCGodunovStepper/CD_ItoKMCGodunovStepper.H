@@ -306,15 +306,6 @@ namespace Physics {
                           const SpeciesSubset                                            a_subset) noexcept;
 
       /*!
-	@brief Compute all conductivities (cell, face, and EB) from the input point particles
-	@param[in] a_particles Particles to deposit. Particle weights must hold the mobility*weight
-	@note This deposits the input particle weights onto m_conductivityCell, m_conductivityFace.
-	@note Also adds in the conductive contribution from the CDR solvers. 
-      */
-      virtual void
-      computeConductivities(const Vector<RefCountedPtr<ParticleContainer<PointParticle>>>& a_particles) noexcept;
-
-      /*!
 	@brief Compute the cell-centered conductivity
 	@param[out] a_conductivityCell Cell-centered conductivity
 	@param[in]  a_particles        Particles to deposit. Particle weights must hold the mobility*weight

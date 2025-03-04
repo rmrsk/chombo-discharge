@@ -23,6 +23,7 @@
 #include <CD_Units.H>
 #include <CD_Photon.H>
 #include <CD_DischargeIO.H>
+#include <CD_MultifluidAlias.H>
 #include <CD_NamespaceHeader.H>
 
 using namespace Physics::ItoKMC;
@@ -579,7 +580,7 @@ ItoKMCGodunovStepper<I, C, R, F>::regrid(const int a_lmin,
   // modified coefficients if we are reusing data from the last time step.
   m_timer.startEvent("Setup field solver");
   (this->m_fieldSolver)->setupSolver();
-  this->computeConductivities(m_conductivityParticles);
+  this->computeCellConductivity((this->m_conductivityCell), m_conductivityParticles);
   this->setupSemiImplicitPoisson(this->m_prevDt);
   m_timer.stopEvent("Setup field solver");
 
@@ -984,20 +985,6 @@ ItoKMCGodunovStepper<I, C, R, F>::clearPointParticles(
 
 template <typename I, typename C, typename R, typename F>
 void
-ItoKMCGodunovStepper<I, C, R, F>::computeConductivities(
-  const Vector<RefCountedPtr<ParticleContainer<PointParticle>>>& a_particles) noexcept
-{
-  CH_TIME("ItoKMCGodunovStepper::computeConductivities");
-  if (this->m_verbosity > 5) {
-    pout() << this->m_name + "::computeConductivities" << endl;
-  }
-
-  this->computeCellConductivity((this->m_conductivityCell), a_particles);
-  this->computeFaceConductivity();
-}
-
-template <typename I, typename C, typename R, typename F>
-void
 ItoKMCGodunovStepper<I, C, R, F>::computeCellConductivity(
   EBAMRCellData&                                                 a_conductivityCell,
   const Vector<RefCountedPtr<ParticleContainer<PointParticle>>>& a_particles) noexcept
@@ -1157,30 +1144,85 @@ ItoKMCGodunovStepper<I, C, R, F>::setupSemiImplicitPoisson(const Real a_dt) noex
     pout() << this->m_name + "::setupSemiImplicitPoisson" << endl;
   }
 
-  // Set coefficients as usual
+#warning "ItoKMCGodunovStepper::setupSemiImplicitPoisson is still a work in progress -- convergence issues have been observed"
+#warning "ItoKMCGodunovStepper::setupSemiImplicitPoisson -- beware of scaling of relative permittivities!"
+
+  // Set coefficients as usual.
   (this->m_fieldSolver)->setPermittivities();
 
-  // Get the permittivities
-  // Get the permittivities on the faces.
-  MFAMRCellData& permCell = (this->m_fieldSolver)->getPermittivityCell();
-  MFAMRFluxData& permFace = (this->m_fieldSolver)->getPermittivityFace();
-  MFAMRIVData&   permEB   = (this->m_fieldSolver)->getPermittivityEB();
+  // Get the actual permittivities -- these are NOT scaled by RZ
+  const MFAMRCellData& permCell = (this->m_fieldSolver)->getPermittivityCell();
+  const MFAMRFluxData& permFace = (this->m_fieldSolver)->getPermittivityFace();
+  const MFAMRIVData&   permEB   = (this->m_fieldSolver)->getPermittivityEB();
 
-  // Get handles to the gas-phase permittivities.
-  EBAMRFluxData permFaceGas = (this->m_amr)->alias((this->m_plasmaPhase), permFace);
-  EBAMRIVData   permEBGas   = (this->m_amr)->alias((this->m_plasmaPhase), permEB);
+  // Get the permittivities that are passed into the solver -- these are already scaled by RZ but we have to overwrite them"
+  MFAMRCellData& solverPermCell = (this->m_fieldSolver)->getSolverPermittivityCell();
+  MFAMRFluxData& solverPermFace = (this->m_fieldSolver)->getSolverPermittivityFace();
+  MFAMRIVData&   solverPermEB   = (this->m_fieldSolver)->getSolverPermittivityEB();
 
-  // Increment the field solver permittivities by a_factor*sigma. After this, the "permittivities" are
-  // given by epsr + a_factor*sigma
-  DataOps::incr(permFaceGas, (this->m_conductivityFace), a_dt / Units::eps0);
-  DataOps::incr(permEBGas, (this->m_conductivityEB), a_dt / Units::eps0);
+  // Copy the the real permittivities onto the solver permittivities -- we are now ensured that they are not RZ-scaled.
+  DataOps::copy(solverPermCell, permCell);
+  DataOps::copy(solverPermFace, permFace);
+  DataOps::copy(solverPermEB, permEB);
 
-  // Coarsen coefficients.
-  (this->m_amr)->arithmeticAverage(permFaceGas, this->m_fluidRealm, (this->m_plasmaPhase));
-  (this->m_amr)->arithmeticAverage(permEBGas, this->m_fluidRealm, (this->m_plasmaPhase));
+  // Get handles to the plasma-phase solver permittivities
+  EBAMRCellData solverPermCellGas = (this->m_amr)->alias((this->m_plasmaPhase), solverPermCell);
+  EBAMRFluxData solverPermFaceGas = (this->m_amr)->alias((this->m_plasmaPhase), solverPermFace);
+  EBAMRIVData   solverPermEBGas   = (this->m_amr)->alias((this->m_plasmaPhase), solverPermEB);
 
-  // Set up the solver with the "permittivities"
-  (this->m_fieldSolver)->setSolverPermittivities(permCell, permFace, permEB);
+  // Increment the field solver permittivities by a_factor*sigma. After this, the solver permittivities on the cell and EB
+  // given by epsr + a_factor*sigma.
+  DataOps::incr(solverPermCellGas, (this->m_conductivityCell), a_dt / Units::eps0);
+  DataOps::incr(solverPermEBGas, (this->m_conductivityCell), a_dt / Units::eps0);
+
+  (this->m_amr)->arithmeticAverage(solverPermCellGas, this->m_fluidRealm, (this->m_plasmaPhase));
+  (this->m_amr)->arithmeticAverage(solverPermEBGas, this->m_fluidRealm, (this->m_plasmaPhase));
+
+  // If we are doing RZ-calculatinos we must scale the coefficients appropriately for this to work. We do not have to compute anything for
+  // the face-centered conductivity since it is formed as an average of the cell-centered data.
+#ifdef CH_USE_RZ
+  const RefCountedPtr<MultiFluidIndexSpace>& mfis = (this->m_computationalGeometry)->getMfIndexSpace();
+
+  for (int iphase = 0; iphase < mfis->numPhases(); iphase++) {
+    const phase::which_phase curPhase = (iphase == 0) ? phase::gas : phase::solid;
+
+    for (int lvl = 0; lvl <= (this->m_amr)->getFinestLevel(); lvl++) {
+      LevelData<EBCellFAB>       cellPerm;
+      LevelData<BaseIVFAB<Real>> ebPerm;
+
+      const EBISLayout& ebisl = (this->m_amr)->getEBISLayout((this->m_fluidRealm), curPhase)[lvl];
+
+      MultifluidAlias::aliasMF(cellPerm, curPhase, *solverPermCell[lvl]);
+      MultifluidAlias::aliasMF(ebPerm, curPhase, *solverPermEB[lvl]);
+
+      DataOps::scaleByRadius(cellPerm, ebisl, (this->m_amr)->getProbLo(), (this->m_amr)->getDx()[lvl]);
+      DataOps::scaleByRadius(ebPerm, ebisl, (this->m_amr)->getProbLo(), (this->m_amr)->getDx()[lvl]);
+    }
+  }
+#endif
+
+  // Average the cell-centered conductivity to faces. Note that this includes one "ghost face", which we need
+  // because the multigrid solver will interpolate face-centered conductivities to face centroids.
+  const Average  average  = Average::Arithmetic;
+  const int      tanGhost = 1;
+  const Interval interv(0, 0);
+
+  DataOps::averageCellToFace(solverPermFaceGas,
+                             solverPermCellGas,
+                             (this->m_amr)->getDomains(),
+                             tanGhost,
+                             interv,
+                             interv,
+                             average);
+
+#if 1
+#warning "wtf in setup semi implicit"
+  (this->m_amr)->average(solverPermFace, this->m_fluidRealm, average);
+  //  (this->m_amr)->average(solverPermEB, this->m_fluidRealm, average);
+#endif
+
+  // Finally, set up the solver with the "permittivities"
+  (this->m_fieldSolver)->setSolverPermittivities(solverPermCell, solverPermFace, solverPermEB);
 }
 
 template <typename I, typename C, typename R, typename F>
@@ -1307,7 +1349,7 @@ ItoKMCGodunovStepper<I, C, R, F>::advanceEulerMaruyama(const Real a_dt) noexcept
   this->barrier();
   m_timer.startEvent("Compute conductivities");
   this->copyConductivityParticles(m_conductivityParticles);
-  this->computeConductivities(m_conductivityParticles);
+  this->computeCellConductivity((this->m_conductivityCell), m_conductivityParticles);
   m_timer.stopEvent("Compute conductivities");
 
   // Set up the semi-implicit Poisson solver with the computed conductivities.

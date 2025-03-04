@@ -33,6 +33,7 @@ constexpr int FieldSolver::m_nComp;
 #warning "FieldSolver needs to scale the space charge correctly in RZ!"
 #warning "FieldSolver needs to scale the surface charge correctly in RZ!!"
 #warning "Pretty sure I DONT want to copy and perform RZ-scaling in setPermittivities"
+#warning "The RZ-changes MUST also be added to the CdrPlasma model"
 
 FieldSolver::FieldSolver()
 {
