@@ -30,6 +30,10 @@
 constexpr int FieldSolver::m_comp;
 constexpr int FieldSolver::m_nComp;
 
+#warning "FieldSolver needs to scale the space charge correctly in RZ!"
+#warning "FieldSolver needs to scale the surface charge correctly in RZ!!"
+#warning "Pretty sure I DONT want to copy and perform RZ-scaling in setPermittivities"
+
 FieldSolver::FieldSolver()
 {
   CH_TIME("FieldSolver::FieldSolver()");
@@ -912,7 +916,6 @@ FieldSolver::setPermittivities()
     }
   }
 
-#warning "Pretty sure I DONT want to copy and perform RZ-scaling in setPermittivities"
   // Copy the permittivities to separate data holders which are (potentially) used by solver implementations
   DataOps::copy(m_solverPermittivityCell, m_permittivityCell);
   DataOps::copy(m_solverPermittivityFace, m_permittivityFace);
@@ -935,7 +938,7 @@ FieldSolver::setPermittivities()
 
       DataOps::scaleByRadius(cellPerm, ebisl, m_amr->getProbLo(), m_amr->getDx()[lvl]);
       DataOps::scaleByRadius(facePerm, ebisl, m_amr->getProbLo(), m_amr->getDx()[lvl]);
-      DataOps::scaleByRadius(ebPerm, ebisl, m_amr->getProbLo(), m_amr->getDx()[lvl]);      
+      DataOps::scaleByRadius(ebPerm, ebisl, m_amr->getProbLo(), m_amr->getDx()[lvl]);
     }
   }
 #endif
