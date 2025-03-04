@@ -128,6 +128,7 @@ CXXSTD         = 14
 USE_EB         = TRUE
 #USE_CCSE      =
 USE_HDF        = TRUE
+USE_RZ         = FALSE
 HDFINCFLAGS    = -I/cluster/software/HDF5/1.8.18-intel-2017a/include
 HDFLIBFLAGS    = -L/cluster/software/HDF5/1.8.18-intel-2017a/lib -lhdf5 -lz
 ## Note: don't set the HDFMPI* variables if you don't have parallel HDF installed

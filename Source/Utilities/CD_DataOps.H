@@ -837,110 +837,68 @@ public:
   /*!
     @brief Multiply a data holder by the radius
     @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_ebisl  EBIS layouts on each grid level    
     @param[in]    a_probLo Lower-left origin of coordinate system
     @param[in]    a_dx     Grid resolutions
+    @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine.     
   */
   static void
-  scaleByRadius(MFAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+  scaleByRadius(EBAMRCellData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
     @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_ebisl  EBIS layout on this grid level    
     @param[in]    a_probLo Lower-left origin of coordinate system
     @param[in]    a_dx     Grid resolution
+    @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine.     
   */
   static void
-  scaleByRadius(LevelData<MFCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);  
+  scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx);  
 
   /*!
     @brief Multiply a data holder by the radius
     @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_ebisl  EBIS layouts on each grid level    
     @param[in]    a_probLo Lower-left origin of coordinate system
     @param[in]    a_dx     Grid resolution
+    @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine. 
   */
   static void
-  scaleByRadius(MFAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+  scaleByRadius(EBAMRFluxData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
     @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_ebisl  EBIS layout on this grid level    
     @param[in]    a_probLo Lower-left origin of coordinate system
     @param[in]    a_dx     Grid resolution
+    @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine. 
   */
   static void
-  scaleByRadius(LevelData<MFFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);
+  scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const EBISLayout& ebisl, const RealVect& a_probLo, const Real& a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
     @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_ebisl  EBIS layouts on each grid level
     @param[in]    a_probLo Lower-left origin of coordinate system
     @param[in]    a_dx     Grid resolution
+    @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine. 
   */
   static void
-  scaleByRadius(MFAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+  scaleByRadius(EBAMRIVData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
     @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_ebisl  EBIS layout on this grid level
     @param[in]    a_probLo Lower-left origin of coordinate system
     @param[in]    a_dx     Grid resolution
+    @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine. 
   */
   static void
-  scaleByRadius(LevelData<MFBaseIVFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);
-
-  /*!
-    @brief Multiply a data holder by the radius
-    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
-    @param[in]    a_probLo Lower-left origin of coordinate system
-    @param[in]    a_dx     Grid resolutions
-  */
-  static void
-  scaleByRadius(EBAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
-
-  /*!
-    @brief Multiply a data holder by the radius
-    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
-    @param[in]    a_probLo Lower-left origin of coordinate system
-    @param[in]    a_dx     Grid resolution
-  */
-  static void
-  scaleByRadius(LevelData<EBCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);  
-
-  /*!
-    @brief Multiply a data holder by the radius
-    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
-    @param[in]    a_probLo Lower-left origin of coordinate system
-    @param[in]    a_dx     Grid resolution
-  */
-  static void
-  scaleByRadius(EBAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
-
-  /*!
-    @brief Multiply a data holder by the radius
-    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
-    @param[in]    a_probLo Lower-left origin of coordinate system
-    @param[in]    a_dx     Grid resolution
-  */
-  static void
-  scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);
-
-  /*!
-    @brief Multiply a data holder by the radius
-    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
-    @param[in]    a_probLo Lower-left origin of coordinate system
-    @param[in]    a_dx     Grid resolution
-  */
-  static void
-  scaleByRadius(EBAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
-
-  /*!
-    @brief Multiply a data holder by the radius
-    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
-    @param[in]    a_probLo Lower-left origin of coordinate system
-    @param[in]    a_dx     Grid resolution
-  */
-  static void
-  scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs, const RealVect& a_probLo, const Real& a_dx);    
+  scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx);    
 #endif
 
   /*!

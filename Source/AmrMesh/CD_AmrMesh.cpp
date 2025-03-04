@@ -979,6 +979,12 @@ AmrMesh::parseProbLoHiCorners()
   m_probLo = RealVect(D_DECL(v[0], v[1], v[2]));
   pp.getarr("hi_corner", v, 0, SpaceDim);
   m_probHi = RealVect(D_DECL(v[0], v[1], v[2]));
+
+#ifdef CH_USE_RZ
+  if(m_probLo[0] < 0.0) {
+    MayDay::Abort("AmrMesh::parseProbLoHiCorners - using 'AmrMesh.lo_corner[0] < 0' detected, which is not permitted with RZ coordinates");
+  }
+#endif
 }
 
 void

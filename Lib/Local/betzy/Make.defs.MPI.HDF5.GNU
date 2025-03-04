@@ -128,6 +128,7 @@ CXXSTD         = 14
 USE_EB         = TRUE
 #USE_CCSE      =
 USE_HDF        = TRUE
+USE_RZ         = FALSE
 HDFINCFLAGS	= -I/cluster/software/HDF5/1.14.0-gompi-2023a/include  -DH5_USE_110_API
 HDFLIBFLAGS	= -L/cluster/software/HDF5/1.14.0-gompi-2023a/lib -lhdf5 -lz  -DH5_USE_110_API
 ## Note: don't set the HDFMPI* variables if you don't have parallel HDF installed

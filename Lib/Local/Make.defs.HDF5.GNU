@@ -15,6 +15,7 @@ OPENMPCC       = FALSE
 USE_EB         = TRUE
 USE_MF         = TRUE
 USE_HDF        = TRUE
+USE_RZ         = FALSE
 HDFINCFLAGS    = -I/usr/lib/x86_64-linux-gnu/hdf5/serial/include
 HDFLIBFLAGS    = -L/usr/lib/x86_64-linux-gnu/hdf5/serial/lib -lhdf5 -lz
 HDFMPIINCFLAGS = -I/usr/lib/x86_64-linux-gnu/hdf5/openmpi/include

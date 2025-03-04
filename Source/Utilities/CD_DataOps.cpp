@@ -2592,62 +2592,198 @@ DataOps::scale(LevelData<BaseIVFAB<Real>>& a_lhs, const Real& a_scale)
 
 #ifdef CH_USE_RZ
 void
-DataOps::scaleByRadius(MFAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
+DataOps::scaleByRadius(EBAMRCellData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx)
 {
-  CH_TIME("DataOps::scaleByRadius(MFAMRCellData");
+  CH_TIME("DataOps::scaleByRadius(EBAMRCellData");
 
-  for (int lvl = 0; lvl <= a_lhs.size(); lvl++) {
-    DataOps::scaleByRadius(*a_lhs[lvl], a_probLo, a_dx[lvl]);
+  CH_assert(a_probLo[0] >= 0.0);
+
+  for (int lvl = 0; lvl < a_lhs.size(); lvl++) {
+    CH_assert(a_dx[lvl] > 0.0);
+
+    DataOps::scaleByRadius(*a_lhs[lvl], a_ebisl[lvl], a_probLo, a_dx[lvl]);
   }
 }
 
 void
-DataOps::scaleByRadius(LevelData<MFCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
+DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx)
 {
-  CH_TIME("DataOps::scaleByRadius(LevelData<MFCellFAB>");
+  CH_TIME("DataOps::scaleByRadius(LevelData<EBCellFAB>");
 
-  //  const DisjointBoxLyaout&
+  const DisjointBoxLayout& dbl = a_lhs.disjointBoxLayout();
+  const DataIterator&      dit = a_lhs.dataIterator();
+
+  const int nbox = dit.size();
+
+  const Real r = a_probLo[0];
+
+  CH_assert(r >= 0.0);
+
+#pragma omp parallel for schedule(runtime)
+  for (int mybox = 0; mybox < nbox; mybox++) {
+    const DataIndex& din = dit[mybox];
+
+    EBCellFAB& data    = a_lhs[din];
+    FArrayBox& dataReg = data.getFArrayBox();
+
+    EBCellFAB clone;
+    clone.clone(data);
+
+    const Box        cellBox  = dbl[din];
+    const EBISBox&   ebisbox  = a_ebisl[din];
+    const EBGraph&   ebgraph  = ebisbox.getEBGraph();
+    const IntVectSet irregIVS = ebisbox.getIrregIVS(cellBox);
+
+    VoFIterator vofit(irregIVS, ebgraph);
+
+    for (int icomp = 0; icomp < data.nComp(); icomp++) {
+      auto regularKernel = [&](const IntVect& iv) -> void {
+        dataReg(iv, icomp) = dataReg(iv, icomp) * r;
+      };
+
+      auto irregularKernel = [&](const VolIndex& vof) -> void {
+        const Real r = a_probLo[0] + Location::position(Location::Cell::Center, vof, ebisbox, a_dx)[0];
+
+        data(vof, icomp) = clone(vof, icomp) * r;
+      };
+
+      BoxLoops::loop(cellBox, regularKernel);
+      BoxLoops::loop(vofit, irregularKernel);
+    }
+  }
 }
 
 void
-DataOps::scaleByRadius(MFAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
-{}
+DataOps::scaleByRadius(EBAMRFluxData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx)
+{
+  CH_TIME("DataOps::scaleByRadius(EBAMRFluxData)");
+
+  CH_assert(a_probLo[0] >= 0.0);
+
+  for (int lvl = 0; lvl < a_lhs.size(); lvl++) {
+    CH_assert(a_dx[lvl] > 0.0);
+
+    DataOps::scaleByRadius(*a_lhs[lvl], a_ebisl[lvl], a_probLo, a_dx[lvl]);
+  }
+}
 
 void
-DataOps::scaleByRadius(LevelData<MFFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
-{}
+DataOps::scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx)
+{
+  CH_TIME("DataOps::scaleByRadius(LevelData<EBFluxFAB>)");
+
+  const DisjointBoxLayout& dbl = a_lhs.disjointBoxLayout();
+  const DataIterator&      dit = a_lhs.dataIterator();
+
+  const int nbox = dit.size();
+
+  const Real r = a_probLo[0];
+
+  CH_assert(r >= 0.0);
+  CH_assert(SpaceDim == 2);
+
+#pragma omp parallel for schedule(runtime)
+  for (int mybox = 0; mybox < nbox; mybox++) {
+    const DataIndex& din = dit[mybox];
+
+    EBFluxFAB& lhs = a_lhs[din];
+
+    // Copy the input data to avoid scaling twice by the radius
+    EBFluxFAB lhsClone;
+    lhsClone.clone(lhs);
+
+    for (int dir = 0; dir < SpaceDim; dir++) {
+      EBFaceFAB& data    = lhs[dir];
+      FArrayBox& dataReg = data.getFArrayBox();
+
+      const EBFaceFAB& clone = lhsClone[dir];
+
+      const Box         cellBox  = dbl[din];
+      const EBISBox&    ebisbox  = a_ebisl[din];
+      const EBGraph&    ebgraph  = ebisbox.getEBGraph();
+      const IntVectSet& irregIVS = ebisbox.getIrregIVS(cellBox);
+      const Box         faceBox  = surroundingNodes(cellBox, dir);
+
+      FaceIterator faceit(irregIVS, ebgraph, dir, FaceStop::SurroundingWithBoundary);
+
+      for (int icomp = 0; icomp < data.nComp(); icomp++) {
+        auto regularKernel = [&](const IntVect& iv) -> void {
+          const Real r = a_probLo[0] + Real(iv[0]) * a_dx;
+
+          dataReg(iv, icomp) *= r;
+        };
+
+        auto irregularKernel = [&](const FaceIndex& face) -> void {
+          const Real r = a_probLo[0] + Location::position(Location::Face::Center, face, ebisbox, a_dx)[0];
+
+          data(face, icomp) = clone(face, icomp) * r;
+        };
+
+        BoxLoops::loop(faceBox, regularKernel);
+        BoxLoops::loop(faceit, irregularKernel);
+      }
+    }
+  }
+}
 
 void
-DataOps::scaleByRadius(MFAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
-{}
+DataOps::scaleByRadius(EBAMRIVData&              a_lhs,
+                       const Vector<EBISLayout>& a_ebisl,
+                       const RealVect&           a_probLo,
+                       const Vector<Real>&       a_dx)
+{
+  CH_TIME("DataOps::scaleByRadius(EBAMRIVData)");
+
+  CH_assert(a_probLo[0] >= 0.0);
+
+  for (int lvl = 0; lvl < a_lhs.size(); lvl++) {
+    CH_assert(a_dx[lvl] > 0.0);
+
+    DataOps::scaleByRadius(*a_lhs[lvl], a_ebisl[lvl], a_probLo, a_dx[lvl]);
+  }
+}
 
 void
-DataOps::scaleByRadius(LevelData<MFBaseIVFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
-{}
+DataOps::scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs,
+                       const EBISLayout&           a_ebisl,
+                       const RealVect&             a_probLo,
+                       const Real&                 a_dx)
+{
+  CH_TIME("DataOps::scaleByRadius(LevelData<BaseIVFAB<Real>>)");
 
-void
-DataOps::scaleByRadius(EBAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
-{}
+  const DisjointBoxLayout& dbl = a_lhs.disjointBoxLayout();
+  const DataIterator&      dit = a_lhs.dataIterator();
 
-void
-DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
-{}
+  const int nbox = dit.size();
 
-void
-DataOps::scaleByRadius(EBAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
-{}
+  const Real r = a_probLo[0];
 
-void
-DataOps::scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
-{}
+  CH_assert(r >= 0.0);
 
-void
-DataOps::scaleByRadius(EBAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
-{}
+#pragma omp parallel for schedule(runtime)
+  for (int mybox = 0; mybox < nbox; mybox++) {
+    const DataIndex& din = dit[mybox];
 
-void
-DataOps::scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
-{}
+    BaseIVFAB<Real>& data = a_lhs[din];
+
+    const Box        cellBox  = dbl[din];
+    const EBISBox&   ebisbox  = a_ebisl[din];
+    const EBGraph&   ebgraph  = ebisbox.getEBGraph();
+    const IntVectSet irregIVS = data.getIVS();
+
+    VoFIterator vofit(irregIVS, ebgraph);
+
+    for (int icomp = 0; icomp < data.nComp(); icomp++) {
+      auto irregularKernel = [&](const VolIndex& vof) -> void {
+        const Real r = a_probLo[0] + Location::position(Location::Cell::Center, vof, ebisbox, a_dx)[0];
+
+        data(vof, icomp) *= r;
+      };
+
+      BoxLoops::loop(vofit, irregularKernel);
+    }
+  }
+}
 #endif
 
 void

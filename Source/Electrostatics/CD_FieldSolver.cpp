@@ -393,6 +393,9 @@ FieldSolver::deallocate()
   m_permittivityCell.clear();
   m_permittivityFace.clear();
   m_permittivityEB.clear();
+  m_solverPermittivityCell.clear();
+  m_solverPermittivityFace.clear();
+  m_solverPermittivityEB.clear();
 }
 
 void
@@ -915,9 +918,26 @@ FieldSolver::setPermittivities()
   DataOps::copy(m_solverPermittivityEB, m_permittivityEB);
 
 #ifdef CH_USE_RZ
-  DataOps::scaleByRadius(m_solverPermittivityCell, m_amr->getProbLo(), m_amr->getDx());
-  DataOps::scaleByRadius(m_solverPermittivityFace, m_amr->getProbLo(), m_amr->getDx());
-  DataOps::scaleByRadius(m_solverPermittivityEB, m_amr->getProbLo(), m_amr->getDx());
+  for (int iphase = 0; iphase < m_multifluidIndexSpace->numPhases(); iphase++) {
+    const phase::which_phase curPhase = (iphase == 0) ? phase::gas : phase::solid;
+
+    for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+
+      LevelData<EBCellFAB>       cellPerm;
+      LevelData<EBFluxFAB>       facePerm;
+      LevelData<BaseIVFAB<Real>> ebPerm;
+
+      const EBISLayout& ebisl = m_amr->getEBISLayout(m_realm, curPhase)[lvl];
+
+      MultifluidAlias::aliasMF(cellPerm, curPhase, *m_solverPermittivityCell[lvl]);
+      MultifluidAlias::aliasMF(facePerm, curPhase, *m_solverPermittivityFace[lvl]);
+      MultifluidAlias::aliasMF(ebPerm, curPhase, *m_solverPermittivityEB[lvl]);
+
+      DataOps::scaleByRadius(cellPerm, ebisl, m_amr->getProbLo(), m_amr->getDx()[lvl]);
+      DataOps::scaleByRadius(facePerm, ebisl, m_amr->getProbLo(), m_amr->getDx()[lvl]);
+      DataOps::scaleByRadius(ebPerm, ebisl, m_amr->getProbLo(), m_amr->getDx()[lvl]);      
+    }
+  }
 #endif
 }
 
