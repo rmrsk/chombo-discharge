@@ -628,6 +628,21 @@ protected:
   MFAMRIVData m_permittivityEB;
 
   /*!
+    @brief Cell permittivity used in solvers. 
+  */
+  MFAMRCellData m_solverPermittivityCell;
+
+  /*!
+    @brief Face permittivity used in solvers. 
+  */
+  MFAMRFluxData m_solverPermittivityFace;
+
+  /*!
+    @brief EB permittivity used in solvers.
+  */
+  MFAMRIVData m_solverPermittivityEB;  
+
+  /*!
     @brief Flag for checking if voltage has been set. 
   */
   bool m_isVoltageSet;

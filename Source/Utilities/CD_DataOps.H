@@ -418,6 +418,30 @@ public:
     @param[in ] a_src Source data holder
   */
   static void
+  copy(MFAMRFluxData& a_dst, const MFAMRFluxData& a_src);  
+
+  /*!
+    @brief Copy data from one data holder to another.
+    @param[out] a_dst Destination data holder
+    @param[in ] a_src Source data holder
+  */
+  static void
+  copy(EBAMRFluxData& a_dst, const EBAMRFluxData& a_src);
+
+  /*!
+    @brief Copy data from one data holder to another.
+    @param[out] a_dst Destination data holder
+    @param[in ] a_src Source data holder
+  */
+  static void
+  copy(MFAMRIVData& a_dst, const MFAMRIVData& a_src);  
+
+  /*!
+    @brief Copy data from one data holder to another.
+    @param[out] a_dst Destination data holder
+    @param[in ] a_src Source data holder
+  */
+  static void
   copy(EBAMRIVData& a_dst, const EBAMRIVData& a_src);
 
   /*!

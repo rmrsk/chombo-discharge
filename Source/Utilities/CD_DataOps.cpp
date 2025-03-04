@@ -1157,6 +1157,48 @@ DataOps::copy(EBAMRCellData& a_dst, const EBAMRCellData& a_src)
 }
 
 void
+DataOps::copy(MFAMRFluxData& a_dst, const MFAMRFluxData& a_src)
+{
+  CH_TIME("DataOps::copy(MFAMRFluxData)");
+
+  for (int lvl = 0; lvl < a_dst.size(); lvl++) {
+    CH_assert(a_dst[lvl]->nComp() == a_src[lvl]->nComp());
+
+    if (a_src[lvl] != nullptr && a_dst[lvl] != nullptr) {
+      a_src[lvl]->localCopyTo(*a_dst[lvl]);
+    }
+  }
+}
+
+void
+DataOps::copy(EBAMRFluxData& a_dst, const EBAMRFluxData& a_src)
+{
+  CH_TIME("DataOps::copy(MFAMRFluxData)");
+
+  for (int lvl = 0; lvl < a_dst.size(); lvl++) {
+    CH_assert(a_dst[lvl]->nComp() == a_src[lvl]->nComp());
+
+    if (a_src[lvl] != nullptr && a_dst[lvl] != nullptr) {
+      a_src[lvl]->localCopyTo(*a_dst[lvl]);
+    }
+  }
+}
+
+void
+DataOps::copy(MFAMRIVData& a_dst, const MFAMRIVData& a_src)
+{
+  CH_TIME("DataOps::copy(MFAMRIVData)");
+
+  for (int lvl = 0; lvl < a_dst.size(); lvl++) {
+    CH_assert(a_dst[lvl]->nComp() == a_src[lvl]->nComp());
+
+    if (a_src[lvl] != nullptr && a_dst[lvl] != nullptr) {
+      a_src[lvl]->localCopyTo(*a_dst[lvl]);
+    }
+  }
+}
+
+void
 DataOps::copy(EBAMRIVData& a_dst, const EBAMRIVData& a_src)
 {
   CH_TIME("DataOps::copy(EBAMRIVData)");

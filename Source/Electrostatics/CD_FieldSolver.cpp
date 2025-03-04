@@ -149,6 +149,9 @@ FieldSolver::allocate()
   m_amr->allocate(m_permittivityCell, m_realm, m_nComp);
   m_amr->allocate(m_permittivityFace, m_realm, m_nComp);
   m_amr->allocate(m_permittivityEB, m_realm, m_nComp);
+  m_amr->allocate(m_solverPermittivityCell, m_realm, m_nComp);
+  m_amr->allocate(m_solverPermittivityFace, m_realm, m_nComp);
+  m_amr->allocate(m_solverPermittivityEB, m_realm, m_nComp);  
   m_amr->allocate(m_electricField, m_realm, SpaceDim);
 
   m_amr->allocate(m_sigma, m_realm, phase::gas, m_nComp);
@@ -905,6 +908,10 @@ FieldSolver::setPermittivities()
       }
     }
   }
+
+  DataOps::copy(m_solverPermittivityCell, m_permittivityCell);
+  DataOps::copy(m_solverPermittivityFace, m_permittivityFace);
+  DataOps::copy(m_solverPermittivityEB, m_permittivityEB);    
 }
 
 void
