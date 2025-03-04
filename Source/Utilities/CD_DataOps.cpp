@@ -2615,9 +2615,7 @@ DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, c
 
   const int nbox = dit.size();
 
-  const Real r = a_probLo[0];
-
-  CH_assert(r >= 0.0);
+  CH_assert(a_probLo[0] >= 0.0);
 
 #pragma omp parallel for schedule(runtime)
   for (int mybox = 0; mybox < nbox; mybox++) {
@@ -2638,6 +2636,8 @@ DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, c
 
     for (int icomp = 0; icomp < data.nComp(); icomp++) {
       auto regularKernel = [&](const IntVect& iv) -> void {
+	const Real r = a_probLo[0] + (Real(iv[0]) + 0.5) * a_dx;
+	
         dataReg(iv, icomp) = dataReg(iv, icomp) * r;
       };
 
@@ -2677,9 +2677,7 @@ DataOps::scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const EBISLayout& a_ebisl, c
 
   const int nbox = dit.size();
 
-  const Real r = a_probLo[0];
-
-  CH_assert(r >= 0.0);
+  CH_assert(a_probLo[0] >= 0.0);
   CH_assert(SpaceDim == 2);
 
 #pragma omp parallel for schedule(runtime)
@@ -2756,9 +2754,7 @@ DataOps::scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs,
 
   const int nbox = dit.size();
 
-  const Real r = a_probLo[0];
-
-  CH_assert(r >= 0.0);
+  CH_assert(a_probLo[0] >= 0.0);
 
 #pragma omp parallel for schedule(runtime)
   for (int mybox = 0; mybox < nbox; mybox++) {
@@ -2775,7 +2771,7 @@ DataOps::scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs,
 
     for (int icomp = 0; icomp < data.nComp(); icomp++) {
       auto irregularKernel = [&](const VolIndex& vof) -> void {
-        const Real r = a_probLo[0] + Location::position(Location::Cell::Center, vof, ebisbox, a_dx)[0];
+        const Real r = a_probLo[0] + Location::position(Location::Cell::Boundary, vof, ebisbox, a_dx)[0];
 
         data(vof, icomp) *= r;
       };
