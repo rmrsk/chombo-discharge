@@ -81,10 +81,7 @@ main(int argc, char* argv[])
   if (procID() == 0) {
 #endif
     //clang-format off
-    std::cout << "# nref\t"
-              << "Linf error\t"
-              << "L1 error\t"
-              << "L2 error\n";
+    std::cout << "# nref\t" << "Linf error\t" << "L1 error\t" << "L2 error\n";
 
     for (int i = 0; i < norms.size(); i++) {
       std::cout << std::pow(2, i + 1) << "\t" << std::get<0>(norms[i]) << "\t" << std::get<1>(norms[i]) << "\t"

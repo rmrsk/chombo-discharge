@@ -358,7 +358,7 @@ public:
 
   /*!
     @brief Function which increments data in the form a_lhs = a_lhs + a_rhs*a_scale for all components. 
-    @details This versions only adds irregular data from an EBAMRIVFAB. It ignores regular cells. 
+    @details This versions only adds irregular data from an EBAMRIVData. It ignores regular cells. 
     @param[inout] a_lhs   Data to be incremented.
     @param[in]    a_rhs   Incrementation.
     @param[in]    a_scale Scale factor.
@@ -368,7 +368,7 @@ public:
 
   /*!
     @brief Function which increments data in the form a_lhs = a_lhs + a_rhs*a_scale for all components. 
-    @details This versions only adds irregular data from an EBAMRIVFAB. It ignores regular cells. 
+    @details This versions only adds irregular data from an EBAMRIVData. It ignores regular cells. 
     @param[inout] a_lhs   Data to be incremented.
     @param[in]    a_rhs   Incrementation.
     @param[in]    a_scale Scale factor.
@@ -418,7 +418,7 @@ public:
     @param[in ] a_src Source data holder
   */
   static void
-  copy(MFAMRFluxData& a_dst, const MFAMRFluxData& a_src);  
+  copy(MFAMRFluxData& a_dst, const MFAMRFluxData& a_src);
 
   /*!
     @brief Copy data from one data holder to another.
@@ -434,7 +434,7 @@ public:
     @param[in ] a_src Source data holder
   */
   static void
-  copy(MFAMRIVData& a_dst, const MFAMRIVData& a_src);  
+  copy(MFAMRIVData& a_dst, const MFAMRIVData& a_src);
 
   /*!
     @brief Copy data from one data holder to another.
@@ -832,6 +832,116 @@ public:
   */
   static void
   multiply(LevelData<BaseIVFAB<Real>>& a_lhs, const LevelData<BaseIVFAB<Real>>& a_rhs);
+
+#ifdef CH_USE_RZ
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolutions
+  */
+  static void
+  scaleByRadius(MFAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(LevelData<MFCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);  
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(MFAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(LevelData<MFFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(MFAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(LevelData<MFBaseIVFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolutions
+  */
+  static void
+  scaleByRadius(EBAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(LevelData<EBCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);  
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(EBAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(EBAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx);
+
+  /*!
+    @brief Multiply a data holder by the radius
+    @param[inout] a_lhs    Data to be multiplied by the first coordinate (radius)
+    @param[in]    a_probLo Lower-left origin of coordinate system
+    @param[in]    a_dx     Grid resolution
+  */
+  static void
+  scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs, const RealVect& a_probLo, const Real& a_dx);    
+#endif
 
   /*!
     @brief Multiply data holder by another data holder

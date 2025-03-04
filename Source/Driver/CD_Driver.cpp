@@ -1993,10 +1993,8 @@ Driver::writeMemoryUsage()
     const int width = 12;
 
     // Write header
-    f << std::left << std::setw(width) << "# MPI rank"
-      << "\t" << std::left << std::setw(width) << "Peak memory"
-      << "\t" << std::left << std::setw(width) << "Unfreed memory"
-      << "\t" << endl;
+    f << std::left << std::setw(width) << "# MPI rank" << "\t" << std::left << std::setw(width) << "Peak memory" << "\t"
+      << std::left << std::setw(width) << "Unfreed memory" << "\t" << endl;
 
     // Write memory
     for (int i = 0; i < numProc(); i++) {

@@ -2590,6 +2590,66 @@ DataOps::scale(LevelData<BaseIVFAB<Real>>& a_lhs, const Real& a_scale)
   }
 }
 
+#ifdef CH_USE_RZ
+void
+DataOps::scaleByRadius(MFAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
+{
+  CH_TIME("DataOps::scaleByRadius(MFAMRCellData");
+
+  for (int lvl = 0; lvl <= a_lhs.size(); lvl++) {
+    DataOps::scaleByRadius(*a_lhs[lvl], a_probLo, a_dx[lvl]);
+  }
+}
+
+void
+DataOps::scaleByRadius(LevelData<MFCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
+{
+  CH_TIME("DataOps::scaleByRadius(LevelData<MFCellFAB>");
+
+  //  const DisjointBoxLyaout&
+}
+
+void
+DataOps::scaleByRadius(MFAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(LevelData<MFFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(MFAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(LevelData<MFBaseIVFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(EBAMRCellData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(EBAMRFluxData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(EBAMRIVData& a_lhs, const RealVect& a_probLo, const Vector<Real>& a_dx)
+{}
+
+void
+DataOps::scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs, const RealVect& a_probLo, const Real& a_dx)
+{}
+#endif
+
 void
 DataOps::setCoveredValue(EBAMRCellData& a_lhs, const int a_comp, const Real a_value)
 {

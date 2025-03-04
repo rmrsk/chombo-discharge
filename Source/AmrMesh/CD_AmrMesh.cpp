@@ -772,7 +772,7 @@ AmrMesh::reallocate(MFAMRCellData& a_data, const int a_lmin) const
   const IntVect ghost = a_data[0]->ghostVect();
   const int     nComp = a_data[0]->nComp();
   const int
-            ignored = nComp; // A strange but true thing -- for multifluid data we pass in the number of components through the factory.
+    ignored = nComp; // A strange but true thing -- for multifluid data we pass in the number of components through the factory.
   const int nphases = m_multifluidIndexSpace->numPhases();
 
   a_data.resize(1 + m_finestLevel);
@@ -817,7 +817,7 @@ AmrMesh::reallocate(MFAMRFluxData& a_data, const int a_lmin) const
   const IntVect ghost = a_data[0]->ghostVect();
   const int     nComp = a_data[0]->nComp();
   const int
-            ignored = nComp; // Strange but true thing, for multifluid data the number of components come in through the factory.
+    ignored = nComp; // Strange but true thing, for multifluid data the number of components come in through the factory.
   const int nphases = m_multifluidIndexSpace->numPhases();
 
   a_data.resize(1 + m_finestLevel);
@@ -862,7 +862,7 @@ AmrMesh::reallocate(MFAMRIVData& a_data, const int a_lmin) const
   const IntVect ghost = a_data[0]->ghostVect();
   const int     nComp = a_data[0]->nComp();
   const int
-            ignored = nComp; // Strange but true thing, for multifluid data the number of components come in through the factory.
+    ignored = nComp; // Strange but true thing, for multifluid data the number of components come in through the factory.
   const int nphases = m_multifluidIndexSpace->numPhases();
 
   a_data.resize(1 + m_finestLevel);

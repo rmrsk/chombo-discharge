@@ -640,7 +640,7 @@ protected:
   /*!
     @brief EB permittivity used in solvers.
   */
-  MFAMRIVData m_solverPermittivityEB;  
+  MFAMRIVData m_solverPermittivityEB;
 
   /*!
     @brief Flag for checking if voltage has been set. 
