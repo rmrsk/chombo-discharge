@@ -1144,10 +1144,6 @@ ItoKMCGodunovStepper<I, C, R, F>::setupSemiImplicitPoisson(const Real a_dt) noex
     pout() << this->m_name + "::setupSemiImplicitPoisson" << endl;
   }
 
-#warning \
-  "ItoKMCGodunovStepper::setupSemiImplicitPoisson is still a work in progress -- convergence issues have been observed"
-#warning "ItoKMCGodunovStepper::setupSemiImplicitPoisson -- beware of scaling of relative permittivities!"
-
   const Average  average  = Average::Arithmetic;
   const int      tanGhost = 1;
   const Interval interv(0, 0);

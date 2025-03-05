@@ -25,6 +25,9 @@
 #include <CD_Units.H>
 #include <CD_NamespaceHeader.H>
 
+#error "FieldSolverMultigrid is obtaining the wrong solution because the space charge is not scaled by the radius"
+#error "FieldSolverMultigrid is obtaining the wrong solution because the surface charge is not scaled by R (it should, because the permittivities are scaled by the radius)""
+
 constexpr Real FieldSolverMultigrid::m_alpha;
 constexpr Real FieldSolverMultigrid::m_beta;
 
