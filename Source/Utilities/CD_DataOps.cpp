@@ -2592,7 +2592,10 @@ DataOps::scale(LevelData<BaseIVFAB<Real>>& a_lhs, const Real& a_scale)
 
 #ifdef CH_USE_RZ
 void
-DataOps::scaleByRadius(EBAMRCellData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx)
+DataOps::scaleByRadius(EBAMRCellData&            a_lhs,
+                       const Vector<EBISLayout>& a_ebisl,
+                       const RealVect&           a_probLo,
+                       const Vector<Real>&       a_dx)
 {
   CH_TIME("DataOps::scaleByRadius(EBAMRCellData");
 
@@ -2606,7 +2609,10 @@ DataOps::scaleByRadius(EBAMRCellData& a_lhs, const Vector<EBISLayout>& a_ebisl, 
 }
 
 void
-DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx)
+DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs,
+                       const EBISLayout&     a_ebisl,
+                       const RealVect&       a_probLo,
+                       const Real&           a_dx)
 {
   CH_TIME("DataOps::scaleByRadius(LevelData<EBCellFAB>");
 
@@ -2636,8 +2642,8 @@ DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, c
 
     for (int icomp = 0; icomp < data.nComp(); icomp++) {
       auto regularKernel = [&](const IntVect& iv) -> void {
-	const Real r = a_probLo[0] + (Real(iv[0]) + 0.5) * a_dx;
-	
+        const Real r = a_probLo[0] + (Real(iv[0]) + 0.5) * a_dx;
+
         dataReg(iv, icomp) = dataReg(iv, icomp) * r;
       };
 
@@ -2654,7 +2660,10 @@ DataOps::scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, c
 }
 
 void
-DataOps::scaleByRadius(EBAMRFluxData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx)
+DataOps::scaleByRadius(EBAMRFluxData&            a_lhs,
+                       const Vector<EBISLayout>& a_ebisl,
+                       const RealVect&           a_probLo,
+                       const Vector<Real>&       a_dx)
 {
   CH_TIME("DataOps::scaleByRadius(EBAMRFluxData)");
 
@@ -2668,7 +2677,10 @@ DataOps::scaleByRadius(EBAMRFluxData& a_lhs, const Vector<EBISLayout>& a_ebisl, 
 }
 
 void
-DataOps::scaleByRadius(LevelData<EBFluxFAB>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx)
+DataOps::scaleByRadius(LevelData<EBFluxFAB>& a_lhs,
+                       const EBISLayout&     a_ebisl,
+                       const RealVect&       a_probLo,
+                       const Real&           a_dx)
 {
   CH_TIME("DataOps::scaleByRadius(LevelData<EBFluxFAB>)");
 

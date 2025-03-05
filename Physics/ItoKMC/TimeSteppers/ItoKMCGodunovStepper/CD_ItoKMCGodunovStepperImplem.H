@@ -522,7 +522,7 @@ ItoKMCGodunovStepper<I, C, R, F>::regrid(const int a_lmin,
   (this->m_ito)->regrid(a_lmin, a_oldFinestLevel, a_newFinestLevel);
   if (this->m_timeStep == 0) {
     // Necessary because first time step is not semi-implicit, so it will use the densities from the
-    // Ito and CDr solvers. Howver,  ItoSolver does not re-deposit the particles during regrid, so we
+    // Ito and CDR solvers. However,  ItoSolver does not re-deposit the particles during regrid, so we
     // enforce it here.
     (this->m_ito)->depositParticles();
   }
@@ -1144,8 +1144,13 @@ ItoKMCGodunovStepper<I, C, R, F>::setupSemiImplicitPoisson(const Real a_dt) noex
     pout() << this->m_name + "::setupSemiImplicitPoisson" << endl;
   }
 
-#warning "ItoKMCGodunovStepper::setupSemiImplicitPoisson is still a work in progress -- convergence issues have been observed"
+#warning \
+  "ItoKMCGodunovStepper::setupSemiImplicitPoisson is still a work in progress -- convergence issues have been observed"
 #warning "ItoKMCGodunovStepper::setupSemiImplicitPoisson -- beware of scaling of relative permittivities!"
+
+  const Average  average  = Average::Arithmetic;
+  const int      tanGhost = 1;
+  const Interval interv(0, 0);
 
   // Set coefficients as usual.
   (this->m_fieldSolver)->setPermittivities();
@@ -1175,17 +1180,14 @@ ItoKMCGodunovStepper<I, C, R, F>::setupSemiImplicitPoisson(const Real a_dt) noex
   DataOps::incr(solverPermCellGas, (this->m_conductivityCell), a_dt / Units::eps0);
   DataOps::incr(solverPermEBGas, (this->m_conductivityCell), a_dt / Units::eps0);
 
-  (this->m_amr)->arithmeticAverage(solverPermCellGas, this->m_fluidRealm, (this->m_plasmaPhase));
-  (this->m_amr)->arithmeticAverage(solverPermEBGas, this->m_fluidRealm, (this->m_plasmaPhase));
-
-  // If we are doing RZ-calculatinos we must scale the coefficients appropriately for this to work. We do not have to compute anything for
-  // the face-centered conductivity since it is formed as an average of the cell-centered data.
-#ifdef CH_USE_RZ
   const RefCountedPtr<MultiFluidIndexSpace>& mfis = (this->m_computationalGeometry)->getMfIndexSpace();
 
   for (int iphase = 0; iphase < mfis->numPhases(); iphase++) {
     const phase::which_phase curPhase = (iphase == 0) ? phase::gas : phase::solid;
 
+    // If we are doing RZ-calculatinos we must scale the coefficients appropriately for this to work. We do not have to compute anything for
+    // the face-centered conductivity since it is formed as an average of the cell-centered data.
+#ifdef CH_USE_RZ
     for (int lvl = 0; lvl <= (this->m_amr)->getFinestLevel(); lvl++) {
       LevelData<EBCellFAB>       cellPerm;
       LevelData<BaseIVFAB<Real>> ebPerm;
@@ -1198,30 +1200,31 @@ ItoKMCGodunovStepper<I, C, R, F>::setupSemiImplicitPoisson(const Real a_dt) noex
       DataOps::scaleByRadius(cellPerm, ebisl, (this->m_amr)->getProbLo(), (this->m_amr)->getDx()[lvl]);
       DataOps::scaleByRadius(ebPerm, ebisl, (this->m_amr)->getProbLo(), (this->m_amr)->getDx()[lvl]);
     }
+#endif
+
+    // Average the cell-centered conductivity to faces. Note that this includes one "ghost face", which we need
+    // because the multigrid solver will interpolate face-centered conductivities to face centroids.
+    EBAMRCellData cellData = (this->m_amr)->alias(curPhase, solverPermCell);
+    EBAMRFluxData faceData = (this->m_amr)->alias(curPhase, solverPermFace);
+    EBAMRIVData   ebData   = (this->m_amr)->alias(curPhase, solverPermEB);
+
+    (this->m_amr)->average(cellData, this->m_fluidRealm, curPhase, average);
+    (this->m_amr)->interpGhost(cellData, this->m_fluidRealm, curPhase);
+
+    DataOps::averageCellToFace(solverPermFaceGas,
+                               solverPermCellGas,
+                               (this->m_amr)->getDomains(),
+                               tanGhost,
+                               interv,
+                               interv,
+                               average);
+
+    (this->m_amr)->average(faceData, this->m_fluidRealm, curPhase, average);
+    (this->m_amr)->average(ebData, this->m_fluidRealm, curPhase, average);
   }
-#endif
 
-  // Average the cell-centered conductivity to faces. Note that this includes one "ghost face", which we need
-  // because the multigrid solver will interpolate face-centered conductivities to face centroids.
-  const Average  average  = Average::Arithmetic;
-  const int      tanGhost = 1;
-  const Interval interv(0, 0);
-
-  DataOps::averageCellToFace(solverPermFaceGas,
-                             solverPermCellGas,
-                             (this->m_amr)->getDomains(),
-                             tanGhost,
-                             interv,
-                             interv,
-                             average);
-
-#if 1
-#warning "wtf in setup semi implicit"
-  (this->m_amr)->average(solverPermFace, this->m_fluidRealm, average);
-  //  (this->m_amr)->average(solverPermEB, this->m_fluidRealm, average);
-#endif
-
-  // Finally, set up the solver with the "permittivities"
+  // Finally, set up the solver with the "permittivities", which now consist of epsr + sigma*dt/eps0. These coefficients are derived as averages from the
+  // cell-centered values, including one tangential ghost face.
   (this->m_fieldSolver)->setSolverPermittivities(solverPermCell, solverPermFace, solverPermEB);
 }
 

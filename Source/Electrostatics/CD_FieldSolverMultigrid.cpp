@@ -465,7 +465,7 @@ FieldSolverMultigrid::setPermittivities()
     pout() << "FieldSolverMultigrid::setPermittivities()" << endl;
   }
 
-  // Parent method fills permittivities over the "valid" region. This will also perform the necessary 
+  // Parent method fills permittivities over the "valid" region. This will also perform the necessary RZ-scaling.
   FieldSolver::setPermittivities();
 
   // With EBHelmholtzOp/MFHelmholtzOp, the stencils can reach out of grid

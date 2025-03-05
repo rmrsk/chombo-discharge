@@ -540,7 +540,7 @@ public:
     @brief Get EB-centered permittivity used in the solver
   */
   MFAMRIVData&
-  getSolverPermittivityEB();  
+  getSolverPermittivityEB();
 
   /*!
     @brief Get m_sigma

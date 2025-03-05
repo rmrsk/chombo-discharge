@@ -18,7 +18,7 @@
 #if defined(_OPENMP) && defined(CH_USE_MEMORY_TRACKING)
 #error "OpenMP and memory tracking are not compatible"
 #endif
-#if defined(CH_USE_RZ) && CH_SPACEDIM==3
+#if defined(CH_USE_RZ) && CH_SPACEDIM == 3
 #error "USE_RZ with DIM=3 not supported"
 #endif
 

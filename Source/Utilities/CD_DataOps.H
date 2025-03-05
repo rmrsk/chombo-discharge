@@ -843,7 +843,10 @@ public:
     @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine.     
   */
   static void
-  scaleByRadius(EBAMRCellData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx);
+  scaleByRadius(EBAMRCellData&            a_lhs,
+                const Vector<EBISLayout>& a_ebisl,
+                const RealVect&           a_probLo,
+                const Vector<Real>&       a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
@@ -854,7 +857,7 @@ public:
     @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine.     
   */
   static void
-  scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx);  
+  scaleByRadius(LevelData<EBCellFAB>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
@@ -865,7 +868,10 @@ public:
     @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine. 
   */
   static void
-  scaleByRadius(EBAMRFluxData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx);
+  scaleByRadius(EBAMRFluxData&            a_lhs,
+                const Vector<EBISLayout>& a_ebisl,
+                const RealVect&           a_probLo,
+                const Vector<Real>&       a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
@@ -887,7 +893,10 @@ public:
     @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine. 
   */
   static void
-  scaleByRadius(EBAMRIVData& a_lhs, const Vector<EBISLayout>& a_ebisl, const RealVect& a_probLo, const Vector<Real>& a_dx);
+  scaleByRadius(EBAMRIVData&              a_lhs,
+                const Vector<EBISLayout>& a_ebisl,
+                const RealVect&           a_probLo,
+                const Vector<Real>&       a_dx);
 
   /*!
     @brief Multiply a data holder by the radius
@@ -898,7 +907,10 @@ public:
     @note This routine only scales the _valid_ data region. If ghost cells need to be updated it must be done after calling this routine. 
   */
   static void
-  scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs, const EBISLayout& a_ebisl, const RealVect& a_probLo, const Real& a_dx);    
+  scaleByRadius(LevelData<BaseIVFAB<Real>>& a_lhs,
+                const EBISLayout&           a_ebisl,
+                const RealVect&             a_probLo,
+                const Real&                 a_dx);
 #endif
 
   /*!
