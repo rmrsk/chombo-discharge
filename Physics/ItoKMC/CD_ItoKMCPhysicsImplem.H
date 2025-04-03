@@ -458,6 +458,25 @@ ItoKMCPhysics::reconcileParticles(Vector<List<ItoParticle>*>& a_particles,
     }
   }
 
+#if 1
+  RealVect lo = RealVect::Unit;
+  RealVect hi = -RealVect::Unit;
+
+  for (ListIterator<ItoParticle> lit(*a_particles[0]); lit.ok(); ++lit) {
+    const ItoParticle& p = lit();
+    const RealVect&    x = (p.position() - a_cellPos) / a_dx;
+
+    lo = min(x, lo);
+    hi = max(x, hi);
+  }
+
+  lo = max(lo, a_lo);
+  hi = min(hi, a_hi);
+#else
+  RealVect lo = a_lo;
+  RealVect hi = a_hi;
+#endif
+
   for (int i = 0; i < a_particles.size(); i++) {
     const long long diff = (long long)(a_newNumParticles[i] - a_oldNumParticles[i]);
 
@@ -473,7 +492,8 @@ ItoKMCPhysics::reconcileParticles(Vector<List<ItoParticle>*>& a_particles,
         // Figure out where to place the particles.
         switch (m_particlePlacement) {
         case ParticlePlacement::Random: {
-          x = Random::randomPosition(a_cellPos, a_lo, a_hi, a_bndryCentroid, a_bndryNormal, a_dx, a_kappa);
+          //          x = Random::randomPosition(a_cellPos, a_lo, a_hi, a_bndryCentroid, a_bndryNormal, a_dx, a_kappa);
+          x = Random::randomPosition(a_cellPos, lo, hi, a_bndryCentroid, a_bndryNormal, a_dx, a_kappa);
 
           break;
         }
