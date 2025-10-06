@@ -42,6 +42,18 @@ namespace BoxLoops {
   loop(const Box& a_computeBox, Functor&& kernel, const IntVect& a_stride = IntVect::Unit);
 
   /*!
+    @brief Launch a C++ kernel over a regular grid. 
+    @details The stride argument lets the user use different strides along the different coordinate axes. The default 
+    is to use a stride of one along each coordinate. Note that the stride must be positive for each coordinate axis. 
+    @param[in]    a_computeBox Computation box
+    @param[inout] a_kernel     Kernel to launch. 
+    @param[in]    a_stride     Stride for each loop. 
+  */
+  template <typename Functor>
+  ALWAYS_INLINE void
+  loop_ijk(const Box& a_computeBox, Functor&& kernel, const IntVect& a_stride = IntVect::Unit);  
+
+  /*!
     @brief Launch a C++ kernel over a subset of cells. 
     @param[inout] a_cells   Grid cells where we launch the kernel. 
     @param[inout] a_kernel  Kernel to launch
