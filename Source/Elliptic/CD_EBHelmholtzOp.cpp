@@ -1218,6 +1218,7 @@ EBHelmholtzOp::applyOpRegular(EBCellFAB&             a_Lphi,
   // This is the C++ kernel. It adds the diagonal and the Laplacian part.
   const Real factor = m_beta / (m_dx * m_dx);
 
+#if 0
   auto kernel = [&](const IntVect& iv) -> void {
     Lphi(iv, m_comp) = m_alpha * aco(iv, m_comp) * phi(iv, m_comp) +
                        factor * (bcoX(iv + BASISV(0), m_comp) * (phi(iv + BASISV(0), m_comp) - phi(iv, m_comp)) -
@@ -1235,6 +1236,68 @@ EBHelmholtzOp::applyOpRegular(EBCellFAB&             a_Lphi,
   CH_START(t2);
   BoxLoops::loop(a_cellBox, kernel);
   CH_STOP(t2);
+#else
+
+  Real* __restrict Lp       = Lphi.dataPtr(m_comp);
+  const Real* __restrict p  = phi.dataPtr(m_comp);
+  const Real* __restrict a  = aco.dataPtr(m_comp);
+  const Real* __restrict bx = bcoX.dataPtr(m_comp);
+  const Real* __restrict by = bcoY.dataPtr(m_comp);
+  const Real* __restrict bz = bcoZ.dataPtr(m_comp);
+
+  Lp = (Real*)__builtin_assume_aligned(Lp, 64);
+  p  = (const Real*)__builtin_assume_aligned(p, 64);
+  a  = (const Real*)__builtin_assume_aligned(a, 64);
+  bx = (const Real*)__builtin_assume_aligned(bx, 64);
+  by = (const Real*)__builtin_assume_aligned(by, 64);
+  bz = (const Real*)__builtin_assume_aligned(bz, 64);
+
+  const Box phiBox = Lphi.box();
+  const Box bxBox  = bcoX.box();
+  const Box byBox  = bcoY.box();
+  const Box bzBox  = bcoZ.box();
+
+  auto idx = [&](D_DECL(int i, int j, int k)) -> int {
+    return phiBox.index(IntVect(D_DECL(i, j, k)));
+  };
+
+  auto idx1 = [&](D_DECL(int i, int j, int k)) -> int {
+    return bxBox.index(IntVect(D_DECL(i, j, k)));
+  };
+  auto idx2 = [&](D_DECL(int i, int j, int k)) -> int {
+    return byBox.index(IntVect(D_DECL(i, j, k)));
+  };
+  auto idx3 = [&](D_DECL(int i, int j, int k)) -> int {
+    return bzBox.index(IntVect(D_DECL(i, j, k)));
+  };
+
+  auto kernel = [&](D_DECL(int i, int j, int k)) -> void {
+    const int c = idx(D_DECL(i, j, k));
+
+    const int cxp = idx(D_DECL(i + 1, j, k));
+    const int cxm = idx(D_DECL(i - 1, j, k));
+    const int cyp = idx(D_DECL(i, j + 1, k));
+    const int cym = idx(D_DECL(i, j - 1, k));
+    const int czp = idx(D_DECL(i, j, k + 1));
+    const int czm = idx(D_DECL(i, j, k - 1));
+
+    const int fxp = idx1(D_DECL(i + 1, j, k));
+    const int fx  = idx1(D_DECL(i, j, k));
+    const int fyp = idx2(D_DECL(i, j + 1, k));
+    const int fy  = idx2(D_DECL(i, j, k));
+    const int fzp = idx3(D_DECL(i, j, k+1));
+    const int fz  = idx3(D_DECL(i, j, k));    
+
+    Lp[c] = m_alpha * a[c] * p[c];
+    Lp[c] += factor * (bx[fxp] * (p[cxp] - p[c]) - bx[fx] * (p[c] - p[cxm]));
+    Lp[c] += factor * (by[fyp] * (p[cyp] - p[c]) - by[fy] * (p[c] - p[cym]));
+    Lp[c] += factor * (bz[fzp] * (p[czp] - p[c]) - bz[fz] * (p[c] - p[czm]));    
+  };
+
+  CH_START(t2);
+  BoxLoops::loop_ijk(a_cellBox, kernel);
+  CH_STOP(t2);
+#endif
 }
 
 void
