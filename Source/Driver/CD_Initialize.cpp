@@ -29,8 +29,8 @@
 #include <CD_Initialize.H>
 #include <CD_NamespaceHeader.H>
 
-std::string dischargeInputFile = "<none>";
-ParmParse*  dischargeParser    = nullptr;
+std::string dischargeInputFile;
+ParmParse   dischargeParser;
 
 #if defined(CH_USE_PETSC)
 PetscErrorCode
@@ -49,11 +49,16 @@ initialize(int argc, char* argv[])
 
   if (argc >= 2) {
     dischargeInputFile = argv[1];
-    dischargeParser    = new ParmParse(argc - 2, argv + 2, nullptr, argv[1]);
+    dischargeParser.define(argc - 2, argv + 2, nullptr, argv[1]);
   }
   else {
-    dischargeParser = new ParmParse();
+    dischargeInputFile = "<No file provided>";
+    dischargeParser.define(argc - 2, argv + 2, nullptr, nullptr);
   }
+
+#ifdef _OPENMP
+#pragma omp flush
+#endif
 
   char cwd[1024];
   if (getcwd(cwd, sizeof(cwd)) != nullptr) {
@@ -68,6 +73,14 @@ initialize(int argc, char* argv[])
 )" << endl;
     pout() << "  Working directory: " << cwd << "\n";
     pout() << "  Input file:        " << dischargeInputFile << "\n";
+    pout() << "  Run command:       ";
+    for (int i = 0; i < argc; i++) {
+      pout() << argv[i];
+      if (i < argc - 1) {
+        pout() << " ";
+      }
+    }
+    pout() << "\n";
     pout() << "--------------------------------------------------------------------------------\n";
 #ifdef CH_MPI
     pout() << "  MPI:    TRUE (" << numProc() << " ranks)\n";
@@ -105,8 +118,6 @@ int
 #endif
 finalize()
 {
-  delete dischargeParser;
-
   CH_TIMER_REPORT();
 
 #if defined(CH_USE_PETSC)
