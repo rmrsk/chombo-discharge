@@ -1365,7 +1365,7 @@ ItoKMCJSON::initializeDensities()
 
       // Make the initial density function.
       auto initFunc = [density](const RealVect x, const Real t) -> Real {
-        return density;
+        return density * exp(-x.dotProduct(x)/std::pow(0.2E-3,2));
       };
 
       if (speciesType == SpeciesType::CDR) {

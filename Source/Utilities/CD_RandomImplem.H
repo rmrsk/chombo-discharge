@@ -23,6 +23,7 @@
 
 // Our includes
 #include <CD_Random.H>
+#include <CD_Units.H>
 #include <CD_NamespaceHeader.H>
 
 inline void
@@ -199,6 +200,7 @@ Random::getDirection()
 
   return RealVect(x1, x2) / sqrt(r);
 #elif CH_SPACEDIM == 3
+#if 1 // Original code
   Real x1 = 2.0;
   Real x2 = 2.0;
   Real r  = x1 * x1 + x2 * x2;
@@ -211,6 +213,15 @@ Random::getDirection()
   const Real x = 2 * x1 * sqrt(1 - r);
   const Real y = 2 * x2 * sqrt(1 - r);
   const Real z = 1 - 2 * r;
+
+#else // Stupid sampling
+  const Real phi = 2.0 * Units::pi * Random::getUniformReal01();
+  const Real theta = Units::pi * Random::getUniformReal01();
+
+  const Real x = sin(theta) * cos(phi);
+  const Real z = sin(theta) * sin(phi);
+  const Real y = cos(theta);
+#endif
 
   return RealVect(x, y, z);
 #endif
