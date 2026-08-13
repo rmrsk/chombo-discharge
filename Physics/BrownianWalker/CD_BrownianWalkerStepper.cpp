@@ -356,6 +356,31 @@ BrownianWalkerStepper::printStepReport()
   const size_t globalParticles = m_solver->getNumParticles(ItoSolver::WhichContainer::Bulk, false);
 
   pout() << "                                   #part = " << localParticles << " (" << globalParticles << ")" << endl;
+
+  // DIAGNOSTIC (memory-growth investigation): sum the live size and the allocated capacity of every
+  // ParticleSoA arena this rank owns. ParticleSoA::reserve only ever grows, and shrinkToFit has no
+  // callers, so capacity is a per-patch high-water mark of the particle load that patch has ever seen.
+  size_t soaSize     = 0;
+  size_t soaCapacity = 0;
+  size_t numPatches  = 0;
+
+  const auto& amrParticles = m_solver->getParticles(ItoSolver::WhichContainer::Bulk).getParticles();
+
+  for (int lvl = 0; lvl < amrParticles.size(); lvl++) {
+    const LayoutData<ParticleSoA<ItoParticle>>& levelParticles = *amrParticles[lvl];
+
+    for (DataIterator dit(levelParticles.dataIterator()); dit.ok(); ++dit) {
+      soaSize += levelParticles[dit()].size();
+      soaCapacity += levelParticles[dit()].capacity();
+
+      numPatches++;
+    }
+  }
+
+  const size_t bytesPerParticle = ParticleSoA<ItoParticle>::bytesPerParticle();
+
+  pout() << "                                   #soa  = size " << soaSize << " cap " << soaCapacity << " ("
+         << (soaCapacity * bytesPerParticle) / 1024 << " kB) over " << numPatches << " patches" << endl;
 }
 
 bool

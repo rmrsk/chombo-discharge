@@ -38,6 +38,7 @@
 #include <CD_ParallelOps.H>
 #include <CD_DischargeIO.H>
 #include <CD_EBLeastSquaresMultigridInterpolator.H>
+#include <CD_MFHelmholtzElectrostaticEBBCFactory.H>
 #include <CD_OpenMP.H>
 #include <CD_NamespaceHeader.H>
 
@@ -623,18 +624,21 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   // Tracked memory only ever grows across a regrid -- it is bit-for-bit constant across a plain time
   // step -- so sampling the total at each phase boundary localizes that growth to a phase. Sampled
   // unconditionally (the call is a couple of integer reads) but only reported when asked for.
-  std::vector<std::pair<std::string, long long>> regridMemory;
+  std::vector<std::tuple<std::string, long long, long long>> regridMemory;
 
   auto sampleRegridMemory = [&regridMemory](const std::string& a_phase) -> void {
     long long unfreed = 0LL;
+    long long vofs    = 0LL;
 
 #ifdef CH_USE_MEMORY_TRACKING
     long long peak = 0LL;
 
     overallMemoryUsage(unfreed, peak);
+
+    vofs = MemoryReport::getTrackedVectorBytes("8VolIndex");
 #endif
 
-    regridMemory.emplace_back(a_phase, unfreed);
+    regridMemory.emplace_back(a_phase, unfreed, vofs);
   };
 
   sampleRegridMemory("Entry");
@@ -680,10 +684,19 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   // Store things that need to be regridded
   timer.startEvent("Pre-regrid");
   this->cacheTags(m_tags); // Cache m_tags because after regrid, ownership will change
+
+  sampleRegridMemory("  pre: cacheTags");
+
   m_timeStepper->preRegrid(a_lmin, m_amr->getFinestLevel());
+
+  sampleRegridMemory("  pre: timeStepper");
+
   if (!(m_cellTagger.isNull())) {
     m_cellTagger->preRegrid();
   }
+
+  sampleRegridMemory("  pre: cellTagger");
+
   m_amr->preRegrid();
   timer.stopEvent("Pre-regrid");
 
@@ -741,7 +754,7 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
     m_cellTagger->regrid();
     timer.stopEvent("Regrid celltagger");
 
-  sampleRegridMemory("Regrid celltagger");
+    sampleRegridMemory("Regrid celltagger");
   }
 
   // If it wants to, TimeStepper can do a postRegrid operation.
@@ -759,12 +772,16 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
     pout() << "Driver::regrid - tracked memory by phase, step = " << m_timeStep << endl;
 
     for (int i = 1; i < regridMemory.size(); i++) {
-      pout() << "  " << std::left << std::setw(22) << regridMemory[i].first << " delta = " << std::right
-             << std::setw(12) << regridMemory[i].second - regridMemory[i - 1].second << " bytes" << endl;
+      pout() << "  " << std::left << std::setw(22) << std::get<0>(regridMemory[i]) << " delta = " << std::right
+             << std::setw(12) << std::get<1>(regridMemory[i]) - std::get<1>(regridMemory[i - 1]) << " bytes"
+             << "   VolIndex = " << std::setw(10) << std::get<2>(regridMemory[i]) - std::get<2>(regridMemory[i - 1])
+             << "   VolIndexAbs = " << std::setw(10) << std::get<2>(regridMemory[i]) << endl;
     }
 
     pout() << "  " << std::left << std::setw(22) << "TOTAL" << " delta = " << std::right << std::setw(12)
-           << regridMemory.back().second - regridMemory.front().second << " bytes" << endl;
+           << std::get<1>(regridMemory.back()) - std::get<1>(regridMemory.front()) << " bytes"
+           << "   VolIndex = " << std::setw(10) << std::get<2>(regridMemory.back()) - std::get<2>(regridMemory.front())
+           << endl;
   }
 
   if (m_profile) {
@@ -878,18 +895,21 @@ Driver::run(const Real a_startTime, const Real a_endTime, const int a_maxSteps)
       // Tracked-memory samples around the coarse phases of a time step. The growth seen on long runs
       // does not happen inside Driver::regrid -- that path frees slightly more than it allocates --
       // so bracket the step itself to find which call site retains.
-      std::vector<std::pair<std::string, long long>> stepMemory;
+      std::vector<std::tuple<std::string, long long, long long>> stepMemory;
 
       auto sampleStepMemory = [&stepMemory](const std::string& a_phase) -> void {
         long long unfreed = 0LL;
+        long long vofs    = 0LL;
 
 #ifdef CH_USE_MEMORY_TRACKING
         long long peak = 0LL;
 
         overallMemoryUsage(unfreed, peak);
+
+        vofs = MemoryReport::getTrackedVectorBytes("8VolIndex");
 #endif
 
-        stepMemory.emplace_back(a_phase, unfreed);
+        stepMemory.emplace_back(a_phase, unfreed, vofs);
       };
 
       sampleStepMemory("Step entry");
@@ -1022,8 +1042,10 @@ Driver::run(const Real a_startTime, const Real a_endTime, const int a_maxSteps)
         pout() << "Driver::run - tracked memory by step phase, step = " << m_timeStep << endl;
 
         for (int i = 1; i < stepMemory.size(); i++) {
-          pout() << "  " << std::left << std::setw(24) << stepMemory[i].first << " delta = " << std::right
-                 << std::setw(12) << stepMemory[i].second - stepMemory[i - 1].second << " bytes" << endl;
+          pout() << "  " << std::left << std::setw(24) << std::get<0>(stepMemory[i]) << " delta = " << std::right
+                 << std::setw(12) << std::get<1>(stepMemory[i]) - std::get<1>(stepMemory[i - 1]) << " bytes"
+                 << "   VolIndex = " << std::setw(10) << std::get<2>(stepMemory[i]) - std::get<2>(stepMemory[i - 1])
+                 << endl;
         }
       }
 
@@ -1972,9 +1994,9 @@ Driver::stepReport(const Real a_startTime, const Real a_endTime, const int a_max
 
     MemoryReport::getMaxMinResidentSetSize(maxCurrentRSS, minCurrentRSS, maxPeakRSS, minPeakRSS);
 
-    pout() << "                                -- Resident set size     : " << std::ceil(currentRSS * toMB) << "(MB)"
+    pout() << "                                -- Resident set size     : " << std::ceil(currentRSS / 1024.) << "(kB)"
            << endl;
-    pout() << "                                -- Peak resident size    : " << std::ceil(peakRSS * toMB) << "(MB)"
+    pout() << "                                -- Peak resident size    : " << std::ceil(peakRSS / 1024.) << "(kB)"
            << endl;
     pout() << "                                -- Max resident set size : " << std::ceil(maxCurrentRSS * toMB) << "(MB)"
            << endl;
@@ -1991,10 +2013,8 @@ Driver::stepReport(const Real a_startTime, const Real a_endTime, const int a_max
 
   overallMemoryUsage(unfreedMem, peakMem);
 
-  pout() << "                                -- Unfreed memory        : "
-         << std::ceil(static_cast<double>(unfreedMem) / bytesPerMB) << "(MB)" << endl;
-  pout() << "                                -- Peak memory usage     : "
-         << std::ceil(static_cast<double>(peakMem) / bytesPerMB) << "(MB)" << endl;
+  pout() << "                                -- Unfreed memory        : " << unfreedMem << "(B)" << endl;
+  pout() << "                                -- Peak memory usage     : " << peakMem << "(B)" << endl;
 
 #ifdef CH_MPI
   const long long maxUnfreedMem = ParallelOps::max(unfreedMem);
@@ -2154,6 +2174,15 @@ Driver::writeMemoryUsage()
 
     pout() << "Driver::writeMemoryUsage - EBLeastSquaresMultigridInterpolator"
            << " constructed = " << numBuilt << " destructed = " << numDead << " live = " << numBuilt - numDead << endl;
+
+    // Same question for the elliptic operator chain: one EBBC factory is built per field-solver setup,
+    // i.e. once per regrid, and the previous one should die with it.
+    const long long numBcBuilt = MFHelmholtzElectrostaticEBBCFactory::getNumConstructed();
+    const long long numBcDead  = MFHelmholtzElectrostaticEBBCFactory::getNumDestructed();
+
+    pout() << "Driver::writeMemoryUsage - MFHelmholtzElectrostaticEBBCFactory"
+           << " constructed = " << numBcBuilt << " destructed = " << numBcDead << " live = " << numBcBuilt - numBcDead
+           << endl;
 
     pout() << "Driver::writeMemoryUsage - live Copiers = " << Copier::s_liveCopiers << endl;
 

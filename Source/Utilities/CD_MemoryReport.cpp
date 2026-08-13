@@ -192,4 +192,30 @@ MemoryReport::reportUnfreedMemory(std::ostream& a_os)
 #endif
 }
 
+long long
+MemoryReport::getTrackedVectorBytes(const std::string& a_typeName)
+{
+  CH_TIME("MemoryReport::getTrackedVectorBytes");
+
+#ifdef CH_USE_MEMORY_TRACKING
+  std::ostringstream os;
+
+  ReportUnfreedMemory(os);
+
+  const std::string report = os.str();
+  const std::string key    = "Vector " + a_typeName + ": ";
+  const std::size_t pos    = report.find(key);
+
+  if (pos == std::string::npos) {
+    return 0LL;
+  }
+
+  return std::atoll(report.c_str() + pos + key.size());
+#else
+  (void)a_typeName;
+
+  return 0LL;
+#endif
+}
+
 #include <CD_NamespaceFooter.H>
