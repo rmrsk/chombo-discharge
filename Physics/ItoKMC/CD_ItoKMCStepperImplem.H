@@ -1978,8 +1978,8 @@ ItoKMCStepper<I, C, R, F>::computeSpaceChargeDensity(MFAMRCellData&             
   }
 
   CH_assert(a_rho.getRealm() == m_fluidRealm);
-  CH_assert(a_itoDensities[0]->getRealm() == m_particleRealm);
-  CH_assert(a_cdrDensities[0]->getRealm() == m_fluidRealm);
+  CH_assert(a_itoDensities.size() == 0 || a_itoDensities[0]->getRealm() == m_particleRealm);
+  CH_assert(a_cdrDensities.size() == 0 || a_cdrDensities[0]->getRealm() == m_fluidRealm);
 
   // TLDR: a_itoDensities could be defined over the particle realm, so we use m_fluidScratch1 as a temporary storage.
 
