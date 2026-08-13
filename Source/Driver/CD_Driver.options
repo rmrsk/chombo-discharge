@@ -18,6 +18,7 @@ Driver.stop_time                    = 1.0                 ## Stop time.
 Driver.max_steps                    = 100                 ## Maximum number of steps.
 Driver.geometry_only                = false               ## Special option that ONLY plots the geometry.
 Driver.write_memory                 = false               ## Write MPI memory report.
+Driver.write_unfreed_memory         = false               ## Write per-allocation-site unfreed memory to pout (needs write_memory).
 Driver.write_loads                  = false               ## Write (accumulated) computational loads.
 Driver.output_directory             = ./                  ## Output directory.
 Driver.output_names                 = simulation          ## Simulation output names.

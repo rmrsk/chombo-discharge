@@ -122,4 +122,16 @@ MemoryReport::getMemoryUsage(Vector<Real>& a_peak, Vector<Real>& a_unfreed)
 #endif
 }
 
+void
+MemoryReport::reportUnfreedMemory(std::ostream& a_os)
+{
+  CH_TIME("MemoryReport::reportUnfreedMemory");
+
+#ifdef CH_USE_MEMORY_TRACKING
+  ReportUnfreedMemory(a_os);
+#else
+  (void)a_os;
+#endif
+}
+
 #include <CD_NamespaceFooter.H>

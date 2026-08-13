@@ -1091,6 +1091,7 @@ Driver::parseOptions()
   pp.get("initial_regrids", m_initialRegrids);
   pp.get("restart", m_restartStep);
   pp.get("write_memory", m_writeMemory);
+  pp.query("write_unfreed_memory", m_writeUnfreedMemory);
   pp.get("write_loads", m_writeLoads);
   pp.get("output_directory", m_outputDirectory);
   pp.get("output_names", m_outputFileNames);
@@ -1134,6 +1135,7 @@ Driver::parseRuntimeOptions()
     pout() << "Driver::parseRuntimeOptions()" << endl;
   }
   pp.get("write_memory", m_writeMemory);
+  pp.query("write_unfreed_memory", m_writeUnfreedMemory);
   pp.get("write_loads", m_writeLoads);
   pp.get("plot_interval", m_plotInterval);
   pp.get("regrid_interval", m_regridInterval);
@@ -1869,7 +1871,7 @@ Driver::stepReport(const Real a_startTime, const Real a_endTime, const int a_max
   long long unfreedMem = 0LL;
   long long peakMem    = 0LL;
 
-  //  overallMemoryUsage(unfreedMem, peakMem);
+  overallMemoryUsage(unfreedMem, peakMem);
 
   pout() << "                                -- Unfreed memory        : "
          << std::ceil(static_cast<double>(unfreedMem) / bytesPerMB) << "(MB)" << endl;
@@ -2018,6 +2020,16 @@ Driver::writeMemoryUsage()
       f << std::left << std::setw(width) << i << "\t" << std::left << std::setw(width) << peakMemory[i] << "\t"
         << std::left << std::setw(width) << unfreedMemory[i] << "\t" << endl;
     }
+  }
+
+  // Attribute this rank's unfreed memory to the allocation sites that hold it. This goes to pout()
+  // rather than the file above because the breakdown is per-rank, and pout() already is.
+  if (m_writeUnfreedMemory) {
+    pout() << "Driver::writeMemoryUsage - unfreed memory by allocation site, step = " << m_timeStep << endl;
+
+    MemoryReport::reportUnfreedMemory(pout());
+
+    pout() << "Driver::writeMemoryUsage - end of breakdown" << endl;
   }
 #endif
 }

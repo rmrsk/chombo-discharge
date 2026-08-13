@@ -13,6 +13,9 @@
 #ifndef CD_MEMORYREPORT_H
 #define CD_MEMORYREPORT_H
 
+// Std includes
+#include <iostream>
+
 // Chombo includes
 #include <REAL.H>
 #include <Vector.H>
@@ -49,6 +52,24 @@ getMaxMinMemoryUsage(Real& a_maxPeak, Real& a_minPeak, Real& a_maxUnfreed, Real&
  */
 void
 getMemoryUsage(Vector<Real>& a_peak, Vector<Real>& a_unfreed);
+
+/**
+ * @brief Print a per-allocation-site breakdown of the memory that is currently unfreed.
+ * @details Each line of the report is a single allocation site, written as 'file:line: bytes', so
+ * the output attributes the process' unfreed memory to the code that allocated it. This reports
+ * only the calling rank's allocations, so it must be called on every rank whose usage is of
+ * interest -- pout() is the natural sink because it is already per-rank.
+ *
+ * Only allocations that pass through Chombo's Arena are counted, i.e. BaseFab-backed mesh data such
+ * as FArrayBox, EBCellFAB and LevelData. Particle arenas (ParticleSoA uses std::aligned_alloc) and
+ * every std::vector-backed buffer are invisible to the tracker, so this is a breakdown of the mesh
+ * memory only, not of the process' resident set.
+ *
+ * The report is a no-op unless the code was compiled with CH_USE_MEMORY_TRACKING.
+ * @param[in,out] a_os Stream that the breakdown is written to.
+ */
+void
+reportUnfreedMemory(std::ostream& a_os);
 } // namespace MemoryReport
 
 #include <CD_NamespaceFooter.H>

@@ -305,6 +305,15 @@ protected:
   bool m_writeMemory;
 
   /**
+   * @brief Write a per-allocation-site breakdown of the unfreed memory to pout()
+   * @details Diagnostic aid for attributing the mesh memory reported by m_writeMemory to the code
+   * that allocated it. Only acted upon when m_writeMemory is also true, since it is emitted from
+   * the same place. Defaulted to false because it is read with ParmParse::query, so that existing
+   * input files need not define it.
+   */
+  bool m_writeUnfreedMemory = false;
+
+  /**
    * @brief Write loads to file or not
    */
   bool m_writeLoads;
