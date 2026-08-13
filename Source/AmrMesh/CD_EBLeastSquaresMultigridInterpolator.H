@@ -99,6 +99,26 @@ public:
   virtual ~EBLeastSquaresMultigridInterpolator() noexcept;
 
   /**
+   * @brief Get the number of instances constructed so far.
+   * @details Diagnostic counter for the regrid path. These interpolators are rebuilt from scratch on
+   * every regrid, so the number of live instances (constructed minus destructed) must return to the
+   * same value after each one. A live count that climbs regrid-over-regrid means instances are being
+   * retained, which surfaces as growth in the CoarseInterpQuadCF stencil memory that every instance
+   * owns. Not synchronized -- the interpolators are built serially, one per grid level.
+   * @return Number of instances constructed since program start.
+   */
+  static long long
+  getNumConstructed() noexcept;
+
+  /**
+   * @brief Get the number of instances destructed so far.
+   * @details See getNumConstructed(); the difference between the two is the number of live instances.
+   * @return Number of instances destructed since program start.
+   */
+  static long long
+  getNumDestructed() noexcept;
+
+  /**
    * @brief Return number of ghost cells across CF interface.
    * @return Ghost c f
    */
@@ -287,6 +307,16 @@ protected:
    * multigrid interpolation stencil (away from the EB).
    */
   LayoutData<std::map<std::pair<int, Side::LoHiSide>, Box>> m_cfivs;
+
+  /**
+   * @brief Number of instances constructed so far. See getNumConstructed().
+   */
+  static long long s_numConstructed;
+
+  /**
+   * @brief Number of instances destructed so far. See getNumDestructed().
+   */
+  static long long s_numDestructed;
 
   /**
    * @brief For doing the coarse-side interpolation near the AMR interface

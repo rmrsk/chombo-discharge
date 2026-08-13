@@ -32,6 +32,21 @@ constexpr int EBLeastSquaresMultigridInterpolator::m_stenComp;
 constexpr int EBLeastSquaresMultigridInterpolator::m_numStenComp;
 constexpr int EBLeastSquaresMultigridInterpolator::m_comp;
 
+long long EBLeastSquaresMultigridInterpolator::s_numConstructed = 0LL;
+long long EBLeastSquaresMultigridInterpolator::s_numDestructed  = 0LL;
+
+long long
+EBLeastSquaresMultigridInterpolator::getNumConstructed() noexcept
+{
+  return s_numConstructed;
+}
+
+long long
+EBLeastSquaresMultigridInterpolator::getNumDestructed() noexcept
+{
+  return s_numDestructed;
+}
+
 EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator(const EBLevelGrid& a_eblgFine,
                                                                          const EBLevelGrid& a_eblgCoFi,
                                                                          const EBLevelGrid& a_eblgCoar,
@@ -43,6 +58,8 @@ EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator(const E
                                                                          const int          a_weighting) noexcept
 {
   CH_TIMERS("EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator");
+
+  s_numConstructed++;
   CH_TIMER("EBLeastSquaresMultigridInterpolator::define_regular", t1);
   CH_TIMER("EBLeastSquaresMultigridInterpolator::define_irregular", t2);
 
@@ -88,6 +105,8 @@ EBLeastSquaresMultigridInterpolator::EBLeastSquaresMultigridInterpolator(const E
 EBLeastSquaresMultigridInterpolator::~EBLeastSquaresMultigridInterpolator() noexcept
 {
   CH_TIME("EBLeastSquaresMultigridInterpolator::~EBLeastSquaresMultigridInterpolator");
+
+  s_numDestructed++;
 }
 
 int

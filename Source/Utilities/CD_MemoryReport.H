@@ -70,6 +70,36 @@ getMemoryUsage(Vector<Real>& a_peak, Vector<Real>& a_unfreed);
  */
 void
 reportUnfreedMemory(std::ostream& a_os);
+
+/**
+ * @brief Get the calling process' current and peak resident set size.
+ * @details This is the memory the operating system has actually given the process, read from
+ * /proc/self/status (VmRSS and VmHWM). Unlike the rest of this namespace it counts every allocation
+ * -- particle arenas, std::vector buffers, MPI internals and the binary itself -- not just the mesh
+ * data that passes through Chombo's Arena. It is therefore the quantity that determines whether a
+ * job is killed for exceeding its memory allocation, and the one to compare the tracked figures
+ * against when deciding whether growth in those figures is real.
+ *
+ * Both outputs are set to zero on platforms without /proc, so a zero reading means "unavailable"
+ * rather than "no memory in use".
+ * @param[out] a_currentRSS Current resident set size (VmRSS), in bytes.
+ * @param[out] a_peakRSS    Peak resident set size (VmHWM), in bytes.
+ */
+void
+getResidentSetSize(Real& a_currentRSS, Real& a_peakRSS);
+
+/**
+ * @brief Get the global maximum and minimum resident set size over all ranks.
+ * @details See getResidentSetSize() for what is being measured. The maximum is the number that
+ * matters for out-of-memory failures, since the job dies when the worst rank exceeds its limit --
+ * not when the average does.
+ * @param[out] a_maxCurrent Maximum current RSS, in bytes (maximized over ranks).
+ * @param[out] a_minCurrent Minimum current RSS, in bytes (minimized over ranks).
+ * @param[out] a_maxPeak    Maximum peak RSS, in bytes (maximized over ranks).
+ * @param[out] a_minPeak    Minimum peak RSS, in bytes (minimized over ranks).
+ */
+void
+getMaxMinResidentSetSize(Real& a_maxCurrent, Real& a_minCurrent, Real& a_maxPeak, Real& a_minPeak);
 } // namespace MemoryReport
 
 #include <CD_NamespaceFooter.H>

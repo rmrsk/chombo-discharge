@@ -37,6 +37,7 @@
 #include <CD_Timer.H>
 #include <CD_ParallelOps.H>
 #include <CD_DischargeIO.H>
+#include <CD_EBLeastSquaresMultigridInterpolator.H>
 #include <CD_OpenMP.H>
 #include <CD_NamespaceHeader.H>
 
@@ -1864,6 +1865,34 @@ Driver::stepReport(const Real a_startTime, const Real a_endTime, const int a_max
     pout() << metrics << endl;
   }
 
+  // Resident set size, i.e. the memory the OS has actually handed this process. Reported outside the
+  // memory-tracking guard because it is measured from /proc rather than from Chombo's allocators, and
+  // because it -- not the tracked figure -- is what a job is killed for exceeding.
+  Real currentRSS = 0.0;
+  Real peakRSS    = 0.0;
+
+  MemoryReport::getResidentSetSize(currentRSS, peakRSS);
+
+  if (currentRSS > 0.0) {
+    const Real toMB = 1.0 / (1024. * 1024.);
+
+    Real maxCurrentRSS = 0.0;
+    Real minCurrentRSS = 0.0;
+    Real maxPeakRSS    = 0.0;
+    Real minPeakRSS    = 0.0;
+
+    MemoryReport::getMaxMinResidentSetSize(maxCurrentRSS, minCurrentRSS, maxPeakRSS, minPeakRSS);
+
+    pout() << "                                -- Resident set size     : " << std::ceil(currentRSS * toMB) << "(MB)"
+           << endl;
+    pout() << "                                -- Peak resident size    : " << std::ceil(peakRSS * toMB) << "(MB)"
+           << endl;
+    pout() << "                                -- Max resident set size : " << std::ceil(maxCurrentRSS * toMB) << "(MB)"
+           << endl;
+    pout() << "                                -- Max peak resident size: " << std::ceil(maxPeakRSS * toMB) << "(MB)"
+           << endl;
+  }
+
   // Write memory usage
 #ifdef CH_USE_MEMORY_TRACKING
   const Real bytesPerMB = 1024. * 1024.;
@@ -2028,6 +2057,14 @@ Driver::writeMemoryUsage()
     pout() << "Driver::writeMemoryUsage - unfreed memory by allocation site, step = " << m_timeStep << endl;
 
     MemoryReport::reportUnfreedMemory(pout());
+
+    // The multigrid interpolators are rebuilt on every regrid, so a live count that climbs from one
+    // regrid to the next means instances are being retained rather than released.
+    const long long numBuilt = EBLeastSquaresMultigridInterpolator::getNumConstructed();
+    const long long numDead  = EBLeastSquaresMultigridInterpolator::getNumDestructed();
+
+    pout() << "Driver::writeMemoryUsage - EBLeastSquaresMultigridInterpolator"
+           << " constructed = " << numBuilt << " destructed = " << numDead << " live = " << numBuilt - numDead << endl;
 
     pout() << "Driver::writeMemoryUsage - end of breakdown" << endl;
   }
