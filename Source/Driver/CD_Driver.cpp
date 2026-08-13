@@ -1985,8 +1985,6 @@ Driver::stepReport(const Real a_startTime, const Real a_endTime, const int a_max
   MemoryReport::getResidentSetSize(currentRSS, peakRSS);
 
   if (currentRSS > 0.0) {
-    const Real toMB = 1.0 / (1024. * 1024.);
-
     Real maxCurrentRSS = 0.0;
     Real minCurrentRSS = 0.0;
     Real maxPeakRSS    = 0.0;
@@ -1998,9 +1996,17 @@ Driver::stepReport(const Real a_startTime, const Real a_endTime, const int a_max
            << endl;
     pout() << "                                -- Peak resident size    : " << std::ceil(peakRSS / 1024.) << "(kB)"
            << endl;
-    pout() << "                                -- Max resident set size : " << std::ceil(maxCurrentRSS * toMB) << "(MB)"
+    // The maximum over ranks is the number a job is killed for exceeding, so it gets the same
+    // resolution as the local figure. The minimum alongside it makes the imbalance readable: a max
+    // that runs away from the min means one rank is accumulating, whereas both rising together means
+    // the whole run is.
+    pout() << "                                -- Max resident set size : " << std::ceil(maxCurrentRSS / 1024.)
+           << "(kB)" << endl;
+    pout() << "                                -- Min resident set size : " << std::ceil(minCurrentRSS / 1024.)
+           << "(kB)" << endl;
+    pout() << "                                -- Max peak resident size: " << std::ceil(maxPeakRSS / 1024.) << "(kB)"
            << endl;
-    pout() << "                                -- Max peak resident size: " << std::ceil(maxPeakRSS * toMB) << "(MB)"
+    pout() << "                                -- Min peak resident size: " << std::ceil(minPeakRSS / 1024.) << "(kB)"
            << endl;
   }
 
@@ -2183,6 +2189,20 @@ Driver::writeMemoryUsage()
     pout() << "Driver::writeMemoryUsage - MFHelmholtzElectrostaticEBBCFactory"
            << " constructed = " << numBcBuilt << " destructed = " << numBcDead << " live = " << numBcBuilt - numBcDead
            << endl;
+
+    // The EBIndexSpace is built once from the geometry and outlives every regrid, so its EBISLayout
+    // caches are the one place where geometry memory can accumulate across regrids. Entries are
+    // evicted only at refcount one, so "pinned" -- entries somebody else still holds -- is the
+    // number that identifies a holder outliving its grids.
+    for (int i = 0; i < phase::numPhases; i++) {
+      const RefCountedPtr<EBIndexSpace>& ebis = m_multifluidIndexSpace->getEBIndexSpace(i);
+
+      if (!ebis.isNull() && ebis->isDefined()) {
+        const std::string prefix = "Driver::writeMemoryUsage - phase " + std::to_string(i);
+
+        ebis->reportLayoutCache(pout(), prefix.c_str());
+      }
+    }
 
     pout() << "Driver::writeMemoryUsage - live Copiers = " << Copier::s_liveCopiers << endl;
 

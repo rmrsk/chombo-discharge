@@ -214,33 +214,62 @@ steps.
 Neither is a plausible cause of an out-of-memory kill on a run that regrids regularly. Both were
 measured with the grid frozen, which overstates them badly.
 
-**Not reset by a regrid — the priority:**
+**Not reset by a regrid — investigated and cleared:**
 
-`EBISLevel::m_cache` (`Chombo-3.3/lib/src/EBTools/EBISLevel.{H,cpp}`) is a map keyed by
-`DisjointBoxLayout`, and the `EBIndexSpace` that owns it is built once from the geometry and lives
-for the entire run. Every regrid produces new layouts and therefore new entries. There *is* an
-eviction path — `refreshCache()` erases entries whose `refCount() == 1`, and it runs on every cache
-miss — so it is not unbounded by construction. But eviction fires only when **nothing else still
-holds that `EBISLayout`**: any object retaining a stale layout pins its `EBData` and `EBGraph`
-indefinitely, and those are the expensive parts.
+`EBISLevel::m_cache` (`Chombo-3.3/lib/src/EBTools/EBISLevel.{H,cpp}`) was the obvious remaining
+suspect, because it is the one structure a regrid never touches. It is a
+`std::map<DisjointBoxLayout, EBISLayout>`, one per EBIS level, owned by an `EBIndexSpace` that is
+built once from the geometry and lives for the whole run. How it works:
 
-This is exactly where the post-fix residual sits. Over 8 steady-state regrids of
-`CdrPlasma/DeterministicAir`, everything that still grew was EBIS: `Arena 12EBDataImplem` +7,040,
-`Arena 13EBGraphImplem` +2,496, `Arena 16EBISLayoutImplem` +1,312 bytes.
+- **Keys are address-ordered, not content-ordered.** `BoxLayout::operator<` ends in
+  `return m_layout < rhs.m_layout`, and `m_layout` is a `RefCountedPtr<int>` with no `operator<`,
+  only an implicit `operator T*()` — so the comparison is on raw pointers. Two structurally identical
+  grids from different regrids are therefore different keys, and **a regrid can never hit this
+  cache**, even when it reproduces the mesh exactly.
+- **Entries are expensive.** `EBISLayoutImplem::define` builds a `LevelData<EBGraph>` with
+  `nghost+1` ghosts and a `LevelData<EBData>` with `nghost` ghosts over the requested layout, both
+  filled by `copyTo` from the level's master copies, plus a `LayoutData<EBISBox>` wrapping them. That
+  is real geometry: connectivity, volume fractions, centroids, areas, normals.
+- **Entries nest.** `EBISLayoutImplem` holds `Vector<EBISLayout> m_coarLevels`/`m_fineLevels`, and
+  `setMaxCoarseningRatio` recursively calls `fillEBISLayout` on coarser levels, so one retained entry
+  can pin entries in other levels' caches.
+- **Eviction is refcount-driven.** `refreshCache()` erases entries at `refCount() == 1` (cache holds
+  the only reference). It runs from `fillEBISLayout` whenever `m_cacheStale == 1`, which is set on a
+  miss and cleared immediately — so the sweep runs on every miss and only on a miss. In
+  chombo-discharge the holders are the `EBLevelGrid`s built in `PhaseRealm::defineEBLevelGrid`.
 
-Caveat on the magnitude: that is ~2 kB per regrid on a 2-D depth-2 grid, and `AirBasic` showed no
-residual at all over a comparable window. So this is a mechanism worth investigating, **not** a
-demonstrated cause. It scales with irregular-cell count, so 3-D at 512 ranks is where it would
-matter, and that has not been measured.
+The failure mode to look for was a holder outliving its grids, which would keep an entry above
+refcount one forever. **It does not happen.** Instrumented with per-level `entries` / `pinned` /
+`hits` / `misses` (in the instrumentation patch, reported by `Driver::writeMemoryUsage`), over 250
+steps of `CdrPlasma/DeterministicAir` with ~120 regrids:
 
-**Next step:** find what retains stale `EBISLayout`s. `refreshCache()` already reports
-`m_cacheHits`/`m_cacheMisses`/`m_cacheStale` and there is a `dumpCache()`; instrument `m_cache.size()`
-per regrid at production scale. A cache whose size climbs regrid-over-regrid identifies the retention
-directly, and the refcount of each stale entry names how many holders are keeping it alive.
+| step | 20 | 40 | 80 | 120 | 160 | 200 | 240 |
+|------|----|----|----|-----|-----|-----|-----|
+| entries | 20 | 24 | 24 | 24 | 24 | 24 | 24 |
+| pinned  | 16 | 18 | 18 | 18 | 18 | 18 | 18 |
 
-Measure **RSS**, not `overallMemoryUsage`. The tracked counter undercounts by a wide margin (9 MB
-tracked against 58 MB RSS on a 2-rank AirBasic run) and, as this investigation showed, the part it
-does report was wrong in the one direction that mattered.
+Both saturate by step 40 and never move again. Eviction works, and the earlier +2 kB/regrid residual
+was the tail of grid development, exactly as that caveat warned.
+
+### The tracked-memory question is fully closed
+
+With the accounting fix in place, over the same 250 steps only 41 of 249 step-deltas are non-zero,
+and they decompose into:
+
+- **Balanced oscillation** — ±12,624, ±11,296, ±11,584 pairs, the Copier exchange buffers falling at
+  a regrid and rebuilding after. Net zero.
+- **Three discrete jumps** — steps 31, 79 and 147, totalling ~3.9 MB of the 4.18 MB — each coinciding
+  with the grid genuinely growing. The per-regrid `Regrid AmrMesh` allocation, a proxy for grid size,
+  goes 255,628 -> 320,528 -> 490,424 bytes at exactly those regrids.
+- **Nothing at all after step 169.**
+
+What remains is a high-water mark in grid size — when the grid later shrinks (proxy back to 308,196)
+the memory is not returned — not growth that is unbounded in time. There is no per-regrid component
+left.
+
+**Next step:** measure **RSS**, not `overallMemoryUsage`. The tracked counter undercounts by a wide
+margin (9 MB tracked against 58 MB RSS on a 2-rank AirBasic run), and the SIGKILL is an RSS event.
+Nothing in the tracked counter now points anywhere.
 
 Worth deciding separately: whether to carry the `Vector` move-assign fix as a local Chombo patch, and
 whether to offer it upstream. It is a two-line change and it makes the tracked counter usable again.

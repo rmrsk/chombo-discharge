@@ -149,3 +149,147 @@ index beeb528..d61a8f2 100644
  CopierBuffer::~CopierBuffer()
  {
    clear();
+diff --git a/lib/src/EBTools/EBISLevel.H b/lib/src/EBTools/EBISLevel.H
+index 70d0e00..20dd2c2 100644
+--- a/lib/src/EBTools/EBISLevel.H
++++ b/lib/src/EBTools/EBISLevel.H
+@@ -202,6 +202,46 @@ public:
+ 
+   void printGraphSummary(char const * a_prefix);
+ 
++  ///
++  /**
++     DIAGNOSTIC. Number of EBISLayouts currently held in this level's cache. Each entry owns a
++     ghosted copy of the graph and the EBData for its layout, so the count is a proxy for retained
++     geometry memory. The cache is keyed by DisjointBoxLayout and BoxLayout::operator< orders by the
++     address of the shared implementation, so every regrid produces a fresh key and therefore a new
++     entry even when the mesh is unchanged.
++  */
++  int getCacheSize() const
++  {
++    return m_cache.size();
++  }
++
++  ///
++  /**
++     DIAGNOSTIC. Number of cache entries that some other object still references, i.e. those with a
++     refcount above the cache's own. refreshCache() can only evict entries at refcount one, so a
++     pinned count that climbs regrid-over-regrid is the signature of a holder outliving its grids.
++  */
++  int getCachePinned() const;
++
++  ///
++  /**
++     DIAGNOSTIC. Cumulative cache hits since this level was built. See getCacheSize().
++  */
++  int getCacheHits() const
++  {
++    return m_cacheHits;
++  }
++
++  ///
++  /**
++     DIAGNOSTIC. Cumulative cache misses since this level was built. Every miss builds a new ghosted
++     graph and EBData copy. See getCacheSize().
++  */
++  int getCacheMisses() const
++  {
++    return m_cacheMisses;
++  }
++
+   int m_phase;
+ 
+   static bool s_recursive;
+diff --git a/lib/src/EBTools/EBISLevel.cpp b/lib/src/EBTools/EBISLevel.cpp
+index af2c3b8..a0c603f 100644
+--- a/lib/src/EBTools/EBISLevel.cpp
++++ b/lib/src/EBTools/EBISLevel.cpp
+@@ -1184,6 +1184,24 @@ void EBISLevel::dumpCache() const
+     }
+ 
+ } 
++int EBISLevel::getCachePinned() const
++{
++  int pinned = 0;
++
++  dmap::const_iterator d = m_cache.begin();
++  while (d != m_cache.end())
++    {
++      // refreshCache() evicts at refcount one, so anything above that is held elsewhere.
++      if(d->second.refCount() > 1)
++        {
++          pinned++;
++        }
++      d++;
++    }
++
++  return pinned;
++}
++
+ void EBISLevel::refreshCache() const
+ {
+   dmap::iterator d = m_cache.begin();
+diff --git a/lib/src/EBTools/EBIndexSpace.H b/lib/src/EBTools/EBIndexSpace.H
+index 028b8e6..47ad250 100644
+--- a/lib/src/EBTools/EBIndexSpace.H
++++ b/lib/src/EBTools/EBIndexSpace.H
+@@ -125,6 +125,22 @@ public:
+   ///
+   int numLevels() const;
+ 
++  ///
++  /**
++     DIAGNOSTIC. Report the per-level EBISLayout cache occupancy to a_os, one line per EBIS level.
++
++     An EBIndexSpace is built once from the geometry and lives for the whole run, so unlike the
++     operators and the particle containers its caches are never cleared by a regrid. Each cache
++     entry owns a ghosted copy of the graph and of the EBData for its layout, and may additionally
++     pin entries in coarser levels through EBISLayoutImplem::m_coarLevels, so a cache that grows
++     without bound is real retained geometry memory.
++
++     Entries are evicted by refreshCache() only at refcount one. "pinned" therefore counts the
++     entries that some other object still holds; that number, not the raw size, is what identifies a
++     holder outliving its grids.
++  */
++  void reportLayoutCache(std::ostream& a_os, const char* a_prefix) const;
++
+   ///
+   /**
+      Get the number of vofs over the entire domain.
+diff --git a/lib/src/EBTools/EBIndexSpace.cpp b/lib/src/EBTools/EBIndexSpace.cpp
+index 755b9ab..a17251f 100644
+--- a/lib/src/EBTools/EBIndexSpace.cpp
++++ b/lib/src/EBTools/EBIndexSpace.cpp
+@@ -705,6 +705,32 @@ int EBIndexSpace::numLevels() const
+   return m_nlevels;
+ }
+ 
++void EBIndexSpace::reportLayoutCache(std::ostream& a_os, const char* a_prefix) const
++{
++  int totalSize   = 0;
++  int totalPinned = 0;
++
++  for (int ilev = 0; ilev < m_nlevels; ilev++)
++    {
++      if (m_ebisLevel[ilev] == NULL) continue;
++
++      const int size   = m_ebisLevel[ilev]->getCacheSize();
++      const int pinned = m_ebisLevel[ilev]->getCachePinned();
++
++      totalSize   += size;
++      totalPinned += pinned;
++
++      a_os << a_prefix << " EBISLayout cache, level " << ilev
++           << ": entries = "  << size
++           << " pinned = "    << pinned
++           << " hits = "      << m_ebisLevel[ilev]->getCacheHits()
++           << " misses = "    << m_ebisLevel[ilev]->getCacheMisses() << "\n";
++    }
++
++  a_os << a_prefix << " EBISLayout cache, all levels: entries = " << totalSize
++       << " pinned = " << totalPinned << "\n";
++}
++
+ void EBIndexSpace::clear()
+ {
+   for (int ilev = 0; ilev < m_ebisLevel.size(); ilev++)
