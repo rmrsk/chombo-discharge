@@ -1,0 +1,151 @@
+diff --git a/lib/src/AMRElliptic/AMRMultiGrid.H b/lib/src/AMRElliptic/AMRMultiGrid.H
+index 6fe0153..ca363b1 100644
+--- a/lib/src/AMRElliptic/AMRMultiGrid.H
++++ b/lib/src/AMRElliptic/AMRMultiGrid.H
+@@ -928,6 +928,21 @@ void AMRMultiGrid<T>::solveNoInit(Vector<T*>& a_phi,
+     }
+ }
+ 
++static long long s_snrAlloc0 = 0, s_snrAlloc1 = 0, s_snrAlloc2 = 0;
++
++inline long long snrBytes()
++{
++  long long b = 0LL;
++#ifdef CH_USE_MEMORY_TRACKING
++  std::ostringstream r;
++  ReportUnfreedMemory(r);
++  const std::string t = r.str();
++  const std::size_t p = t.rfind("Total Unfreed : ");
++  if (p != std::string::npos) { std::istringstream ip(t.substr(p+16)); ip >> b; }
++#endif
++  return b;
++}
++
+ template<class T>
+ void AMRMultiGrid<T>::solveNoInitResid(Vector<T*>& a_phi,  Vector<T*>& uberResidual,
+                                        const Vector<T*>& a_rhs,
+@@ -951,6 +966,8 @@ void AMRMultiGrid<T>::solveNoInitResid(Vector<T*>& a_phi,  Vector<T*>& uberResid
+   // for (int ilev = l_base; ilev <= l_max; ilev++)
+   bool outputIntermediates = false;
+ 
++  s_snrAlloc0 = snrBytes();
++
+   for (int ilev = lowlim; ilev <= l_max; ilev++)
+     { CH_TIME("uberCorrection");
+       uberCorrection[ilev] = new T();
+@@ -962,6 +979,8 @@ void AMRMultiGrid<T>::solveNoInitResid(Vector<T*>& a_phi,  Vector<T*>& uberResid
+         }
+       m_op[ilev]->setToZero(*(uberCorrection[ilev]));
+     }
++  s_snrAlloc1 = snrBytes();
++
+   //  m_op[0]->dumpStuff(uberResidual, string("initialRes.hdf5"));
+   if (a_zeroPhi)
+     for (int ilev = l_base; ilev <=l_max; ++ilev)
+@@ -1113,11 +1132,33 @@ void AMRMultiGrid<T>::solveNoInitResid(Vector<T*>& a_phi,  Vector<T*>& uberResid
+           pout() << "    AMRMultiGrid:: exitStatus = " << m_exitStatus << std::endl;
+         }
+     }
++  s_snrAlloc2 = snrBytes();
++
+   for (int i = lowlim; i <= l_max; i++)
+     {
+       m_op[i]->clear(*uberCorrection[i]);
+       delete uberCorrection[i];
+     }
++#ifdef CH_USE_MEMORY_TRACKING
++  {
++    long long endBytes = 0LL;
++    std::ostringstream endReport;
++    ReportUnfreedMemory(endReport);
++    const std::string endText = endReport.str();
++    const std::size_t endPos  = endText.rfind("Total Unfreed : ");
++    if (endPos != std::string::npos)
++      {
++        std::istringstream endParse(endText.substr(endPos + 16));
++        endParse >> endBytes;
++      }
++    if (endBytes != s_snrAlloc0)
++      {
++        pout() << "AMRMG::solveNoInitResid  allocLoop = " << s_snrAlloc1 - s_snrAlloc0
++               << "  iterate = " << s_snrAlloc2 - s_snrAlloc1
++               << "  cleanup = " << endBytes - s_snrAlloc2 << std::endl;
++      }
++  }
++#endif
+ }
+ 
+ template<class T>
+diff --git a/lib/src/BoxTools/BoxLayoutDataI.H b/lib/src/BoxTools/BoxLayoutDataI.H
+index 239c951..4bf5fef 100644
+--- a/lib/src/BoxTools/BoxLayoutDataI.H
++++ b/lib/src/BoxTools/BoxLayoutDataI.H
+@@ -724,6 +724,16 @@ void BoxLayoutData<T>::postSendsFromMe() const
+   }
+   this->m_buff->numSends = m_buff->m_sendRequests.size();
+ 
++  {
++    static size_t s_maxSendReq = 0;
++
++    if (m_buff->m_sendRequests.size() > s_maxSendReq) {
++      s_maxSendReq = m_buff->m_sendRequests.size();
++      pout() << "SENDREQ high-water = " << s_maxSendReq << "  (numSends=" << this->m_buff->numSends
++             << ", fromMe=" << m_buff->m_fromMe.size() << ")" << std::endl;
++    }
++  }
++
+   CH_MaxMPISendSize = Max<long long>(CH_MaxMPISendSize, maxSize);
+ 
+ }
+@@ -785,6 +795,15 @@ void BoxLayoutData<T>::postReceivesToMe() const
+   }
+   this->m_buff->numReceives = m_buff->m_receiveRequests.size();
+ 
++  {
++    static size_t s_maxRecvReq = 0;
++
++    if (m_buff->m_receiveRequests.size() > s_maxRecvReq) {
++      s_maxRecvReq = m_buff->m_receiveRequests.size();
++      pout() << "RECVREQ high-water = " << s_maxRecvReq << "  (toMe=" << m_buff->m_toMe.size() << ")" << std::endl;
++    }
++  }
++
+   CH_MaxMPIRecvSize = Max<long long>(CH_MaxMPIRecvSize, maxSize);
+   //pout()<<"maxSize="<<maxSize<<" posted "<<this->m_buff->numReceives<<" receives\n";
+ 
+diff --git a/lib/src/BoxTools/Copier.H b/lib/src/BoxTools/Copier.H
+index b200ce5..2188658 100644
+--- a/lib/src/BoxTools/Copier.H
++++ b/lib/src/BoxTools/Copier.H
+@@ -154,6 +154,18 @@ class Copier
+ public:
+ 
+   ///null constructor, copy constructor and operator= can be compiler defined.
++  /// Diagnostic: counts live Copier instances (ctor/dtor of a member runs for every Copier).
++  struct LiveCounter
++  {
++    LiveCounter()                    { ++s_liveCopiers; }
++    LiveCounter(const LiveCounter&)  { ++s_liveCopiers; }
++    ~LiveCounter()                   { --s_liveCopiers; }
++  };
++
++  static long long s_liveCopiers;
++
++  LiveCounter m_liveCounter;
++
+   Copier():m_isDefined(false)
+   {}
+ 
+diff --git a/lib/src/BoxTools/Copier.cpp b/lib/src/BoxTools/Copier.cpp
+index beeb528..d61a8f2 100644
+--- a/lib/src/BoxTools/Copier.cpp
++++ b/lib/src/BoxTools/Copier.cpp
+@@ -28,6 +28,8 @@ using std::ostream;
+ 
+ Pool Copier::s_motionItemPool(sizeof(MotionItem), "Copier::MotionItem", 500);
+ 
++long long Copier::s_liveCopiers = 0;
++
+ CopierBuffer::~CopierBuffer()
+ {
+   clear();

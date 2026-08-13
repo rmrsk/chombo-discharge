@@ -15,6 +15,8 @@
 #include <ParmParse.H>
 
 // Our includes
+#include <sstream>
+#include <memtrack.H>
 #include <CD_FieldSolverGMG.H>
 #include <CD_DataOps.H>
 #include <CD_MultifluidAlias.H>
@@ -25,6 +27,32 @@
 #include <CD_MFHelmholtzSaturationChargeJumpBCFactory.H>
 #include <CD_Units.H>
 #include <CD_NamespaceHeader.H>
+
+namespace {
+  inline long long
+  gmgTrackedBytes()
+  {
+    long long unfreed = 0LL;
+
+#ifdef CH_USE_MEMORY_TRACKING
+    std::ostringstream memReport;
+
+    ReportUnfreedMemory(memReport);
+
+    const std::string reportText = memReport.str();
+    const std::size_t totalPos   = reportText.rfind("Total Unfreed : ");
+
+    if (totalPos != std::string::npos) {
+      std::istringstream parser(reportText.substr(totalPos + 16));
+
+      parser >> unfreed;
+    }
+#endif
+
+    return unfreed;
+  }
+}
+
 
 constexpr Real FieldSolverGMG::m_alpha;
 constexpr Real FieldSolverGMG::m_beta;
@@ -331,10 +359,14 @@ FieldSolverGMG::solve(MFAMRCellData&       a_phi,
 
   bool converged = false;
 
+  const long long gmg0 = gmgTrackedBytes();
+
   // Set up multigrid solver if it is not already done.
   if (!m_isSolverSetup) {
     this->setupSolver();
   }
+
+  const long long gmg1 = gmgTrackedBytes();
 
   // Define temporaries; the incoming data might need to be scaled but we don't want to
   // alter it directly.
@@ -386,6 +418,8 @@ FieldSolverGMG::solve(MFAMRCellData&       a_phi,
 
   m_amr->alias(phi, a_phi);
   m_amr->alias(rhs, kappaRhoByEps0);
+
+  const long long gmg2 = gmgTrackedBytes();
   m_amr->alias(res, m_residue);
   m_amr->alias(zer, zero);
 
@@ -395,10 +429,16 @@ FieldSolverGMG::solve(MFAMRCellData&       a_phi,
   const int finestLevel   = m_amr->getFinestLevel();
 
   // This is the residue rho - L(phi)
+  const long long gmgA = gmgTrackedBytes();
+
   const Real phiResid = m_multigridSolver->computeAMRResidual(phi, rhs, finestLevel, 0);
+
+  const long long gmgB = gmgTrackedBytes();
 
   // This is the residue rho - L(phi=0)
   const Real zeroResid = m_multigridSolver->computeAMRResidual(zer, rhs, finestLevel, 0);
+
+  const long long gmgC = gmgTrackedBytes();
 
   // Convergence criterion.
   const Real convergedResid = zeroResid * m_multigridExitTolerance;
@@ -420,7 +460,36 @@ FieldSolverGMG::solve(MFAMRCellData&       a_phi,
     const bool useChain = m_krylovSettings.solvers.size() > 1 && m_krylovSettings.usesKrylov();
 
     if (useChain) {
+      static int s_snapCalls = 0;
+
+      s_snapCalls++;
+
+      const bool dumpSnap = (s_snapCalls == 10);
+
+      if (dumpSnap) {
+        pout() << "=== SNAP BEFORE ===" << endl;
+        ReportUnfreedMemory(pout());
+        pout() << "=== SNAP MID ===" << endl;
+      }
+
+      const long long tight0 = gmgTrackedBytes();
+
       m_krylov.snapshotGuess(phi, rhs);
+
+      const long long tight1 = gmgTrackedBytes();
+
+      pout() << "TIGHT snapshotGuess delta = " << tight1 - tight0 << endl;
+
+      if (dumpSnap) {
+        ReportUnfreedMemory(pout());
+        pout() << "=== SNAP AFTER ===" << endl;
+      }
+    }
+
+    const long long gmgD = gmgTrackedBytes();
+    if (gmgD != gmgA) {
+      pout() << "GMGwin  aliases = " << gmgA - gmg2 << "  phiResid = " << gmgB - gmgA
+             << "  zeroResid = " << gmgC - gmgB << "  snapshot = " << gmgD - gmgC << endl;
     }
 
     const int startIdx = m_fallbackPolicy.startIndex(m_krylovSettings.solvers);
@@ -441,6 +510,15 @@ FieldSolverGMG::solve(MFAMRCellData&       a_phi,
       if (solverType == EllipticSolverChain::SolverType::GMG) {
         m_multigridSolver->m_convergenceMetric = zeroResid;
         m_multigridSolver->solveNoInitResid(phi, res, rhs, finestLevel, coarsestLevel, zeroPhi);
+
+        {
+          const long long gmg3 = gmgTrackedBytes();
+
+          if (gmg1 != gmg0 || gmg2 != gmg1 || gmg3 != gmg2) {
+            pout() << "FieldSolverGMG::solve  setupSolver = " << gmg1 - gmg0 << "  temps+scale = " << gmg2 - gmg1
+                   << "  gmgSolve = " << gmg3 - gmg2 << endl;
+          }
+        }
 
         const int status = m_multigridSolver->m_exitStatus; // 1 => Initial norm sufficiently reduced
 

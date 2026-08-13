@@ -1295,6 +1295,10 @@ void
 McPhoto::depositPhotons()
 {
   CH_TIME("McPhoto::depositPhotons()");
+
+  pout() << "NPHOTONS bulk = " << m_photons.getNumberOfValidParticlesGlobal()
+         << "  source = " << m_sourcePhotons.getNumberOfValidParticlesGlobal()
+         << "  bulkStore = " << m_bulkPhotons.getNumberOfValidParticlesGlobal() << endl;
   if (m_verbosity > 5) {
     pout() << m_name + "::depositPhotons()" << endl;
   }
@@ -1478,6 +1482,8 @@ McPhoto::advancePhotonsInstantaneous(ParticleContainer<Photon>& a_bulkPhotons,
   CH_TIMERS("McPhoto::advancePhotonsInstantaneous");
   CH_TIMER("McPhoto::advancePhotonsInstantaneous::amr_loop", t1);
   CH_TIMER("McPhoto::advancePhotonsInstantaneous::remap", t2);
+
+  pout() << "NPHOTONS in = " << a_photons.getNumberOfValidParticlesGlobal() << endl;
   if (m_verbosity > 5) {
     pout() << m_name + "::advancePhotonsInstantaneous" << endl;
   }

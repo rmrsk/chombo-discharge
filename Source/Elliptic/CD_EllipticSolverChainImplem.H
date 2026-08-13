@@ -21,8 +21,36 @@
 #include <parstream.H>
 
 // Our includes
+#include <sstream>
+#include <memtrack.H>
 #include <CD_EllipticSolverChain.H>
 #include <CD_NamespaceHeader.H>
+
+namespace {
+  inline long long
+  chainTrackedBytes()
+  {
+    long long unfreed = 0LL;
+
+#ifdef CH_USE_MEMORY_TRACKING
+    std::ostringstream memReport;
+
+    ReportUnfreedMemory(memReport);
+
+    const std::string reportText = memReport.str();
+    const std::size_t totalPos   = reportText.rfind("Total Unfreed : ");
+
+    if (totalPos != std::string::npos) {
+      std::istringstream parser(reportText.substr(totalPos + 16));
+
+      parser >> unfreed;
+    }
+#endif
+
+    return unfreed;
+  }
+}
+
 
 namespace EllipticSolverChain {
 
@@ -40,10 +68,14 @@ KrylovSolver<T>::freeWork()
   m_gmres.undefine();
 
   if (m_workAllocated) {
+    const long long fw0 = chainTrackedBytes();
+
     m_op.clear(m_r0);
     m_op.clear(m_dphi);
     m_op.clear(m_phiInit);
     m_workAllocated = false;
+
+    pout() << "FREEWORK delta = " << chainTrackedBytes() - fw0 << endl;
   }
 }
 
@@ -67,8 +99,20 @@ KrylovSolver<T>::snapshotGuess(Vec& a_phi, const Vec& a_rhs)
     this->allocateWork(a_phi);
   }
 
+  const long long snap0 = chainTrackedBytes();
+
   m_op.assign(m_phiInit, a_phi);
+
+  const long long snap1 = chainTrackedBytes();
+
   m_initResidual = m_mg->computeAMRResidual(a_phi, a_rhs, m_lmax, m_lbase);
+
+  const long long snap2 = chainTrackedBytes();
+
+  if (snap2 != snap0) {
+    pout() << "snapshotGuess  allocWork+assign = " << snap1 - snap0 << "  computeAMRResidual = " << snap2 - snap1
+           << endl;
+  }
 }
 
 template <class T>
@@ -139,8 +183,12 @@ KrylovSolver<T>::solve(Vec&             a_phi,
   // depths. AMRMultiGrid sets these up in init() and tears them down in revert(); the host solvers revert() after
   // every solve (and the stand-alone GMG path re-init()s every solve), so we re-initialise here -- once per field
   // solve, exactly as the GMG path does.
+  const long long chainBytes0 = chainTrackedBytes();
+
   m_mg->init(a_phi, a_rhs, m_lmax, m_lbase);
   m_mg->setBottomSolver(m_lmax, m_lbase);
+
+  const long long chainBytes1 = chainTrackedBytes();
 
   // Zero-residual ||rhs - L(0)|| in the adapter norm. The printed residuals are normalized against this so they are
   // on a common, solver-independent scale (a relative residual), comparable to the convergence tolerance. m_dphi is
@@ -204,6 +252,15 @@ KrylovSolver<T>::solve(Vec&             a_phi,
     MayDay::Error("EllipticSolverChain::KrylovSolver::solve - SolverType must be GMRES or BiCGStab");
 
     break;
+  }
+
+  {
+    const long long chainBytes2 = chainTrackedBytes();
+
+    if (chainBytes1 != chainBytes0 || chainBytes2 != chainBytes1) {
+      pout() << "EllipticSolverChain: mg->init delta = " << chainBytes1 - chainBytes0
+             << "  krylov solve delta = " << chainBytes2 - chainBytes1 << endl;
+    }
   }
   }
 

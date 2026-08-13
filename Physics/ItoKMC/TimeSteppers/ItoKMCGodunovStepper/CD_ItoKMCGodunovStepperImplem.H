@@ -14,6 +14,8 @@
 #define CD_ITOKMCGODUNOVSTEPPERIMPLEM_H
 
 // Chombo includes
+#include <memtrack.H>
+#include <sstream>
 #include <ParmParse.H>
 
 // Our includes
@@ -26,6 +28,34 @@
 #include <CD_Photon.H>
 #include <CD_DischargeIO.H>
 #include <CD_NamespaceHeader.H>
+
+namespace {
+  static std::vector<std::pair<std::string, long long>> s_memSamples;
+
+  inline void
+  sampleMem(const std::string& a_phase)
+  {
+    long long unfreed = 0LL;
+
+#ifdef CH_USE_MEMORY_TRACKING
+    std::ostringstream memReport;
+
+    ReportUnfreedMemory(memReport);
+
+    const std::string reportText = memReport.str();
+    const std::size_t totalPos   = reportText.rfind("Total Unfreed : ");
+
+    if (totalPos != std::string::npos) {
+      std::istringstream parser(reportText.substr(totalPos + 16));
+
+      parser >> unfreed;
+    }
+#endif
+
+    s_memSamples.emplace_back(a_phase, unfreed);
+  }
+}
+
 
 using namespace Physics::ItoKMC;
 
@@ -333,6 +363,11 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
     pout() << this->m_name + "::advance" << endl;
   }
 
+  s_memSamples.clear();
+
+  sampleMem("Entry");
+
+
   auto debugCharge = [this](const std::string a_message) -> void {
     const Real Qtot = this->computeTotalCharge();
     if (procID() == 0) {
@@ -354,7 +389,20 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   this->m_prevDt = a_dt;
 
   // Done only so we can plot the absorbed photons (advanceReactionNetwork absorbs them)
+  sampleMem("  <before deposit photons>");
+
   m_timer.startEvent("Deposit photons");
+
+  static bool s_depDumped = false;
+
+  std::ostringstream depBefore;
+
+#ifdef CH_USE_MEMORY_TRACKING
+  if (!s_depDumped) {
+    ReportUnfreedMemory(depBefore);
+  }
+#endif
+
   for (auto solverIt = (this->m_rte)->iterator(); solverIt.ok(); ++solverIt) {
     RefCountedPtr<McPhoto> solver = solverIt();
 
@@ -363,13 +411,42 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
 
     solver->depositPhotons(phi, photons, DepositionType::NGP);
   }
+#ifdef CH_USE_MEMORY_TRACKING
+  if (!s_depDumped) {
+    std::ostringstream depAfter;
+
+    ReportUnfreedMemory(depAfter);
+
+    auto totalOf = [](const std::string& a_text) -> long long {
+      long long v = 0LL;
+      const std::size_t p = a_text.rfind("Total Unfreed : ");
+      if (p != std::string::npos) {
+        std::istringstream ip(a_text.substr(p + 16));
+        ip >> v;
+      }
+      return v;
+    };
+
+    if (totalOf(depAfter.str()) - totalOf(depBefore.str()) > 50000) {
+      s_depDumped = true;
+
+      pout() << "=== DEP BEFORE ===" << endl << depBefore.str() << "=== DEP MID ===" << endl
+             << depAfter.str() << "=== DEP AFTER ===" << endl;
+    }
+  }
+#endif
+
   m_timer.stopEvent("Deposit photons");
+
+  sampleMem("Deposit photons");
 
   // ====== BEGIN TRANSPORT STEP ======
   // Semi-implicitly advance the particles and the field.
   switch (m_algorithm) {
   case WhichAlgorithm::EulerMaruyama: {
     this->advanceEulerMaruyama(a_dt);
+
+    sampleMem("  advanceEulerMaruyama");
 
     break;
   }
@@ -384,6 +461,18 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   // Then recompute the number of particles per cell.
   this->barrier();
   m_timer.startEvent("EB/Particle intersection");
+
+  static int s_advanceCalls = 0;
+
+  s_advanceCalls++;
+
+  const bool dumpFullBreakdown = (s_advanceCalls == 65);
+
+  if (dumpFullBreakdown) {
+    pout() << "=== BEFORE intersectParticles ===" << endl;
+    ReportUnfreedMemory(pout());
+    pout() << "=== END BEFORE ===" << endl;
+  }
   if (m_extendConductivityEB) {
 
     // clang-format off
@@ -409,6 +498,14 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
     // Intersect particles, but don't remove them.
     const bool deleteParticles = false;
     this->intersectParticles(SpeciesSubset::AllMobileOrDiffusive, deleteParticles, nonDeletionModifier);
+
+    sampleMem("  int:intersectParticles");
+
+    if (dumpFullBreakdown) {
+      pout() << "=== AFTER intersectParticles ===" << endl;
+      ReportUnfreedMemory(pout());
+      pout() << "=== END AFTER ===" << endl;
+    }
 
     // Particles that were not removed are copied to a separate data container.
     for (auto it = this->m_ito->iterator(); it.ok(); ++it) {
@@ -452,6 +549,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
       }
     }
 
+    sampleMem("  int:copyIrregular");
+
     // Finally, delete the original particles that were flagged (scratch < 0) via swap-and-pop on the SoA leaves.
     for (auto it = this->m_ito->iterator(); it.ok(); ++it) {
       ParticleContainer<ItoParticle>& bulkParticles = it()->getParticles(ItoSolver::WhichContainer::Bulk);
@@ -480,11 +579,14 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
         }
       }
     }
+    sampleMem("  int:removeFlagged");
   }
   else {
     const bool deleteParticles = true;
 
     this->intersectParticles(SpeciesSubset::AllMobileOrDiffusive, deleteParticles);
+
+    sampleMem("  int:intersectParticles");
   }
 
   // The intersection tests above may not have caught all particles -- do a cleanup sweep where particles on the wrong
@@ -497,7 +599,11 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
 
     this->m_amr->transferIrregularParticles(ebParticles, bulkParticles, this->m_plasmaPhase);
   }
+
+  sampleMem("  int:transferIrregular");
   m_timer.stopEvent("EB/Particle intersection");
+
+  sampleMem("EB/Particle intersection");
   // ====== END TRANSPORT STEP ======
 
   // Photon transport
@@ -506,12 +612,16 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   this->advancePhotons(a_dt);
   m_timer.stopEvent("Photon transport");
 
+  sampleMem("Photon transport");
+
   // Compute the gradients of the various species densities - this is used in the KMC kernels.
   if ((this->m_physics)->needGradients()) {
     m_timer.startEvent("Gradient calculation");
     (this->m_ito)->depositParticles();
     this->computeDensityGradients();
     m_timer.stopEvent("Gradient calculation");
+
+    sampleMem("Gradient calculation");
   }
 
   // Resolve secondary emission. We have filled the relevant particles in the transport step -- this can be done
@@ -522,6 +632,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
     this->fillSecondaryEmissionEB(a_dt);
     this->resolveSecondaryEmissionEB(a_dt);
     m_timer.stopEvent("EB particle injection");
+
+    sampleMem("EB particle injection");
   }
 
   // Sort the particles and photons per cell so we can call reaction algorithms
@@ -532,11 +644,15 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   this->sortPhotonsByCell(McPhoto::WhichContainer::Source);
   m_timer.stopEvent("Sort by cell");
 
+  sampleMem("Sort by cell");
+
   // Run the Kinetic Monte Carlo reaction kernels.
   this->barrier();
   m_timer.startEvent("Reaction network");
   this->advanceReactionNetwork(a_dt);
   m_timer.stopEvent("Reaction network");
+
+  sampleMem("Reaction network");
 
   // Merge super-particles down to the target after the chemistry advance created/removed particles.
   // Routed through the public ItoSolver::makeSuperparticles() so both per-cell and AMR-wide
@@ -549,6 +665,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   }
   m_timer.stopEvent("Make superparticles");
 
+  sampleMem("Make superparticles");
+
   // Sort particles per patch.
   this->barrier();
   m_timer.startEvent("Sort by patch");
@@ -556,6 +674,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   this->sortPhotonsByPatch(McPhoto::WhichContainer::Bulk);
   this->sortPhotonsByPatch(McPhoto::WhichContainer::Source);
   m_timer.stopEvent("Sort by patch");
+
+  sampleMem("Sort by patch");
 
   // Resolve secondary emission. We have filled the relevant particles in the transport step -- this can be done
   // either before or after the reactions.
@@ -565,6 +685,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
     this->fillSecondaryEmissionEB(a_dt);
     this->resolveSecondaryEmissionEB(a_dt);
     m_timer.stopEvent("EB particle injection");
+
+    sampleMem("EB particle injection");
   }
 
   // Remove particles that are inside the EB -- this is not a part of the algorithm, just a safety measure to make sure
@@ -573,6 +695,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   m_timer.startEvent("Remove covered");
   this->removeCoveredParticles(SpeciesSubset::AllMobileOrDiffusive, EBRepresentation::Discrete, this->m_toleranceEB);
   m_timer.stopEvent("Remove covered");
+
+  sampleMem("Remove covered");
 
   // Clear BC data holders.
   for (auto solverIt = (this->m_ito)->iterator(); solverIt.ok(); ++solverIt) {
@@ -586,15 +710,51 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   this->computeDriftVelocities();
   m_timer.stopEvent("Post-compute v");
 
+  sampleMem("Post-compute v");
+
   this->barrier();
   m_timer.startEvent("Post-compute D");
   this->computeDiffusionCoefficients();
   m_timer.stopEvent("Post-compute D");
 
+  sampleMem("Post-compute D");
+
   this->computePhysicsDt();
 
   if ((this->m_profile)) {
     m_timer.eventReport(pout(), false);
+  }
+
+  {
+    long long partLive  = 0LL;
+    long long partSlack = 0LL;
+
+    for (auto solverIt = (this->m_ito)->iterator(); solverIt.ok(); ++solverIt) {
+      ParticleContainer<ItoParticle>& pc = solverIt()->getParticles(ItoSolver::WhichContainer::Bulk);
+
+      for (int lvl = 0; lvl <= (this->m_amr)->getFinestLevel(); lvl++) {
+        const DisjointBoxLayout& dbl = (this->m_amr)->getGrids(this->m_particleRealm)[lvl];
+        const DataIterator&      dit = dbl.dataIterator();
+
+        for (int mybox = 0; mybox < dit.size(); mybox++) {
+          const ParticleSoA<ItoParticle>& leaf = pc[lvl][dit[mybox]];
+
+          partLive += static_cast<long long>(leaf.size()) * leaf.bytesPerParticle();
+          partSlack += static_cast<long long>(leaf.capacity() - leaf.size()) * leaf.bytesPerParticle();
+        }
+      }
+    }
+
+    pout() << "PARTMEM live = " << partLive << "  slack = " << partSlack << endl;
+  }
+
+  if ((this->m_profile)) {
+    pout() << "ItoKMCGodunovStepper::advance - tracked memory by phase" << endl;
+
+    for (int i = 1; i < s_memSamples.size(); i++) {
+      pout() << "  " << std::left << std::setw(30) << s_memSamples[i].first << " delta = " << std::right
+             << std::setw(12) << s_memSamples[i].second - s_memSamples[i - 1].second << endl;
+    }
   }
 
   m_timer.clear();
@@ -1637,11 +1797,15 @@ ItoKMCGodunovStepper<I, C, R, F>::advanceEulerMaruyama(const Real a_dt) noexcept
   this->remapPointParticles(m_rhoDaggerParticles, SpeciesSubset::ChargedDiffusive);
   m_timer.stopEvent("Diffuse particles");
 
+  sampleMem("  EM:Diffuse particles");
+
   // Perform the diffusive CDR advance.
   this->barrier();
   m_timer.startEvent("Diffuse CDR");
   this->computeDiffusionTermCDR(m_semiImplicitRhoCDR, a_dt);
   m_timer.stopEvent("Diffuse CDR");
+
+  sampleMem("  EM:Diffuse CDR");
 
   // Compute the conductivity on the mesh. This deposits q_e * Z * w * mu on the mesh.
   this->barrier();
@@ -1650,11 +1814,15 @@ ItoKMCGodunovStepper<I, C, R, F>::advanceEulerMaruyama(const Real a_dt) noexcept
   this->computeConductivities(m_conductivityParticles);
   m_timer.stopEvent("Compute conductivities");
 
+  sampleMem("  EM:Compute conductivities");
+
   // Set up the semi-implicit Poisson solver with the computed conductivities.
   this->barrier();
   m_timer.startEvent("Setup Poisson");
   this->setupSemiImplicitPoisson(a_dt);
   m_timer.stopEvent("Setup Poisson");
+
+  sampleMem("  EM:Setup Poisson");
 
   // Compute space charge density arising from the new particle positions X^k + sqrt(2*D*dt)*W. Only need to
   // do the diffusive and charged species.
@@ -1663,6 +1831,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advanceEulerMaruyama(const Real a_dt) noexcept
   this->depositPointParticles(m_rhoDaggerParticles, SpeciesSubset::Charged);
   this->computeSemiImplicitRho();
   m_timer.stopEvent("Deposit point particles");
+
+  sampleMem("  EM:Deposit point particles");
 
   // Solve the semi-implicit Poisson equation.
   this->barrier();
@@ -1679,6 +1849,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advanceEulerMaruyama(const Real a_dt) noexcept
   }
   m_timer.stopEvent("Solve Poisson");
 
+  sampleMem("  EM:Solve Poisson");
+
   // Recompute velocities with the new electric field. This interpolates the velocities to the current particle
   // positions, i.e. we compute V^(k+1)(X^k) = mu^k * E^(k+1)(X^k)
   this->barrier();
@@ -1693,6 +1865,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advanceEulerMaruyama(const Real a_dt) noexcept
 #endif
   m_timer.stopEvent("Step-compute v");
 
+  sampleMem("  EM:Step-compute v");
+
   // Finalize the Euler-Maruyama update.
   this->barrier();
   m_timer.startEvent("Euler-Maruyama step");
@@ -1700,6 +1874,8 @@ ItoKMCGodunovStepper<I, C, R, F>::advanceEulerMaruyama(const Real a_dt) noexcept
   this->remapParticles(SpeciesSubset::AllMobileOrDiffusive);
   this->stepEulerMaruyamaCDR(a_dt);
   m_timer.stopEvent("Euler-Maruyama step");
+
+  sampleMem("  EM:Euler-Maruyama step");
 }
 
 template <typename I, typename C, typename R, typename F>

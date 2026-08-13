@@ -620,6 +620,25 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   // Use a timer here because I want to be able to put some diagnostics into this function.
   Timer timer("Driver::regrid(int, int, bool)");
 
+  // Tracked memory only ever grows across a regrid -- it is bit-for-bit constant across a plain time
+  // step -- so sampling the total at each phase boundary localizes that growth to a phase. Sampled
+  // unconditionally (the call is a couple of integer reads) but only reported when asked for.
+  std::vector<std::pair<std::string, long long>> regridMemory;
+
+  auto sampleRegridMemory = [&regridMemory](const std::string& a_phase) -> void {
+    long long unfreed = 0LL;
+
+#ifdef CH_USE_MEMORY_TRACKING
+    long long peak = 0LL;
+
+    overallMemoryUsage(unfreed, peak);
+#endif
+
+    regridMemory.emplace_back(a_phase, unfreed);
+  };
+
+  sampleRegridMemory("Entry");
+
   // We are allowing geometric tags to change under the hood, but we need a method for detecting if they changed. If
   // they did, we certainly have to regrid.
   timer.startEvent("Get geometry tags");
@@ -630,9 +649,13 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   }
   timer.stopEvent("Get geometry tags");
 
+  sampleRegridMemory("Get geometry tags");
+
   timer.startEvent("Tag cells");
   const bool newCellTags = this->tagCells(tags, m_tags); // Tag cells using the cell tagger
   timer.stopEvent("Tag cells");
+
+  sampleRegridMemory("Tag cells");
 
   if (!newCellTags && !m_needsNewGeometricTags) {
     if (a_useInitialData) {
@@ -652,6 +675,8 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
     CH_STOP(t1);
   }
 
+  sampleRegridMemory("Compact tags");
+
   // Store things that need to be regridded
   timer.startEvent("Pre-regrid");
   this->cacheTags(m_tags); // Cache m_tags because after regrid, ownership will change
@@ -662,12 +687,16 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   m_amr->preRegrid();
   timer.stopEvent("Pre-regrid");
 
+  sampleRegridMemory("Pre-regrid");
+
   // Regrid AMR. Only levels [lmin, lmax] are allowed to change.
   timer.startEvent("Regrid AmrMesh");
   const int oldFinestLevel = m_amr->getFinestLevel();
   m_amr->regridAmr(tags, a_lmin, a_lmax);
   const int newFinestLevel = m_amr->getFinestLevel();
   timer.stopEvent("Regrid AmrMesh");
+
+  sampleRegridMemory("Regrid AmrMesh");
 
   // Load balance and regrid the various Realms
   timer.startEvent("Load balancing");
@@ -685,11 +714,15 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   }
   timer.stopEvent("Load balancing");
 
+  sampleRegridMemory("Load balancing");
+
   // Regrid the operators
   timer.startEvent("Regrid operators");
   m_amr->regridOperators(a_lmin);
   m_amr->postRegrid();
   timer.stopEvent("Regrid operators");
+
+  sampleRegridMemory("Regrid operators");
 
   // Regrid Driver, timestepper, and celltagger
   timer.startEvent("Regrid timestepper");
@@ -700,11 +733,15 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   }
   timer.stopEvent("Regrid timestepper");
 
+  sampleRegridMemory("Regrid timestepper");
+
   // Regrid cell tagger if we have one.
   if (!m_cellTagger.isNull()) {
     timer.startEvent("Regrid celltagger");
     m_cellTagger->regrid();
     timer.stopEvent("Regrid celltagger");
+
+  sampleRegridMemory("Regrid celltagger");
   }
 
   // If it wants to, TimeStepper can do a postRegrid operation.
@@ -712,7 +749,23 @@ Driver::regrid(const int a_lmin, const int a_lmax, const bool a_useInitialData)
   m_timeStepper->postRegrid();
   timer.stopEvent("Post-regrid");
 
+  sampleRegridMemory("Post-regrid");
+
   m_needsNewGeometricTags = false;
+
+  // Per-phase tracked-memory deltas. A phase whose delta is consistently positive across regrids,
+  // at a grid whose size is not growing, is retaining memory rather than reusing it.
+  if (m_writeUnfreedMemory) {
+    pout() << "Driver::regrid - tracked memory by phase, step = " << m_timeStep << endl;
+
+    for (int i = 1; i < regridMemory.size(); i++) {
+      pout() << "  " << std::left << std::setw(22) << regridMemory[i].first << " delta = " << std::right
+             << std::setw(12) << regridMemory[i].second - regridMemory[i - 1].second << " bytes" << endl;
+    }
+
+    pout() << "  " << std::left << std::setw(22) << "TOTAL" << " delta = " << std::right << std::setw(12)
+           << regridMemory.back().second - regridMemory.front().second << " bytes" << endl;
+  }
 
   if (m_profile) {
     timer.eventReport(pout(), true);
@@ -822,6 +875,25 @@ Driver::run(const Real a_startTime, const Real a_endTime, const int a_maxSteps)
       const int maxSimDepth = m_amr->getMaxSimulationDepth();
       const int maxAmrDepth = m_amr->getMaxAmrDepth();
 
+      // Tracked-memory samples around the coarse phases of a time step. The growth seen on long runs
+      // does not happen inside Driver::regrid -- that path frees slightly more than it allocates --
+      // so bracket the step itself to find which call site retains.
+      std::vector<std::pair<std::string, long long>> stepMemory;
+
+      auto sampleStepMemory = [&stepMemory](const std::string& a_phase) -> void {
+        long long unfreed = 0LL;
+
+#ifdef CH_USE_MEMORY_TRACKING
+        long long peak = 0LL;
+
+        overallMemoryUsage(unfreed, peak);
+#endif
+
+        stepMemory.emplace_back(a_phase, unfreed);
+      };
+
+      sampleStepMemory("Step entry");
+
       // Check if we should regrid. This can be due to regular intervals, or the TimeStepper can call for it.
       const bool canRegrid         = maxSimDepth > 0 && maxAmrDepth > 0 && m_regridInterval > 0;
       const bool regridStep        = m_timeStep % m_regridInterval == 0;
@@ -839,6 +911,8 @@ Driver::run(const Real a_startTime, const Real a_endTime, const int a_maxSteps)
           }
 
           this->regrid(lmin, lmax, false);
+
+          sampleStepMemory("Driver::regrid");
 
           // Write a grid report, displaying information about the new grids. Can also write
           // a regrid file if necessary.
@@ -914,11 +988,15 @@ Driver::run(const Real a_startTime, const Real a_endTime, const int a_maxSteps)
       const Real actualDt = m_timeStepper->advance(m_dt);
       m_wallClockTwo      = Timer::wallClock();
 
+      sampleStepMemory("TimeStepper::advance");
+
       // Synchronize times
       m_dt = actualDt;
       m_time += actualDt;
       m_timeStep += 1;
       m_timeStepper->synchronizeSolverTimes(m_timeStep, m_time, m_dt);
+
+      sampleStepMemory("synchronizeSolverTimes");
 
       // Check if this was the last step.
       if (std::abs(m_time - a_endTime) < m_dt * 1.E-5) {
@@ -936,6 +1014,17 @@ Driver::run(const Real a_startTime, const Real a_endTime, const int a_maxSteps)
       // Print step report
       if (m_verbosity > 0) {
         this->stepReport(a_startTime, a_endTime, a_maxSteps);
+      }
+
+      sampleStepMemory("stepReport");
+
+      if (m_writeUnfreedMemory) {
+        pout() << "Driver::run - tracked memory by step phase, step = " << m_timeStep << endl;
+
+        for (int i = 1; i < stepMemory.size(); i++) {
+          pout() << "  " << std::left << std::setw(24) << stepMemory[i].first << " delta = " << std::right
+                 << std::setw(12) << stepMemory[i].second - stepMemory[i - 1].second << " bytes" << endl;
+        }
       }
 
 #ifdef CH_USE_HDF5
@@ -2065,6 +2154,8 @@ Driver::writeMemoryUsage()
 
     pout() << "Driver::writeMemoryUsage - EBLeastSquaresMultigridInterpolator"
            << " constructed = " << numBuilt << " destructed = " << numDead << " live = " << numBuilt - numDead << endl;
+
+    pout() << "Driver::writeMemoryUsage - live Copiers = " << Copier::s_liveCopiers << endl;
 
     pout() << "Driver::writeMemoryUsage - end of breakdown" << endl;
   }
