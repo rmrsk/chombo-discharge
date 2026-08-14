@@ -15,29 +15,11 @@
 #include <CD_MFHelmholtzElectrostaticEBBC.H>
 #include <CD_NamespaceHeader.H>
 
-// DIAGNOSTIC (memory-growth investigation): see getNumConstructed().
-long long MFHelmholtzElectrostaticEBBCFactory::s_numConstructed = 0LL;
-long long MFHelmholtzElectrostaticEBBCFactory::s_numDestructed  = 0LL;
-
-long long
-MFHelmholtzElectrostaticEBBCFactory::getNumConstructed() noexcept
-{
-  return s_numConstructed;
-}
-
-long long
-MFHelmholtzElectrostaticEBBCFactory::getNumDestructed() noexcept
-{
-  return s_numDestructed;
-}
-
 MFHelmholtzElectrostaticEBBCFactory::MFHelmholtzElectrostaticEBBCFactory(const int                a_order,
                                                                          const int                a_weight,
                                                                          const ElectrostaticEbBc& a_electrostaticBCs)
 {
   CH_TIME("MFHelmholtzElectrostaticEBBCFactory::MFHelmholtzElectrostaticEBBCFactory(int, int, ElectrostaticEbBc)");
-
-  s_numConstructed++;
 
   CH_assert(a_order > 0);
   CH_assert(a_weight >= 0);
@@ -53,8 +35,6 @@ MFHelmholtzElectrostaticEBBCFactory::MFHelmholtzElectrostaticEBBCFactory(const i
 MFHelmholtzElectrostaticEBBCFactory::~MFHelmholtzElectrostaticEBBCFactory()
 {
   CH_TIME("MFHelmholtzElectrostaticEBBCFactory::~MFHelmholtzElectrostaticEBBCFactory()");
-
-  s_numDestructed++;
 }
 
 void

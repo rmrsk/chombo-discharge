@@ -74,26 +74,6 @@ public:
   virtual ~MFHelmholtzElectrostaticEBBCFactory();
 
   /**
-   * @brief Get the number of instances constructed so far.
-   * @details DIAGNOSTIC (memory-growth investigation). One factory is built per field-solver setup,
-   * i.e. once per regrid, and the previous one should die with the operator factory that owns it. A
-   * live count (constructed minus destructed) that climbs regrid-over-regrid means the elliptic
-   * operator chain is being retained, which is where the per-regrid Vector<VolIndex> stencil growth
-   * would then live. Not synchronized -- factories are built serially.
-   * @return Number of instances constructed since program start.
-   */
-  static long long
-  getNumConstructed() noexcept;
-
-  /**
-   * @brief Get the number of instances destructed so far.
-   * @details See getNumConstructed(); the difference between the two is the number of live instances.
-   * @return Number of instances destructed since program start.
-   */
-  static long long
-  getNumDestructed() noexcept;
-
-  /**
    * @brief Set BC order
    * @param[in] a_order Approximation order (1 and 2 are accepted)
    * @note For least squares, the order is also the attempted radius of the stencil.
@@ -133,16 +113,6 @@ public:
   create(const int a_iphase, const RefCountedPtr<MFHelmholtzJumpBC>& a_jumpBC) const override;
 
 protected:
-  /**
-   * @brief Number of instances constructed so far. See getNumConstructed().
-   */
-  static long long s_numConstructed;
-
-  /**
-   * @brief Number of instances destructed so far. See getNumDestructed().
-   */
-  static long long s_numDestructed;
-
   /**
    * @brief Stencil order
    */

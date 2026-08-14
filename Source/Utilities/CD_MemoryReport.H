@@ -100,21 +100,6 @@ getResidentSetSize(Real& a_currentRSS, Real& a_peakRSS);
  */
 void
 getMaxMinResidentSetSize(Real& a_maxCurrent, Real& a_minCurrent, Real& a_maxPeak, Real& a_minPeak);
-
-/**
- * @brief Get the live tracked byte count for one Chombo Vector element type.
- * @details DIAGNOSTIC (memory-growth investigation). Chombo tallies Vector storage per element type
- * but exposes the tally only inside ReportUnfreedMemory's text report, so this renders the report to
- * a string and reads one line out of it. The point is resolution: the aggregate from
- * overallMemoryUsage cannot isolate a per-regrid ratchet of a few tens of kilobytes, because it is
- * swamped by the megabytes of allocate/release traffic that balance out across the same regrid.
- * Costs a full report render per call, so use it at phase boundaries, not in inner loops.
- * @param[in] a_typeName Mangled element type name as it appears in the report, e.g. "8VolIndex".
- * @return Live bytes attributed to Vector<a_typeName>, or zero if absent from the report (which also
- *         means zero when memory tracking is compiled out).
- */
-long long
-getTrackedVectorBytes(const std::string& a_typeName);
 } // namespace MemoryReport
 
 #include <CD_NamespaceFooter.H>

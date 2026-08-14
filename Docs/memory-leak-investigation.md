@@ -376,27 +376,40 @@ The phase-bracket instrumentation is committed alongside this document, in `CD_D
 `CD_McPhoto.cpp`. It is diagnostic scaffolding, gated on existing flags, and **should be reverted
 before this branch is merged anywhere.**
 
-Added while establishing the above, and likewise to be reverted:
+A second round of diagnostics was added while establishing the findings above and has since been
+**reverted** — the source files are back to their state at the start of that work. It is recorded
+here because the next person to measure this will want the same probes, and because one of them is a
+prerequisite for getting a meaningful reading at all:
 
 - `CD_Driver.cpp` — the step report printed RSS and unfreed memory as `std::ceil(bytes/MB)`. At 1 MB
   granularity the entire effect documented here is invisible: the AirBasic growth is 655 kB in 150
-  steps, and it would have read as a flat `5(MB)` throughout. RSS now prints in kB and unfreed memory
-  in bytes. **Any future measurement here needs byte or kB resolution** — the MB rounding is what
-  made the tracked counter look "byte-identical" in cases where it was in fact moving.
-- `CD_BrownianWalkerStepper.cpp` — `printStepReport` also sums `ParticleSoA` size and capacity across
-  all patches (the `#soa` line), which is what secondary finding 5 is measured with.
+  steps, and it would have read as a flat `5(MB)` throughout. **Any future measurement here needs
+  byte or kB resolution** — the MB rounding is what made the tracked counter look "byte-identical" in
+  cases where it was in fact moving. The same applies to the max-over-ranks RSS, which is the figure
+  a scheduler actually kills a job for exceeding.
+- `MemoryReport::getTrackedVectorBytes` — reads the live byte count of one Chombo `Vector` element
+  type out of `ReportUnfreedMemory`'s text report. This is what localized the growth to
+  `Vector<VolIndex>`; the aggregate from `overallMemoryUsage` cannot separate a ratchet of tens of
+  kilobytes from the megabytes of balanced traffic around it.
+- `Driver::regrid` — per-phase `VolIndex` deltas, and a split of the pre-regrid phase into its
+  `cacheTags` / `timeStepper` / `cellTagger` / `amr` parts.
+- `MFHelmholtzElectrostaticEBBCFactory` — the live-instance counter pattern already used by
+  `EBLeastSquaresMultigridInterpolator`. This is what ruled the factory out as the retainer.
+- `CD_BrownianWalkerStepper.cpp` — `printStepReport` also summed `ParticleSoA` size and capacity
+  across all patches (the `#soa` line), which is what secondary finding 5 was measured with.
 
-The Chombo submodule was also instrumented (`AMRMultiGrid.H`, `Copier.H`, `Copier.cpp`,
-`BoxLayoutDataI.H`). Those changes cannot be committed here — the submodule is a separate
-repository — so they are saved as `Docs/memory-leak-chombo-instrumentation.patch`. **A checkout of
-this branch will not have them**, and the submodule in the working tree where this was done is dirty.
+The Chombo submodule was instrumented too (`AMRMultiGrid.H`, `Copier.H`, `Copier.cpp`,
+`BoxLayoutDataI.H`, and the `EBISLevel`/`EBIndexSpace` layout-cache accessors). Those changes cannot
+be committed here — the submodule is a separate repository — so they are saved as
+`Docs/memory-leak-chombo-instrumentation.patch`, and have likewise been reverted from the working
+tree. **A checkout of this branch will not have them.**
 
 The `Vector` move-assign fix is saved separately as `Docs/chombo-vector-move-tracking-fix.patch`,
-because unlike the rest it is **not** scaffolding — it is a real bug fix and should not be reverted
-along with the diagnostics. Apply both from `Submodules/Chombo-3.3`:
+because unlike the rest it is **not** scaffolding — it is a real bug fix, and it is being taken
+forward as a pull request against the submodule
+(see chombo-discharge/chombo-discharge#693). To restore the diagnostics:
 
 ```bash
 cd Submodules/Chombo-3.3
-git apply ../../Docs/chombo-vector-move-tracking-fix.patch
-git apply ../../Docs/memory-leak-chombo-instrumentation.patch   # diagnostics only
+git apply ../../Docs/memory-leak-chombo-instrumentation.patch
 ```
