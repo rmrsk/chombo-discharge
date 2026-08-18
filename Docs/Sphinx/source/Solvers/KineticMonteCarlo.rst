@@ -3,7 +3,7 @@
 Kinetic Monte Carlo
 ===================
 
-Kinetic Monte Carlo (KMC) algoritms are composed of various methods for stochastically simulating chemically reacting systems.
+Kinetic Monte Carlo (KMC) algorithms are composed of various methods for stochastically simulating chemically reacting systems.
 While various flavors of KMC are encountered in different fields of science, KMC in the context of ``chombo-discharge`` is primarily associated with chemistry kernels.
 
 Concept
@@ -45,7 +45,7 @@ For unimolecular reactions of the type
    X_A + X_B + \ldots \xrightarrow{k} \emptyset
 
 with :math:`A \neq B \neq \ldots` the propensity function is :math:`k X_A X_B \ldots`.
-For bimolecular of the type
+For bimolecular reactions of the type
 
 .. math::
 
@@ -78,13 +78,13 @@ For the SSA we compute the time until the next reaction by
    T = \frac{1}{\sum_{r\in\vec{R}} a_r}\ln\left(\frac{1}{u_1}\right)
 
 where :math:`A = \sum_{r\in\vec{R}} a_r` and :math:`u_1` is a uniformly distributed random variable between :math:`0` and :math:`1`.
-The type of reaction that fires is deterimined from
+The type of reaction that fires is determined from
 
 .. math::
 
    r_c = \textrm{smallest integer satisfying } \sum_{r^\prime = 1}^{r_c} a_{r^\prime} > u_2A,
 
-where and :math:`u_2` is another uniformly distributed random variable between :math:`0` and :math:`1`.
+where :math:`u_2` is another uniformly distributed random variable between :math:`0` and :math:`1`.
 The state is then advanced as
 
 .. math::
@@ -175,8 +175,8 @@ Assume that we wish to integrate over some time :math:`\Delta t`, which proceeds
 
       Next, advance the state using tau leaping for the non-critical reaction.
 
-   b. Otherwise: No crical reactions fire.
-      Advance the state using tau-leapnig for the non-critical reactions only.
+   b. Otherwise: No critical reactions fire.
+      Advance the state using tau-leaping for the non-critical reactions only.
       An exception is made if :math:`A\Delta\tau` is smaller than some specified threshold in which case we switch to SSA advancement (which is more efficient in this limit). 
 
 #. Check if :math:`\vec{X}` is a thermodynamically valid state.
@@ -203,8 +203,7 @@ In ``chombo-discharge``, the KMC solver is implemented as
 
 .. literalinclude:: ../../../../Source/KineticMonteCarlo/CD_KMCSolver.H
    :language: c++
-   :lines: 40-57, 73-78
-   :dedent: 0
+   :lines: 42-66,82-87
 
 Here, the template parameters are:
 
@@ -226,7 +225,7 @@ The ``State`` representation *must* have a member function
 
 .. literalinclude:: ../../../../Source/KineticMonteCarlo/CD_KMCSingleState.H
    :language: c++
-   :lines: 87-92
+   :lines: 95-100
    :dedent: 2
 
 This function should return true if the state is a valid one (e.g., no negative populations) and false otherwise. 
@@ -239,7 +238,7 @@ The reaction representation ``R`` *must* have the following member functions:
 
 .. literalinclude:: ../../../../Source/KineticMonteCarlo/CD_KMCSingleStateReaction.H
    :language: c++
-   :lines: 73-108
+   :lines: 75-116
    :dedent: 2
 
 These template requirements exist so that users can define their states independent of their reactions.
@@ -324,14 +323,14 @@ The most general one that uses the hybrid advance is
 
 .. literalinclude:: ../../../../Source/KineticMonteCarlo/CD_KMCSolver.H
    :language: c++
-   :lines: 396-406
+   :lines: 420-430
    :dedent: 2
 
 When using the hybrid algorithm, the user should set the hybrid solver parameters through the function
 
 .. literalinclude:: ../../../../Source/KineticMonteCarlo/CD_KMCSolver.H
    :language: c++
-   :lines: 104-119
+   :lines: 115-129
    :dedent: 2
 
 State and reaction examples
@@ -381,7 +380,7 @@ Figure :numref:`Fig:KineticMonteCarloC1` shows the Kinetic Monte Carlo solution 
 C2: Schlögl model
 _________________
 
-Solution the Schlögl model are given in :file:`$DISCHARGE_HOME/Exec/Convergence/KineticMonteCarlo/C2`.
+Solutions to the Schlögl model are given in :file:`$DISCHARGE_HOME/Exec/Convergence/KineticMonteCarlo/C2`.
 For the Schlögl model we solve for a single population :math:`X` with the reactions
 
 .. math::
@@ -392,7 +391,7 @@ For the Schlögl model we solve for a single population :math:`X` with the react
    X  &\xrightarrow{c_4} B2.   
 
 The states :math:`B_1` and :math:`B_2` are buffered states with populations that do not change during the reactions. 
-Figure :numref:`Fig:KineticMonteCarloC1` shows the Kinetic Monte Carlo solutions for rates
+Figure :numref:`Fig:KineticMonteCarloC2` shows the Kinetic Monte Carlo solutions for rates
 
 .. math::
 

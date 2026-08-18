@@ -1,16 +1,17 @@
-/* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
- * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
+/*
+ * SPDX-FileCopyrightText: 2021-2026 SINTEF Energy Research
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-/*!
-  @file   CD_ParallelOpsImplem.H
-  @brief  Implementation of CD_ParallelOps.H
-  @author Robert Marskar
-*/
+/**
+ * @file   CD_ParallelOpsImplem.H
+ * @brief  Implementation of CD_ParallelOps.H
+ * @author Robert Marskar
+ */
 
-#ifndef CD_ParallelOpsImplem_H
-#define CD_ParallelOpsImplem_H
+#ifndef CD_PARALLELOPSIMPLEM_H
+#define CD_PARALLELOPSIMPLEM_H
 
 // Std includes
 #include <limits>
@@ -564,6 +565,22 @@ ParallelOps::gather(const Real& a_localValue) noexcept
   return ret;
 #else
   return Vector<Real>(1, a_localValue);
+#endif
+}
+
+inline Vector<long long>
+ParallelOps::gather(const long long& a_localValue) noexcept
+{
+  CH_TIME("ParallelOps::gather(long long)");
+
+#ifdef CH_MPI
+  Vector<long long> ret(numProc());
+
+  MPI_Allgather(&a_localValue, 1, MPI_LONG_LONG, ret.stdVector().data(), 1, MPI_LONG_LONG, Chombo_MPI::comm);
+
+  return ret;
+#else
+  return Vector<long long>(1, a_localValue);
 #endif
 }
 

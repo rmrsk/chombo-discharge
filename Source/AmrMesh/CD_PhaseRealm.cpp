@@ -1,13 +1,14 @@
-/* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
- * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
+/*
+ * SPDX-FileCopyrightText: 2021-2026 SINTEF Energy Research
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-/*!
-  @file   CD_PhaseRealm.cpp
-  @brief  Implementation of CD_PhaseRealm.H
-  @author Robert Marskar
-*/
+/**
+ * @file   CD_PhaseRealm.cpp
+ * @brief  Implementation of CD_PhaseRealm.H
+ * @author Robert Marskar
+ */
 
 // Chombo includes
 #include <EBArith.H>
@@ -25,14 +26,11 @@
 #include <CD_BoxLoops.H>
 #include <CD_NamespaceHeader.H>
 
-PhaseRealm::PhaseRealm()
+PhaseRealm::PhaseRealm() : m_isDefined(false), m_profile(false), m_verbose(false)
 {
   CH_TIME("PhaseRealm::PhaseRealm");
 
   // Default settings
-  m_isDefined = false;
-  m_profile   = false;
-  m_verbose   = false;
 
   this->registerOperator(s_eb_gradient);
   this->registerOperator(s_eb_irreg_interp);
@@ -43,15 +41,14 @@ PhaseRealm::PhaseRealm()
   pp.query("verbosity", m_verbose);
 }
 
-PhaseRealm::~PhaseRealm()
-{}
+PhaseRealm::~PhaseRealm() = default;
 
 void
 PhaseRealm::define(const Vector<DisjointBoxLayout>&      a_grids,
                    const Vector<ProblemDomain>&          a_domains,
                    const Vector<int>&                    a_refRat,
                    const Vector<Real>&                   a_dx,
-                   const RealVect                        a_probLo,
+                   const RealVect&                       a_probLo,
                    const int                             a_finestLevel,
                    const int                             a_ebGhost,
                    const int                             a_numGhost,
@@ -125,6 +122,11 @@ PhaseRealm::preRegrid()
   m_eblgCoFi.resize(0);
   m_eblgFiCo.resize(0);
   m_vofIter.resize(0);
+  m_multiCutVofIter.resize(0);
+  m_faceIter.resize(0);
+  m_faceIterNoBoundary.resize(0);
+  m_faceIterTanGhost.resize(0);
+  m_multiCutFaceIter.resize(0);
   m_coarAve.resize(0);
   m_multigridInterpolator.resize(0);
   m_ebFineInterp.resize(0);
@@ -132,6 +134,10 @@ PhaseRealm::preRegrid()
   m_redistributionOp.resize(0);
   m_gradientOp.resize(0);
   m_levelset.resize(0);
+  m_regularCells.resize(0);
+  m_coveredCells.resize(0);
+  m_notCoveredCells.resize(0);
+  m_irregularCells.resize(0);
   m_cellCentroidInterpolation.resize(0);
   m_ebCentroidInterpolation.resize(0);
   m_nonConservativeDivergence.resize(0);
@@ -168,6 +174,20 @@ PhaseRealm::regridBase(const int a_lmin)
     timer.startEvent("Define VoFIterators");
     this->defineVofIterator(a_lmin);
     timer.stopEvent("Define VoFIterators");
+    if (m_profile) {
+      MemoryReport::getMaxMinMemoryUsage();
+      pout() << endl;
+    }
+
+    // Built here (rather than in regridOperators) so the cell masks are available to load-balancing
+    // routines, which run after regridBase but before regridOperators.
+    if (m_profile) {
+      pout() << "before/after masks define" << endl;
+      MemoryReport::getMaxMinMemoryUsage();
+    }
+    timer.startEvent("Cell masks");
+    this->defineMasks(a_lmin, m_numGhostCells);
+    timer.stopEvent("Cell masks");
     if (m_profile) {
       MemoryReport::getMaxMinMemoryUsage();
       pout() << endl;
@@ -330,7 +350,7 @@ PhaseRealm::regridOperators(const int a_lmin)
 }
 
 void
-PhaseRealm::registerOperator(const std::string a_operator)
+PhaseRealm::registerOperator(const std::string& a_operator)
 {
   CH_TIME("PhaseRealm::registerOperator");
   if (m_verbose) {
@@ -338,12 +358,10 @@ PhaseRealm::registerOperator(const std::string a_operator)
   }
 
   // These are the supported operators - issue an error if we ask for something that is not supported.
-  if (!(a_operator.compare(s_eb_coar_ave) == 0 || a_operator.compare(s_eb_fill_patch) == 0 ||
-        a_operator.compare(s_eb_fine_interp) == 0 || a_operator.compare(s_eb_flux_reg) == 0 ||
-        a_operator.compare(s_eb_redist) == 0 || a_operator.compare(s_noncons_div) == 0 ||
-        a_operator.compare(s_eb_gradient) == 0 || a_operator.compare(s_particle_mesh) == 0 ||
-        a_operator.compare(s_eb_irreg_interp) == 0 || a_operator.compare(s_eb_multigrid) == 0 ||
-        a_operator.compare(s_levelset) == 0)) {
+  if (!(a_operator == s_eb_coar_ave || a_operator == s_eb_fill_patch || a_operator == s_eb_fine_interp ||
+        a_operator == s_eb_flux_reg || a_operator == s_eb_redist || a_operator == s_noncons_div ||
+        a_operator == s_eb_gradient || a_operator == s_particle_mesh || a_operator == s_eb_irreg_interp ||
+        a_operator == s_eb_multigrid || a_operator == s_levelset)) {
 
     const std::string str = "PhaseRealm::registerOperator - unknown operator '" + a_operator + "' requested";
     MayDay::Error(str.c_str());
@@ -355,7 +373,7 @@ PhaseRealm::registerOperator(const std::string a_operator)
 }
 
 bool
-PhaseRealm::queryOperator(const std::string a_operator) const
+PhaseRealm::queryOperator(const std::string& a_operator) const
 {
   CH_TIME("PhaseRealm::queryOperator");
   if (m_verbose) {
@@ -432,10 +450,24 @@ PhaseRealm::defineVofIterator(const int a_lmin)
   }
 
   m_vofIter.resize(1 + m_finestLevel);
+  m_multiCutVofIter.resize(1 + m_finestLevel);
+  m_faceIter.resize(1 + m_finestLevel);
+  m_faceIterNoBoundary.resize(1 + m_finestLevel);
+  m_faceIterTanGhost.resize(1 + m_finestLevel);
+  m_multiCutFaceIter.resize(1 + m_finestLevel);
 
   for (int lvl = a_lmin; lvl <= m_finestLevel; lvl++) {
 
-    m_vofIter[lvl] = RefCountedPtr<LayoutData<VoFIterator>>(new LayoutData<VoFIterator>(m_grids[lvl]));
+    m_vofIter[lvl]         = RefCountedPtr<LayoutData<VoFIterator>>(new LayoutData<VoFIterator>(m_grids[lvl]));
+    m_multiCutVofIter[lvl] = RefCountedPtr<LayoutData<VoFIterator>>(new LayoutData<VoFIterator>(m_grids[lvl]));
+    m_faceIter[lvl]        = RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>(
+      new LayoutData<std::array<FaceIterator, SpaceDim>>(m_grids[lvl]));
+    m_faceIterNoBoundary[lvl] = RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>(
+      new LayoutData<std::array<FaceIterator, SpaceDim>>(m_grids[lvl]));
+    m_faceIterTanGhost[lvl] = RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>(
+      new LayoutData<std::array<FaceIterator, SpaceDim>>(m_grids[lvl]));
+    m_multiCutFaceIter[lvl] = RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>(
+      new LayoutData<std::array<FaceIterator, SpaceDim>>(m_grids[lvl]));
 
     const DisjointBoxLayout& dbl = m_grids[lvl];
     const DataIterator&      dit = dbl.dataIterator();
@@ -445,14 +477,50 @@ PhaseRealm::defineVofIterator(const int a_lmin)
     for (int mybox = 0; mybox < nbox; mybox++) {
       const DataIndex& din = dit[mybox];
 
-      VoFIterator& vofit = (*m_vofIter[lvl])[din];
+      VoFIterator& vofit         = (*m_vofIter[lvl])[din];
+      VoFIterator& multiCutVofit = (*m_multiCutVofIter[lvl])[din];
 
-      const Box&        cellBox = m_grids[lvl].get(din);
-      const EBISBox&    ebisbox = m_ebisl[lvl][din];
-      const EBGraph&    ebgraph = ebisbox.getEBGraph();
-      const IntVectSet& irreg   = ebisbox.getIrregIVS(cellBox);
+      const Box&        cellBox  = m_grids[lvl].get(din);
+      const EBISBox&    ebisbox  = m_ebisl[lvl][din];
+      const EBGraph&    ebgraph  = ebisbox.getEBGraph();
+      const IntVectSet& irreg    = ebisbox.getIrregIVS(cellBox);
+      const IntVectSet& multiCut = ebisbox.getMultiCells(cellBox);
 
       vofit.define(irreg, ebgraph);
+      multiCutVofit.define(multiCut, ebgraph);
+
+      // Face iterators over cut-cell faces in the valid box, with and without domain boundary faces.
+      std::array<FaceIterator, SpaceDim>& faceIter           = (*m_faceIter[lvl])[din];
+      std::array<FaceIterator, SpaceDim>& faceIterNoBoundary = (*m_faceIterNoBoundary[lvl])[din];
+      for (int dir = 0; dir < SpaceDim; dir++) {
+        faceIter[dir].define(irreg, ebgraph, dir, FaceStop::SurroundingWithBoundary);
+        faceIterNoBoundary[dir].define(irreg, ebgraph, dir, FaceStop::SurroundingNoBoundary);
+      }
+
+      // Per-direction tangential-ghost face iterators. For faces in direction dir the IVS covers
+      // irregular cells in a box grown by 1 in the two tangential directions only; dir itself is
+      // kept at the valid-box extent. With FaceStop::SurroundingNoBoundary, this gives exactly
+      // the cut-cell faces that reach into the first tangential ghost layer while staying within
+      // 1 cell of the valid box in the normal (dir) direction.
+      std::array<FaceIterator, SpaceDim>& faceIterTanGhost = (*m_faceIterTanGhost[lvl])[din];
+      for (int dir = 0; dir < SpaceDim; dir++) {
+        Box tanBox = cellBox;
+        for (int tanDir = 0; tanDir < SpaceDim; tanDir++) {
+          if (tanDir != dir) {
+            tanBox.grow(tanDir, 1);
+          }
+        }
+        tanBox &= m_domains[lvl];
+        const IntVectSet irregTan = ebisbox.getIrregIVS(tanBox);
+        faceIterTanGhost[dir].define(irregTan, ebgraph, dir, FaceStop::SurroundingNoBoundary);
+      }
+
+      // Multi-cut face iterators over the valid box (SurroundingNoBoundary). Used as a second pass
+      // after box loops over getSingleValuedFAB to avoid double-processing singly-cut faces.
+      std::array<FaceIterator, SpaceDim>& multiCutFaceIter = (*m_multiCutFaceIter[lvl])[din];
+      for (int dir = 0; dir < SpaceDim; dir++) {
+        multiCutFaceIter[dir].define(multiCut, ebgraph, dir, FaceStop::SurroundingNoBoundary);
+      }
     }
   }
 }
@@ -494,19 +562,102 @@ PhaseRealm::defineLevelSet(const int a_lmin, const int a_numGhost)
         const Box  bx  = fab.box();
 
         if (!m_baseif.isNull()) {
+          // Not auto-vectorizable: m_baseif->value(pos) is a virtual call on the polymorphic implicit
+          // function, evaluated per cell. This is a one-time (regrid) setup loop.
           auto kernel = [&](const IntVect& iv) -> void {
             const RealVect pos = m_probLo + (0.5 * RealVect::Unit + RealVect(iv)) * dx;
 
             fab(iv, comp) = m_baseif->value(pos);
           };
 
-          BoxLoops::loop(bx, kernel);
+          BoxLoops::loop<D_DECL(1, 1, 1)>(bx, kernel);
         }
         else {
           fab.setVal(minVal, comp);
         }
       }
     }
+  }
+}
+
+void
+PhaseRealm::defineMasks(const int a_lmin, const int a_numGhost)
+{
+  CH_TIME("PhaseRealm::defineMasks");
+  if (m_verbose) {
+    pout() << "PhaseRealm::defineMasks" << endl;
+  }
+
+  constexpr int comp  = 0;
+  constexpr int ncomp = 1;
+
+  const IntVect ghost = a_numGhost * IntVect::Unit;
+
+  m_regularCells.resize(1 + m_finestLevel);
+  m_coveredCells.resize(1 + m_finestLevel);
+  m_notCoveredCells.resize(1 + m_finestLevel);
+  m_irregularCells.resize(1 + m_finestLevel);
+
+  for (int lvl = a_lmin; lvl <= m_finestLevel; lvl++) {
+    const DisjointBoxLayout& dbl   = m_grids[lvl];
+    const EBISLayout&        ebisl = m_ebisl[lvl];
+    const DataIterator&      dit   = dbl.dataIterator();
+
+    m_regularCells[lvl] = RefCountedPtr<LevelData<EBCellFAB>>(
+      new LevelData<EBCellFAB>(dbl, ncomp, ghost, EBCellFactory(ebisl)));
+    m_coveredCells[lvl] = RefCountedPtr<LevelData<EBCellFAB>>(
+      new LevelData<EBCellFAB>(dbl, ncomp, ghost, EBCellFactory(ebisl)));
+    m_notCoveredCells[lvl] = RefCountedPtr<LevelData<EBCellFAB>>(
+      new LevelData<EBCellFAB>(dbl, ncomp, ghost, EBCellFactory(ebisl)));
+    m_irregularCells[lvl] = RefCountedPtr<LevelData<EBCellFAB>>(
+      new LevelData<EBCellFAB>(dbl, ncomp, ghost, EBCellFactory(ebisl)));
+
+    const int nbox = dit.size();
+#pragma omp parallel for schedule(runtime)
+    for (int mybox = 0; mybox < nbox; mybox++) {
+      const DataIndex& din = dit[mybox];
+
+      EBCellFAB& regular    = (*m_regularCells[lvl])[din];
+      EBCellFAB& covered    = (*m_coveredCells[lvl])[din];
+      EBCellFAB& notCovered = (*m_notCoveredCells[lvl])[din];
+      EBCellFAB& irregular  = (*m_irregularCells[lvl])[din];
+
+      const EBISBox& ebisbox = regular.getEBISBox();
+
+      // Regular mask = 1 in regular cells, 0 in covered/irregular cells.
+      regular.setVal(1.0);
+      regular.setCoveredCellVal(0.0, comp);
+
+      // Covered mask = 1 in covered cells, 0 elsewhere.
+      covered.setVal(0.0);
+      covered.setCoveredCellVal(1.0, comp);
+
+      // Non-covered mask = 1 in regular/irregular cells, 0 in covered cells.
+      notCovered.setVal(1.0);
+      notCovered.setCoveredCellVal(0.0, comp);
+
+      // Irregular mask = 1 in irregular cells, 0 elsewhere (raised below).
+      irregular.setVal(0.0);
+
+      // Lower the regular mask and raise the irregular mask on the irregular cells of the valid box.
+      // Write the single-valued FABs directly since the masks are read as regular-grid data.
+      BaseFab<Real>&   regularReg   = regular.getSingleValuedFAB();
+      BaseFab<Real>&   irregularReg = irregular.getSingleValuedFAB();
+      const IntVectSet irregIVS     = ebisbox.getIrregIVS(dbl[din]);
+
+      for (IVSIterator ivsIt(irregIVS); ivsIt.ok(); ++ivsIt) {
+        const IntVect& iv = ivsIt();
+
+        regularReg(iv, comp)   = 0.0;
+        irregularReg(iv, comp) = 1.0;
+      }
+    }
+
+    // Fill ghost cells so the masks are consistent across grid patches.
+    m_regularCells[lvl]->exchange();
+    m_coveredCells[lvl]->exchange();
+    m_notCoveredCells[lvl]->exchange();
+    m_irregularCells[lvl]->exchange();
   }
 }
 
@@ -588,7 +739,6 @@ PhaseRealm::defineFillPatch(const int a_lmin)
 
   if (doThisOperator) {
 
-    const int     comps  = SpaceDim;
     const int     radius = m_numGhostCells;
     const IntVect ghost  = m_numGhostCells * IntVect::Unit;
 
@@ -636,7 +786,7 @@ PhaseRealm::defineEBCoarseToFineInterp(const int a_lmin)
 }
 
 void
-PhaseRealm::defineFluxReg(const int a_lmin, const int a_regsize)
+PhaseRealm::defineFluxReg(const int a_lmin, const int /*a_regsize*/)
 {
   CH_TIME("PhaseRealm::defineFluxReg");
   if (m_verbose) {
@@ -653,8 +803,6 @@ PhaseRealm::defineFluxReg(const int a_lmin, const int a_regsize)
 
   if (doThisOperator) {
 
-    const int comps = a_regsize;
-
     for (int lvl = std::max(0, a_lmin - 1); lvl <= m_finestLevel; lvl++) {
 
       const bool hasFine = lvl < m_finestLevel;
@@ -669,7 +817,7 @@ PhaseRealm::defineFluxReg(const int a_lmin, const int a_regsize)
 }
 
 void
-PhaseRealm::defineRedistOper(const int a_lmin, const int a_regsize)
+PhaseRealm::defineRedistOper(const int a_lmin, const int /*a_regsize*/)
 {
   CH_TIME("PhaseRealm::defineRedistOper");
   if (m_verbose) {
@@ -740,7 +888,7 @@ PhaseRealm::defineParticleMesh()
 }
 
 void
-PhaseRealm::defineGradSten(const int a_lmin)
+PhaseRealm::defineGradSten(const int /*a_lmin*/)
 {
   CH_TIME("PhaseRealm::defineGradSten");
   if (m_verbose) {
@@ -817,7 +965,7 @@ PhaseRealm::defineIrregSten()
 }
 
 void
-PhaseRealm::defineNonConservativeDivergence(const int a_lmin)
+PhaseRealm::defineNonConservativeDivergence(const int /*a_lmin*/)
 {
   CH_TIME("PhaseRealm::defineNonConservativeDivergence");
   if (m_verbose) {
@@ -894,6 +1042,36 @@ Vector<RefCountedPtr<LayoutData<VoFIterator>>>&
 PhaseRealm::getVofIterator() const
 {
   return m_vofIter;
+}
+
+Vector<RefCountedPtr<LayoutData<VoFIterator>>>&
+PhaseRealm::getMultiCutVofIterator() const
+{
+  return m_multiCutVofIter;
+}
+
+Vector<RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>>&
+PhaseRealm::getFaceIterator() const
+{
+  return m_faceIter;
+}
+
+Vector<RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>>&
+PhaseRealm::getFaceIteratorNoBoundary() const
+{
+  return m_faceIterNoBoundary;
+}
+
+Vector<RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>>&
+PhaseRealm::getFaceIteratorWithTangentialGhosts() const
+{
+  return m_faceIterTanGhost;
+}
+
+Vector<RefCountedPtr<LayoutData<std::array<FaceIterator, SpaceDim>>>>&
+PhaseRealm::getMultiCutFaceIterator() const
+{
+  return m_multiCutFaceIter;
 }
 
 const Vector<RefCountedPtr<EBGradient>>&
@@ -1024,6 +1202,30 @@ PhaseRealm::getLevelset() const
   }
 
   return m_levelset;
+}
+
+const EBAMRCellData&
+PhaseRealm::getRegularCells() const
+{
+  return m_regularCells;
+}
+
+const EBAMRCellData&
+PhaseRealm::getCoveredCells() const
+{
+  return m_coveredCells;
+}
+
+const EBAMRCellData&
+PhaseRealm::getNotCoveredCells() const
+{
+  return m_notCoveredCells;
+}
+
+const EBAMRCellData&
+PhaseRealm::getIrregularCells() const
+{
+  return m_irregularCells;
 }
 
 #include <CD_NamespaceFooter.H>

@@ -1,16 +1,17 @@
-/* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
- * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
+/*
+ * SPDX-FileCopyrightText: 2021-2026 SINTEF Energy Research
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-/*!
-  @file   CD_ItoKMCPhysicsImplem.H 
-  @brief  Implementation of CD_ItoKMCPhysics.H
-  @author Robert Marskar
-*/
+/**
+ * @file   CD_ItoKMCPhysicsImplem.H
+ * @brief  Implementation of CD_ItoKMCPhysics.H
+ * @author Robert Marskar
+ */
 
-#ifndef CD_ItoKMCPhysicsImplem_H
-#define CD_ItoKMCPhysicsImplem_H
+#ifndef CD_ITOKMCPHYSICSIMPLEM_H
+#define CD_ITOKMCPHYSICSIMPLEM_H
 
 // Chombo includes
 #include <ParmParse.H>
@@ -121,6 +122,9 @@ ItoKMCPhysics::defineKMC() const noexcept
   m_kmcSolver.define(m_kmcReactionsThreadLocal);
   m_kmcSolver.setSolverParameters(m_Ncrit, m_NSSA, m_maxIter, m_eps, m_SSAlim, m_exitTol);
   m_kmcState.define(m_itoSpecies.size() + m_cdrSpecies.size(), m_rtSpecies.size());
+  m_kmcStateScratch.define(m_itoSpecies.size() + m_cdrSpecies.size(), m_rtSpecies.size());
+
+  m_kmcPropensityScratch.resize(m_kmcReactionsThreadLocal.size());
 
   m_hasKMCSolver = true;
 }
@@ -128,13 +132,16 @@ ItoKMCPhysics::defineKMC() const noexcept
 inline void
 ItoKMCPhysics::killKMC() const noexcept
 {
-  CH_TIME("ItoKMCPhysics::defineKMC");
+  CH_TIME("ItoKMCPhysics::killKMC");
 
   CH_assert(m_hasKMCSolver);
 
   m_kmcReactionsThreadLocal.resize(0);
   m_kmcSolver.define(m_kmcReactionsThreadLocal);
   m_kmcState.define(0, 0);
+  m_kmcStateScratch.define(0, 0);
+
+  m_kmcPropensityScratch.resize(0);
 
   m_hasKMCSolver = false;
 }
@@ -330,7 +337,7 @@ ItoKMCPhysics::getNumPhotonSpecies() const
 }
 
 inline Real
-ItoKMCPhysics::initialSigma(const Real a_time, const RealVect a_pos) const
+ItoKMCPhysics::initialSigma(const Real a_time, const RealVect& a_pos) const
 {
   return 0.0;
 }
@@ -347,8 +354,6 @@ ItoKMCPhysics::advanceKMC(Vector<FPR>&            a_numParticles,
                           const Real              a_dx,
                           const Real              a_kappa) const
 {
-  CH_TIME("ItoKMCPhysics::advanceKMC");
-
   // Note: This is called PER GRID CELL, i.e. within OpenMP parallel regions. For this reason the KMC solver
   //       must be defined through defineKMC() (which must be later killed).
   CH_assert(m_isDefined);
@@ -471,61 +476,60 @@ ItoKMCPhysics::advanceKMC(Vector<FPR>&            a_numParticles,
     MayDay::Warning("ItoKMCPhysics::advanceKMC -- charge not conserved!");
   }
 
-  // This loop is for isolating reactions that the user will explicitly ask to fire before computing the physics-based time step. It exists
-  // because if there are no electrons but lots of ions, one may get a time step that is too large because X/|sum mu| is zero for the electrons.
-  // Similarly, one may get a time step that is too small away from ionization regions because X/|sum mu| may be tiny if there is, say, 1 electron
-  // but lots of detachment.
-  auto getPropensitiesDt = [&](const KMCState& a_state) -> std::vector<Real> {
-    std::vector<Real> propensities = m_kmcSolver.propensities(a_state, m_kmcReactionsThreadLocal);
-
-    for (int i = 0; i < propensities.size(); i++) {
-      propensities[i] *= m_reactiveDtFactors[i];
+  // This loop is for isolating reactions that the user will explicitly ask to fire before computing the physics-based
+  // time step. It exists because if there are no electrons but lots of ions, one may get a time step that is too large
+  // because X/|sum mu| is zero for the electrons. Similarly, one may get a time step that is too small away from
+  // ionization regions because X/|sum mu| may be tiny if there is, say, 1 electron but lots of detachment.
+  // Fills the reusable propensity buffer rather than returning one, so that the probes below do not
+  // allocate once per reaction per grid cell.
+  auto fillPropensitiesDt = [&](const KMCState& a_state) -> void {
+    for (size_t i = 0; i < m_kmcReactionsThreadLocal.size(); i++) {
+      m_kmcPropensityScratch[i] = m_kmcReactionsThreadLocal[i]->propensity(a_state) * m_reactiveDtFactors[i];
     }
-
-    return propensities;
   };
 
   // Do a time step limitation on the complete state, using the user-specified reactions.
-  const auto propensitiesDt = getPropensitiesDt(m_kmcState);
-  const auto physicsDt      = m_kmcSolver.computeDt(m_kmcState, m_kmcReactionsThreadLocal, propensitiesDt, 1.0);
+  fillPropensitiesDt(m_kmcState);
 
-  a_physicsDt = std::min(a_physicsDt, physicsDt);
+  a_physicsDt = std::min(a_physicsDt,
+                         m_kmcSolver.computeDt(m_kmcState, m_kmcReactionsThreadLocal, m_kmcPropensityScratch, 1.0));
 
   // Go through reactions that are potentially detaching species and do the calculation again.
   for (const auto& reaction : m_kmcReactionsThreadLocal) {
-    auto       S = m_kmcState;
     const auto N = reaction->computeCriticalNumberOfReactions(m_kmcState);
 
-    // Trigger on both the reactions and the reactions with completely consumed reactants
+    // Trigger on both the reactions and the reactions with completely consumed reactants. The state
+    // is only copied inside the branch because that is the only place it is read -- copying it above
+    // the test meant paying for a copy per reaction per grid cell, including for the reactions that
+    // never enter here.
     if (N < std::numeric_limits<FPR>::max()) {
-      reaction->advanceState(S, N);
+      m_kmcStateScratch = m_kmcState;
 
-      const auto propensitiesDt = getPropensitiesDt(S);
-      const auto physicsDt      = m_kmcSolver.computeDt(S, m_kmcReactionsThreadLocal, propensitiesDt, 1.0);
+      reaction->advanceState(m_kmcStateScratch, N);
 
-      a_physicsDt = std::min(a_physicsDt, physicsDt);
+      fillPropensitiesDt(m_kmcStateScratch);
+
+      a_physicsDt = std::min(
+        a_physicsDt,
+        m_kmcSolver.computeDt(m_kmcStateScratch, m_kmcReactionsThreadLocal, m_kmcPropensityScratch, 1.0));
     }
   }
 }
 
 inline void
-ItoKMCPhysics::reconcileParticles(Vector<List<ItoParticle>*>& a_particles,
-                                  const Vector<FPR>&          a_newNumParticles,
-                                  const Vector<FPR>&          a_oldNumParticles,
-                                  const RealVect              a_electricField,
-                                  const RealVect              a_cellPos,
-                                  const RealVect              a_centroidPos,
-                                  const RealVect              a_lo,
-                                  const RealVect              a_hi,
-                                  const RealVect              a_bndryCentroid,
-                                  const RealVect              a_bndryNormal,
-                                  const Real                  a_dx,
-                                  const Real                  a_kappa) const noexcept
+ItoKMCPhysics::reconcileParticles(Vector<ParticleSoA<ItoParticle>*>& a_particles,
+                                  const Vector<FPR>&                 a_newNumParticles,
+                                  const Vector<FPR>&                 a_oldNumParticles,
+                                  const RealVect                     a_electricField,
+                                  const RealVect                     a_cellPos,
+                                  const RealVect                     a_centroidPos,
+                                  const RealVect                     a_lo,
+                                  const RealVect                     a_hi,
+                                  const RealVect                     a_bndryCentroid,
+                                  const RealVect                     a_bndryNormal,
+                                  const Real                         a_dx,
+                                  const Real                         a_kappa) const noexcept
 {
-  CH_TIMERS("ItoKMCPhysics::reconcileParticles");
-  CH_TIMER("ItoKMCPhysics::reconcileParticles::compute_downstream", t1);
-  CH_TIMER("ItoKMCPhysics::reconcileParticles::particle_placement", t2);
-
   CH_assert(m_isDefined);
   CH_assert(a_particles.size() == a_newNumParticles.size());
   CH_assert(a_oldNumParticles.size() == a_newNumParticles.size());
@@ -579,25 +583,26 @@ ItoKMCPhysics::reconcileParticles(Vector<List<ItoParticle>*>& a_particles,
                                                   a_dx);
   }
 
-  CH_START(t2);
   for (int i = 0; i < a_particles.size(); i++) {
     const long long diff = static_cast<long long>(a_newNumParticles[i] - a_oldNumParticles[i]);
 
     if (diff > 0LL) {
-      const long long numParticles = static_cast<long long>(a_particles[i]->length());
+      const long long numParticles = static_cast<long long>(a_particles[i]->size());
 
       if (numParticles > 0LL && m_incrementNewParticles) {
-        // If the cell already contains particles, partition the new particle weights and increment the existing particles
+        // If the cell already contains particles, partition the new particle weights and increment the existing
+        // particles
         const std::vector<long long> particleWeights = ParticleManagement::partitionParticleWeights(diff, numParticles);
 
-        ListIterator<ItoParticle> lit(*a_particles[i]);
+        ParticleSoA<ItoParticle>& particles = *a_particles[i];
 
-        for (int j = 0; lit.ok() && j < particleWeights.size(); ++lit, j++) {
-          lit().weight() += 1.0 * particleWeights[j];
+        for (std::size_t j = 0; j < particles.size() && j < particleWeights.size(); j++) {
+          particles.weight(j) += 1.0 * particleWeights[j];
         }
       }
       else {
-        // Adding new particles, which is fairly simple. Just choose weights for the particles and go with one of the placement algorithms.
+        // Adding new particles, which is fairly simple. Just choose weights for the particles and go with one of the
+        // placement algorithms.
         const std::vector<long long> particleWeights = ParticleManagement::partitionParticleWeights(
           diff,
           static_cast<long long>(m_maxNewParticles));
@@ -641,7 +646,7 @@ ItoKMCPhysics::reconcileParticles(Vector<List<ItoParticle>*>& a_particles,
           }
           }
 
-          a_particles[i]->add(ItoParticle(1.0 * w, x));
+          a_particles[i]->append(x, 1.0 * w, ItoParticle{});
         }
       }
     }
@@ -650,45 +655,37 @@ ItoKMCPhysics::reconcileParticles(Vector<List<ItoParticle>*>& a_particles,
       this->removeParticles(*a_particles[i], -diff);
     }
   }
-  CH_STOP(t2);
 }
 
 inline bool
-ItoKMCPhysics::computeUpstreamPosition(RealVect&                a_pos,
-                                       RealVect&                a_lo,
-                                       RealVect&                a_hi,
-                                       const int&               a_Z,
-                                       const List<ItoParticle>& a_particles,
-                                       const RealVect&          a_electricField,
-                                       const RealVect&          a_cellPos,
-                                       const Real&              a_dx) const noexcept
+ItoKMCPhysics::computeUpstreamPosition(RealVect&                       a_pos,
+                                       RealVect&                       a_lo,
+                                       RealVect&                       a_hi,
+                                       const int&                      a_Z,
+                                       const ParticleSoA<ItoParticle>& a_particles,
+                                       const RealVect&                 a_electricField,
+                                       const RealVect&                 a_cellPos,
+                                       const Real&                     a_dx) const noexcept
 {
-  CH_TIME("ItoKMCPhysics::computeUpstreamPosition");
-
   CH_assert(a_dx > 0.0);
 
   a_pos = RealVect::Zero;
   a_lo  = -0.5 * RealVect::Unit;
   a_hi  = +0.5 * RealVect::Unit;
 
-  // Quick lambda for turning physical position into unit cell position.
-  auto unitCellPosition = [&](const ItoParticle& p) -> RealVect {
-    return (p.position() - a_cellPos) / a_dx;
-  };
-
   const int      Z = (a_Z > 0) ? 1 : (a_Z < 0) ? -1 : 0;
   const RealVect E = a_electricField / a_electricField.vectorLength();
   const RealVect v = Z * E;
 
   // Upstream can only exist if there is a velocity direction and there are particles.
-  const bool hasDownstream = (a_particles.length() > 0) && (v.vectorLength() > 0.0);
+  const bool hasDownstream = (a_particles.size() > 0) && (v.vectorLength() > 0.0);
 
   if (hasDownstream) {
 
     Real D = std::numeric_limits<Real>::max();
 
-    for (ListIterator<ItoParticle> lit(a_particles); lit.ok(); ++lit) {
-      const RealVect x = unitCellPosition(lit());
+    for (std::size_t i = 0; i < a_particles.size(); i++) {
+      const RealVect x = (a_particles.position(i) - a_cellPos) / a_dx;
       const Real     d = x.dotProduct(v);
 
       if (d < D) {
@@ -712,10 +709,8 @@ ItoKMCPhysics::computeUpstreamPosition(RealVect&                a_pos,
 }
 
 inline void
-ItoKMCPhysics::removeParticles(List<ItoParticle>& a_particles, const long long a_numParticlesToRemove) const
+ItoKMCPhysics::removeParticles(ParticleSoA<ItoParticle>& a_particles, const long long a_numParticlesToRemove) const
 {
-  CH_TIME("ItoKMCPhysics::removeParticles");
-
   constexpr long long zero = 0LL;
 
   CH_assert(m_isDefined);
@@ -725,10 +720,10 @@ ItoKMCPhysics::removeParticles(List<ItoParticle>& a_particles, const long long a
   auto getTotalWeight = [&]() -> long long {
     long long W = zero;
 
-    for (ListIterator<ItoParticle> lit(a_particles); lit.ok(); ++lit) {
-      W += llround(lit().weight());
+    for (std::size_t i = 0; i < a_particles.size(); i++) {
+      W += llround(a_particles.weight(i));
 
-      if (lit().weight() < 1.0) {
+      if (a_particles.weight(i) < 1.0) {
         MayDay::Error("ItoKMCPhysics::removeParticles -- bad particle mass!");
       }
     }
@@ -777,19 +772,17 @@ ItoKMCPhysics::removeParticles(List<ItoParticle>& a_particles, const long long a
 }
 
 inline void
-ItoKMCPhysics::reconcilePhotons(Vector<List<Photon>*>& a_newPhotons,
-                                const Vector<FPR>&     a_numNewPhotons,
-                                const RealVect         a_cellPos,
-                                const RealVect         a_centroidPos,
-                                const RealVect         a_lo,
-                                const RealVect         a_hi,
-                                const RealVect         a_bndryCentroid,
-                                const RealVect         a_bndryNormal,
-                                const Real             a_dx,
-                                const Real             a_kappa) const noexcept
+ItoKMCPhysics::reconcilePhotons(Vector<ParticleSoA<Photon>*>& a_newPhotons,
+                                const Vector<FPR>&            a_numNewPhotons,
+                                const RealVect                a_cellPos,
+                                const RealVect                a_centroidPos,
+                                const RealVect                a_lo,
+                                const RealVect                a_hi,
+                                const RealVect                a_bndryCentroid,
+                                const RealVect                a_bndryNormal,
+                                const Real                    a_dx,
+                                const Real                    a_kappa) const noexcept
 {
-  CH_TIME("ItoKMCPhysics::reconcilePhotons");
-
   CH_assert(m_isDefined);
 
   for (int i = 0; i < a_newPhotons.size(); i++) {
@@ -802,20 +795,24 @@ ItoKMCPhysics::reconcilePhotons(Vector<List<Photon>*>& a_newPhotons,
       for (const auto& w : photonWeights) {
         const RealVect x = Random::randomPosition(a_cellPos, a_lo, a_hi, a_bndryCentroid, a_bndryNormal, a_dx, a_kappa);
         const RealVect v = Units::c * Random::getDirection();
+        const Real     kappa = m_rtSpecies[i]->getAbsorptionCoefficient(x);
 
-        a_newPhotons[i]->add(Photon(x, v, m_rtSpecies[i]->getAbsorptionCoefficient(x), 1.0 * w));
+        a_newPhotons[i]->append(
+          x,
+          1.0 * w,
+          Photon{
+            static_cast<ParticleReal>(kappa),
+            D_DECL(static_cast<ParticleReal>(v[0]), static_cast<ParticleReal>(v[1]), static_cast<ParticleReal>(v[2]))});
       }
     }
   }
 }
 
 inline void
-ItoKMCPhysics::reconcilePhotoionization(Vector<List<ItoParticle>*>&   a_itoParticles,
-                                        Vector<List<PointParticle>*>& a_cdrParticles,
-                                        const Vector<List<Photon>*>&  a_absorbedPhotons) const noexcept
+ItoKMCPhysics::reconcilePhotoionization(Vector<ParticleSoA<ItoParticle>*>&  a_itoParticles,
+                                        Vector<ParticleSoA<NoPayload>*>&    a_cdrParticles,
+                                        const Vector<ParticleSoA<Photon>*>& a_absorbedPhotons) const noexcept
 {
-  CH_TIME("ItoKMCPhysics::reconcilePhotoionization");
-
   CH_assert(m_isDefined);
   CH_assert(a_itoParticles.size() == m_itoSpecies.size());
   CH_assert(a_cdrParticles.size() == m_cdrSpecies.size());
@@ -825,9 +822,11 @@ ItoKMCPhysics::reconcilePhotoionization(Vector<List<ItoParticle>*>&   a_itoParti
       std::discrete_distribution<int> d                = m_photoPathways.at(i).first;
       const std::map<int, int>&       localToGlobalMap = m_photoPathways.at(i).second;
 
-      for (ListIterator<Photon> lit(*a_absorbedPhotons[i]); lit.ok(); ++lit) {
-        const RealVect x = lit().position();
-        const Real     w = lit().weight();
+      const ParticleSoA<Photon>& absorbedPhotons = *a_absorbedPhotons[i];
+
+      for (std::size_t p = 0; p < absorbedPhotons.size(); p++) {
+        const RealVect x = absorbedPhotons.position(p);
+        const Real     w = absorbedPhotons.weight(p);
 
         // Determine the photo-reaction type.
         const int localReaction  = Random::get(d);
@@ -841,10 +840,10 @@ ItoKMCPhysics::reconcilePhotoionization(Vector<List<ItoParticle>*>&   a_itoParti
           const int&         localIndex = m_speciesMap.at(t).second;
 
           if (type == SpeciesType::Ito) {
-            a_itoParticles[localIndex]->add(ItoParticle(w, x));
+            a_itoParticles[localIndex]->append(x, w, ItoParticle{});
           }
           else if (type == SpeciesType::CDR) {
-            a_cdrParticles[localIndex]->add(PointParticle(x, w));
+            a_cdrParticles[localIndex]->append(x, w);
           }
           else {
             MayDay::Error("CD_ItoKMCPhysics.H - logic bust in reconcilePhotoionization");
@@ -870,7 +869,7 @@ ItoKMCPhysics::isotropicDiffusion(const ItoParticle& a_particle, const Real a_dt
     r[dir] = Random::getNormal01();
   }
 
-  return sqrt(2.0 * a_particle.diffusion() * a_dt) * r;
+  return sqrt(2.0 * a_particle.diffusion * a_dt) * r;
 }
 
 inline RealVect
@@ -878,7 +877,7 @@ ItoKMCPhysics::forwardIsotropicDiffusion(const ItoParticle& a_particle, const Re
 {
   RealVect hop = this->isotropicDiffusion(a_particle, a_dt);
 
-  const RealVect v = a_particle.velocity();
+  const RealVect v = RealVect(D_DECL(a_particle.vx, a_particle.vy, a_particle.vz));
 
   if (v != RealVect::Zero) {
     const RealVect u = v / v.vectorLength();

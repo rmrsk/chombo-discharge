@@ -11,8 +11,8 @@ AmrMesh.fill_ratio           = 1.0            ## Fill ratio for grid generation
 AmrMesh.buffer_size          = 2              ## Number of cells between grid levels
 AmrMesh.grid_algorithm       = br             ## Berger-Rigoustous 'br' or 'tiled' for the tiled algorithm
 AmrMesh.box_sorting          = morton         ## 'none', 'shuffle', 'morton'
-AmrMesh.blocking_factor      = 16             ## Blocking factor.
-AmrMesh.max_box_size         = 16             ## Maximum allowed box size
+AmrMesh.min_block_size       = 8              ## Blocking factor.
+AmrMesh.max_block_size       = 16             ## Maximum allowed box size
 AmrMesh.max_ebis_box         = 16             ## Maximum allowed box size for EBIS generation.
 AmrMesh.ref_rat              = 2 2 2 2 2 2    ## Refinement ratios (mixed ratios are allowed).
 AmrMesh.num_ghost            = 2              ## Number of ghost cells.
@@ -49,7 +49,7 @@ Driver.write_loads                  = false               ## Write (accumulated)
 Driver.output_directory             = ./                  ## Output directory
 Driver.output_names                 = simulation          ## Simulation output names
 Driver.max_plot_depth               = -1                  ## Restrict maximum plot depth (-1 => finest simulation level)
-Driver.max_chk_depth                = -1                  ## Restrict chechkpoint depth (-1 => finest simulation level)
+Driver.max_chk_depth                = -1                  ## Restrict checkpoint depth (-1 => finest simulation level)
 Driver.num_plot_ghost               = 1                   ## Number of ghost cells to include in plots
 Driver.plt_vars                     = 0                   ## 'tags', 'mpi_rank', 'levelset'
 Driver.restart                      = 0                   ## Restart step (less or equal to 0 implies fresh simulation)

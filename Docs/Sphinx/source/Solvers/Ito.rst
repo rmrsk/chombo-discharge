@@ -23,17 +23,16 @@ ItoParticle
 -----------
 
 The ``ItoParticle`` is used as the underlying particle type for running the Ito drift-diffusion solvers.
-It derives from :ref:`Chap:GenericParticle` as follows:
+It is a Struct-of-Arrays payload (see :ref:`Chap:ParticleSoA`) whose columns are
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoParticle.H
    :language: c++
-   :lines: 39
-   :dedent: 0
+   :lines: 30-54
 
-From the signature one can see that ``ItoParticle`` contains a number of extra class ``Real`` and ``RealVect`` class members.
+In addition to the container-owned position and weight, ``ItoParticle`` stores the payload columns above.
 These extra fields are used for storing the following information in the particle:
 
-#. Particle weight, mobility, diffusion coefficient, energy (not currently used), and a holder for a scratch storage. 
+#. Mobility, diffusion coefficient, energy (not currently used), and a holder for a scratch scalar storage.
 #. The previous particle position, the velocity, and a holder for a ``RealVect`` scratch storage.
 
 .. tip::
@@ -48,10 +47,10 @@ ItoSolver
 The ``ItoSolver`` class encapsulates the implementation of :eq:`ito_diffusion` in ``chombo-discharge``.
 This class can advance a set of computational particles (see :ref:`Chap:ItoParticle`) with the following functionality:
 
-#. Move particles the a microscopic drift-diffusion model.
+#. Move particles with a microscopic drift-diffusion model.
 #. Compute particle intersection with embedded boundaries and domain edges.
 #. Deposit particles and other particle types on the mesh.
-#. Interpolate velocities and diffusion coefficients to the particle positons.
+#. Interpolate velocities and diffusion coefficients to the particle positions.
 #. Manage superparticle splitting and merging.
 
 Internally, ``ItoSolver`` stores its particles in various ``ParticleContainer<ItoParticle>`` containers.
@@ -62,10 +61,10 @@ Although the particle velocities and diffusion coefficients can be manually assi
 #. Diffusion coefficient.
 #. Velocity function.
 
-The reason for storing both the mobility and velocity function is to simply to improve flexibility when assigned the particle velocity :math:`\mathbf{V}`.
+The reason for storing both the mobility and velocity function is simply to improve flexibility when assigning the particle velocity :math:`\mathbf{V}`.
 Note that the velocity function does *not* have to represent the particle velocity.
 When using both the mobility and velocity function, one can compute the particle velocity as :math:`\mathbf{V} = \mu\mathbf{v}`, where :math:`\mathbf{v}` is a velocity field.
-This is typically done for discharge simulations where for simplicity we assign :math:`\mathbf{v}` to be the electric field, and :math:`\mu` to the the field-dependent mobility.
+This is typically done for discharge simulations where for simplicity we assign :math:`\mathbf{v}` to be the electric field, and :math:`\mu` to the field-dependent mobility.
 Additional information is available in :ref:`Chap:ItoInterpolation`.
 
 .. _Chap:ItoSpecies:
@@ -78,12 +77,12 @@ The constructor for the ``ItoSpecies`` class is
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSpecies.H
    :language: c++
-   :lines: 35-42
+   :lines: 37-44
    :dedent: 2
 
 Here, ``a_name`` indicates a variable name for the solver.
 This variable will be used in, e.g., error messages and I/O functionality.
-``a_chargeNumber`` indicates the charge number of the species and the two booleans ``a_mobile`` and ``a_diffusive`` indicates whether or not the solver is mobile or diffusive.
+``a_chargeNumber`` indicates the charge number of the species and the two booleans ``a_mobile`` and ``a_diffusive`` indicate whether or not the solver is mobile or diffusive.
 
 .. note::
 
@@ -94,21 +93,21 @@ ______________________
 
 Initial data for the ``ItoSolver`` is provided through ``ItoSpecies`` by providing it with the following:
 
-#. Initial particles specified from a list (``List<ItoParticle>``) of particles.
+#. Initial particles specified from a container (``ParticleSoA<ItoParticle>``) of particles.
 #. Provide a density description from which initial particles are stochastically sampled within each grid cell.
 
 In particular, there are two data members that must be populated:
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSpecies.H
    :language: c++
-   :lines: 147-155
+   :lines: 155-163
    :dedent: 2
 
 These can either be populated during construction, or explicitly supplied via the following set functions:
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSpecies.H
    :language: c++
-   :lines: 100-112
+   :lines: 108-120
    :dedent: 2
 
 When ``ItoSolver`` initializes the data in the solver, it will copy the particle list ``m_initialParticles`` from the species and into the solver.
@@ -120,7 +119,7 @@ When ``ItoSolver`` initializes the data in the solver, it will copy the particle
 
 When sampling particles from a mesh-based density, the solver will generate the particles so that the specified density is approximately reached within each grid cell.
 If the density that is supplied does not lead to an integer number of particles in the grid cell (which is virtually always the case), the evaluation of the number of particles is stochastically evaluated.
-E.g., if the density is :math:`\phi` and then grid cell volume is :math:`\Delta V`, and :math:`\phi\Delta V = 1.2`, then there is a 20% chance that there will be generated two particles within the grid cell, and 80% chance that only one particle will be generated.
+E.g., if the density is :math:`\phi` and the grid cell volume is :math:`\Delta V`, and :math:`\phi\Delta V = 1.2`, then there is a 20% chance that there will be generated two particles within the grid cell, and 80% chance that only one particle will be generated.
 
 .. tip::
    
@@ -145,7 +144,7 @@ The particles are available from the solver through the function
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 608-613
+   :lines: 691-697
    :dedent: 2
 
 Usually, ``ItoSolver`` will perform a drift-diffusion advance and the user will then check if some of the particles crossed into the EB.
@@ -158,7 +157,7 @@ Remapping particles
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 848-859
+   :lines: 917-928
    :dedent: 2
 
 The bottom function lets the user remap any ``ParticleContainer<ItoParticle>`` that lives in the solver.
@@ -172,11 +171,11 @@ The most general version is given below:
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 308-322
+   :lines: 386-403
    :dedent: 2
 
-This version permits the user to select any particle container ``a_particles`` and deposit them onto some pre-allocated mesh storage ``a_phi``.
-Note that the template type ``P`` does not need to be ``ItoParticle``, although this is the most common use case.
+This version permits the user to deposit an arbitrary per-particle quantity from a particle container ``a_particles`` onto some pre-allocated mesh storage ``a_phi``.
+The quantity to be deposited is supplied through the ``a_gather`` callable, which returns a ``Real`` value for each particle in the SoA container.
 
 .. important::
 
@@ -187,7 +186,7 @@ A simpler version that deposits the bulk particles as a density on the mesh is
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 268-274
+   :lines: 317-325
    :dedent: 2
 
 The particles are deposited into the class member ``m_phi``, which stores the particle density on the mesh. 
@@ -195,10 +194,26 @@ This data can then be fetched with
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 629-634
+   :lines: 714-719
    :dedent: 2
    
 For the full list of available deposition functions, see the ``ItoSolver`` C++ API `<https://chombo-discharge.github.io/chombo-discharge/doxygen/html/classItoSolver.html>`_.
+
+AMR synchronization after a deposit
+___________________________________
+
+The deposition functions put the particles on the mesh and, if redistribution is enabled, redistribute the cut-cell mass.
+They do *not* average the result down onto the coarser levels, and they do not fill its ghost cells.
+Whether that is wanted depends on what happens next, which only the caller knows: a deposit that is the final state of a field needs it, whereas a deposit that is merely one term of a larger sum does not, because only the assembled sum needs synchronizing.
+Callers that need it should therefore call
+
+.. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
+   :language: c++
+   :lines: 353-362
+   :dedent: 2
+
+after depositing.
+Note that ``ItoSolver::depositParticles`` already does this internally, so ``m_phi`` (i.e. the data returned by ``getPhi()``) is always synchronized.
 
 Deposition of other quantities
 ______________________________
@@ -215,7 +230,7 @@ Functionality for the above deposited quantities exist as the following function
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 170-177, 192-201
+   :lines: 219-231,243-255
    :dedent: 2
 
 .. _Chap:ItoInterpolation:
@@ -238,12 +253,12 @@ This interpolation method is always parsed from an options file, and is usually 
    When interpolating particle properties from the mesh, the user must first ensure that ghost cells are properly updated.
 
 
-The separation into a mobility function and a velocity field is motivated by the introduction of an electric conductivity that permits a rather simple velocity velocity relation as :math:`\mathbf{v} = \mu\mathbf{E}`, where :math:`\mathbf{E}` is the electric field.
+The separation into a mobility function and a velocity field is motivated by the introduction of an electric conductivity that permits a rather simple velocity relation as :math:`\mathbf{v} = \mu\mathbf{E}`, where :math:`\mathbf{E}` is the electric field.
 Complete interpolation of the particle velocity consists of calling two functions:
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 724-729, 705-712
+   :lines: 809-814,791-797
    :dedent: 2
 
 Here, the calling sequence is such that the mobilities must be interpolated first, and then the velocity fields. 
@@ -278,11 +293,11 @@ Interpolation of the diffusion coefficient is always done using an interpolation
 
    D = D\left(\mathbf{X}\right).
 
-The function signatures is
+The function signature is
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 738-743
+   :lines: 824-829
    :dedent: 2
 
 Particle intersections
@@ -295,11 +310,11 @@ The most relevant function is
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 389-404
+   :lines: 482-489
    :dedent: 2
 
-Here, ``EbIntersection`` is a just an enum for putting logic into how the intersection is computed.
-Valid options are ``EbIntersection::Bisection`` and ``EbIntersection::Raycast``.
+Here, ``EBIntersection`` is just an enum for putting logic into how the intersection is computed.
+Valid options are ``EBIntersection::Bisection`` and ``EBIntersection::Raycast``.
 These algorithms are discussed in :ref:`Chap:ParticleEB`.
 The flag ``a_deleteParticles`` specifies if the original particles should be deleted when populating the other particle containers (again, see :ref:`Chap:ParticleEB`).
 
@@ -322,7 +337,7 @@ This routine is implemented as
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 962-966
+   :lines: 1052-1057
    :dedent: 2
 
 which returns a CFL-like condition
@@ -338,7 +353,7 @@ The signatures for the diffusion time step are similar to the ones for drift:
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 983-987
+   :lines: 1076-1081
    :dedent: 2
 
 which returns a CFL-like condition
@@ -356,7 +371,7 @@ A combination of the advection and diffusion time step routines also exists as
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 881-890
+   :lines: 954-964
    :dedent: 2
 
 This time step limitation is inspired by fully explicit and non-split fluid models, and is calculated as
@@ -370,64 +385,83 @@ Superparticle management
 
 It can occasionally be necessary to merge or split computational particles.
 This occurs in, e.g., plasma simulations where chemical reactions lead to exponential growth of particles. 
-``ItoSolver`` can currently handle superparticles through several internal functions, and is also equipped with an interface in which the user can inject an external particle-handling routine.  
-The function for splitting and merging the particles is in all cases
+``ItoSolver`` handles superparticles via a configurable merger functor selected at parse time through ``ItoSolver.merge_algorithm``; the user can also supply a custom functor through ``setParticleCellMerger``.
+The entry point for splitting and merging is in all cases
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 766-772
+   :lines: 862-868
    :dedent: 2
 
 Calling this function will merge/split the particles.
 
 .. important::
-   
-   Particle merging is currently performed within each grid cell, and particles must therefore be sorted by their cell index before calling the merging routine.
 
+   Most merging algorithms are performed within each grid cell, and particles must therefore be sorted by their cell index (``organizeParticlesByCell``) before calling the merging routine.
+   The exceptions are ``nn_pair_tree``, ``nn_pair_onecell``, ``nn_pair_hash``, ``kd_carve``, ``kd_patch``, and ``kd_skin_nn``, which are distributed AMR-level merges dispatched over the whole container rather than cell by cell.
+   All of these except ``kd_patch`` match particles across patch and rank boundaries and therefore require that a particle ghost halo has been filled; ``kd_patch`` is patch-local and instead requires that no ghost halo is present.
 
-	    
 In order to specify the merging algorithm the user must set the ``ItoSolver.merge_algorithm`` to one of the following:
 
 * ``none`` - No particle merging/splitting is performed.
-* ``equal_weight_kd`` Use a kD-tree with bounding volume hierarchies to partition and split/merge the particles. This conserves the particle center-of-mass.
+* ``equal_weight_kd`` Use a kd-tree with bounding volume hierarchies to partition and split/merge the particles. This conserves the particle center-of-mass.
 * ``reinitialize`` Re-initialize the particles in each grid cell, ensuring that weights are as uniform as possible.
-* ``reinitialize_bvh`` Re-initialize the particles in each node of a kD tree. Weights are as uniform as possible. 
-* ``external`` Use an externally injected particle merging algorithm. In order to use this feature the user must supply one through
+* ``reinitialize_bvh`` Re-initialize the particles in each node of a kd-tree. Weights are as uniform as possible.
+* ``nn_sfc`` Reach the target particle count by space-filling-curve nearest-neighbour clustering: when there are more particles than the target the nearest neighbours (along a Hilbert curve) are merged until the target count is reached, and when there are fewer the highest-weight particles are split. This gives spatially tight groups but does not equalize the weights.
+* ``nn_pair_tree`` A distributed, MPI-safe nearest-neighbour *pair* merge that reaches the target particle count over the whole AMR hierarchy, searching for candidates via one whole-patch PointCloudBVH per patch. Over-full cells are drained by matching each over-crowded particle with its true nearest neighbour across patch and rank boundaries (a propose/judge/verdict protocol over a particle ghost halo) and merging the pair to its weighted centroid; because a single round merges pairs, the round is repeated until every cell reaches the target. Under-full cells are then brought up to the target by splitting the heaviest particle into two co-located daughters (floor/ceil weights, so integer weights stay integer). Tunable through ``ItoSolver.nn_pair_iterate``, ``ItoSolver.nn_pair_fallback`` and ``ItoSolver.nn_pair_max_cell_dist``.
+* ``nn_pair_onecell`` The same distributed nearest-neighbour pair merge and drain/split protocol as ``nn_pair_tree``, but candidates are found via one PointCloudBVH per occupied grid cell instead of one per patch: a query only ever searches its own cell and its Moore-adjacent neighbours, so the merge distance is structurally fixed at Chebyshev cell distance 1 and ``ItoSolver.nn_pair_max_cell_dist`` does not apply. Tunable through ``ItoSolver.nn_pair_iterate`` and ``ItoSolver.nn_pair_fallback``.
+* ``nn_pair_hash`` The same distributed nearest-neighbour pair merge and drain/split protocol as ``nn_pair_tree``, but candidates are found via one PointCloudHashGrid (a uniform spatial hash grid) per patch instead of a PointCloudBVH. Identical tunables and behaviour to ``nn_pair_tree`` (``ItoSolver.nn_pair_iterate``, ``ItoSolver.nn_pair_fallback``, ``ItoSolver.nn_pair_max_cell_dist``); only the per-patch spatial-index backend differs.
+* ``kd_carve`` A distributed, MPI-safe whole-patch merge built around a spatial partition ("kd tree") rather than a nearest-neighbour graph: each patch splits its local-plus-ghost particles purely by position, bisecting the longest axis and never snapping to the grid, so particles near a cell face can merge across it -- at the count median while a node is still larger than ``ItoSolver.kd_split_weight_leaf_dx`` cell widths, and at the weight median once it is smaller, so that the resulting super-particles come out with comparable weights. How far splitting goes is set by a live per-cell quota: every group becomes exactly one super-particle at its weighted centroid, so the number of groups centred in a cell is that cell's post-merge population, and any split that would push a cell past the target count is refused. A group entirely clear of any patch/rank boundary merges immediately with no communication; a group that touches one is resolved by a single, non-iterative "z-buffer carve" -- competing groups from neighbouring patches are ranked by a deterministic key and the tightest one wins each contested particle. Unlike the ``nn_pair_*`` family there is no drain loop and no ``nn_pair_iterate``/``nn_pair_fallback``/``nn_pair_max_cell_dist`` equivalent to tune; the ghost width is fixed at 1. The maximum per-axis extent of a mergeable group is fixed at one cell width -- a physical safety bound applied as a filter on the finished partition, not a tunable, and matching the hardcoded width-1 ghost halo. Tunable through ``ItoSolver.kd_split_weight_leaf_dx`` (count-median/weight-median crossover, in cell widths; 0 disables the weight median).
+* ``kd_patch`` The same whole-patch kd-tree build and per-cell quota as ``kd_carve``, but with no boundary tier: no particle ghost halo is filled, every group merges regardless of boundary exposure, and no particle is ever contested, so each patch reduces only the particles it owns. Cheaper and communication-free, at the cost of no coordination across patch boundaries.
+* ``kd_skin_nn`` The same whole-patch kd-tree build and per-cell quota as ``kd_carve``, but the boundary tier is the nearest-neighbour pair merge instead of the carve arbitration. The particles are split across two containers: every group holding no ghost particle is committed into one of them (holding no ghost is the whole safety condition -- such a group's members are all resident in this patch, and any neighbouring patch that draws one of them into a group of its own sees it as a ghost and is disqualified by the same test), and the contested remainder -- the *skin* -- is drained from the other by the same algorithm as ``nn_pair_onecell``, whose Chebyshev-1 search radius matches the width-1 ghost halo exactly. Unlike ``kd_carve`` boundary exposure is never consulted, so an exposed but uncontested group merges locally, which is what makes the skin small. The skin tier drains each cell to what is *left* of its target after the already-merged interior results are counted against it, so the two tiers share one budget. Tunable through ``ItoSolver.kd_split_weight_leaf_dx`` and, for the skin tier, ``ItoSolver.nn_pair_iterate``, ``ItoSolver.nn_pair_fallback`` and ``ItoSolver.nn_pair_max_rounds``; ``ItoSolver.nn_pair_max_cell_dist`` does not apply.
+* ``external`` Use an externally injected particle merging algorithm. In order to use this feature the user must supply one through ``setParticleCellMerger``.
 
 The user can set the merging algorithm through the input script (see :ref:`Chap:ItoInput`), or supply one externally by setting the merge algorithm to ``external``.
 In addition, the user must first supply a particle merging function:
 
 .. literalinclude:: ../../../../Source/ItoDiffusion/CD_ItoSolver.H
    :language: c++
-   :lines: 68-73
+   :lines: 93-103
    :dedent: 2
 
 In the code above, ``ParticleManagement::ParticleMerger<P>`` is an alias:
 
 .. literalinclude:: ../../../../Source/Particle/CD_ParticleManagement.H
    :language: c++
-   :lines: 33-41
-   :dedent: 2  
+   :lines: 82-84
 
 .. tip::
    
-   ``ItoSolver`` uses the kD-node implementation from :ref:`Chap:SuperParticles` and partitioners for splitting the particles into two subsets with equal weights.
+   ``ItoSolver`` uses the kd-tree implementation from :ref:`Chap:SuperParticles` and partitioners for splitting the particles into two subsets with equal weights.
 
 Example transport kernel
 ------------------------
 
 Transport kernels for the particles within ``ItoSolver`` will typically be imposed externally by the user through a ``TimeStepper`` subclass that advances the particles.
-For completeness, we here include a simple transport kernel for the ``ItoSolver`` which simply consists of a drift-diffusion kick:
+For completeness, we here include a simple transport kernel for the ``ItoSolver`` which simply consists of a drift-diffusion kick.
+``ItoParticle`` is a Struct-of-Arrays payload (see :ref:`Chap:Particles`), so the kernel operates on a ``ParticleSoA<ItoParticle>`` leaf and addresses each particle by index; the position is a container-owned column accessed through ``position(i)``/``setPosition(i, ...)``, while the interpolated velocity, diffusion coefficient, and old position are payload columns accessed through ``get<...>(i)``.
+The loop below is the per-patch inner kernel and is run inside the usual level/patch iteration (see :ref:`Chap:Particles`):
 
 .. code-block:: c++
 
-   List<ItoParticle> particles;
-   
-   for (ListIterator<ItoParticle>& lit(particles); lit.ok(); ++lit) {
-      ItoParticle& p = lit();
+   // One grid patch. The velocity columns (vx/vy/vz) have already been filled
+   // by ItoSolver::interpolateVelocities().
+   ParticleSoA<ItoParticle>& leaf = particles[lvl][dit()];
 
-      p.oldPosition() = p.position();
-      p.position()   += p.velocity() * a_dt + sqrt(2.0*p.diffusion()*a_dt) * this->randomGaussian();
+   for (std::size_t i = 0; i < leaf.size(); i++) {
+      const RealVect      x = leaf.position(i);
+      const RealVect      v = RealVect(D_DECL(leaf.get<&ItoParticle::vx>(i),
+                                              leaf.get<&ItoParticle::vy>(i),
+                                              leaf.get<&ItoParticle::vz>(i)));
+      const ParticleReal& D = leaf.get<&ItoParticle::diffusion>(i);
+
+      // Store the old position in the payload's old-position columns.
+      D_TERM(leaf.get<&ItoParticle::old_x>(i) = x[0];,
+             leaf.get<&ItoParticle::old_y>(i) = x[1];,
+             leaf.get<&ItoParticle::old_z>(i) = x[2];);
+
+      // Drift-diffusion kick.
+      leaf.setPosition(i, x + v * a_dt + sqrt(2.0 * D * a_dt) * this->randomGaussian());
    }
 
 The function ``randomGaussian`` implements a diffusion hopping and returns a 2D/3D dimensional vector with values drawn from a normal distribution with standard width of one and mean value of zero.
@@ -481,7 +515,7 @@ Several input options are available for configuring the run-time configuration o
 Plot file variables
 ___________________
 
-Plot variables are specified using ``ItoSolver.plt_vars``, see :ref:`Chap:ItoPlot`).
+Plot variables are specified using ``ItoSolver.plt_vars``, see :ref:`Chap:ItoPlot`.
 To add a variable to HDF5 output files, one can modify the ``ItoSolver.plt_vars`` input variable to include, e.g., the following variables:
 
 * :math:`\phi`, i.e. the deposited particle weights (``ItoSolver.plt_vars = phi``)
@@ -494,7 +528,7 @@ ___________________________
 To specify the mobility interpolation, use ``ItoSolver.mobility_interp``.
 Valid options are ``direct`` and ``velocity``, see :ref:`Chap:ItoInterpolation`.
 
-Deposition and coarse-fine deposition (see :ref:`Chap:ParticleMesh`) is controlled using the flags
+Deposition and coarse-fine deposition (see :ref:`Chap:ParticleMesh`) are controlled using the flags
 
 * ``ItoSolver.deposition`` for the base deposition scheme.
   Valid options are ``ngp``, ``cic``, and ``tsc``.

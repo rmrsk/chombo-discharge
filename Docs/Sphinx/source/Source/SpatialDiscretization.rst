@@ -7,7 +7,7 @@ Cartesian AMR
 _____________
 
 ``chombo-discharge`` uses Cartesian patch-based structured adaptive mesh refinement (AMR) provided by ``Chombo`` :cite:`chombo`.
-In patch-based AMR the domain is subdivided into a collection of hierarchically nested grid levels, see :numref:`Fig:PatchBasedAMR`, where each grid level consist of a set of rectangular grid blocks. 
+In patch-based AMR the domain is subdivided into a collection of hierarchically nested grid levels, see :numref:`Fig:PatchBasedAMR`, where each grid level consists of a set of rectangular grid blocks. 
 I.e., a *grid level* is composed of a union of grid patches sharing the same grid resolution, with the additional requirement that the patches on a grid level are *non-overlapping*.
 With AMR, such levels can be hierarchically nested; finer grid levels exist on top of coarser ones.
 In patch-based AMR there are only a few fundamental requirements on how such grids are constructed.
@@ -31,9 +31,9 @@ The resolution on level :math:`l+1` is typically finer than the resolution on le
 Embedded boundaries
 ___________________
 
-``chombo-discharges`` uses an embedded boundary (EB) formulation for describing complex geometries.
+``chombo-discharge`` uses an embedded boundary (EB) formulation for describing complex geometries.
 With EBs, the Cartesian grid is directly intersected by the geometry.
-This is fundamentally different from unstructured grid where one generates a volume mesh that conforms to the surface mesh of the input geometry.
+This is fundamentally different from unstructured grids where one generates a volume mesh that conforms to the surface mesh of the input geometry.
 Since EBs are directly intersected by the geometry, there is no fundamental need for a surface mesh for describing the geometry.
 Moreover, Cartesian EBs have a data layout which remains (almost) fully structured.
 The connectivity of neighboring grid cells is still trivially found by fundamental strides along the data rows/columns, which allows extending the efficiency of patch-based AMR to complex geometries.
@@ -55,7 +55,7 @@ Note that there is no fundamental difference between single-cut and multi-cut gr
 This distinction exists primarily due to the fact that if all grid cells were single-cut cells the entire EB data structure would fit in a Cartesian grid block (say, of :math:`N_x \times N_y \times N_z` grid cells).
 However, because of multi-cells, EB data structures are not purely Cartesian.
 Data structures need to live on more complex graphs that describe the multi-cells and, furthermore, describe the cell connectivity between cut-cell volumes. 
-Without multi-cells it would be impossible to describe most complex geometries, and it is extremely difficult to obtain performant geometric multigrid methods which instrinsically rely on this type of coarsening. 
+Without multi-cells it would be impossible to describe most complex geometries, and it is extremely difficult to obtain performant geometric multigrid methods which intrinsically rely on this type of coarsening. 
 
 .. _Fig:MultiCells:
 .. figure:: /_static/figures/MultiCells.png
@@ -74,10 +74,9 @@ _______________________
 
 ``chombo-discharge`` uses (approximations to) signed distance functions (SDFs) for describing geometries.
 Signed distance fields are functions :math:`f: \mathbb{R}^3\rightarrow \mathbb{R}` that describe the distance from the object.
-These functions are also *implicit functions*, i.e., :math:`f\left(\mathbf{x}\right)=0` describes the surface of the object, :math:`f\left(\mathbf{x}\right) > 0` decribes a point inside the object and :math:`f\left(\mathbf{x}\right) < 0` describes a point outside the object.
+These functions are also *implicit functions*, i.e., :math:`f\left(\mathbf{x}\right)=0` describes the surface of the object, :math:`f\left(\mathbf{x}\right) > 0` describes a point inside the object and :math:`f\left(\mathbf{x}\right) < 0` describes a point outside the object.
 
 Many EB applications only use the implicit function formulation, but ``chombo-discharge`` requires (an approximation to) the signed distance field for the following reasons:
-There are two reasons for this:
 
 #. The SDF can be used for robustly load balancing the geometry generation with orders of magnitude speedup over naive approaches. 
 #. The SDF is useful for resolving particle collisions with boundaries, and permit mesh-less ray-tracing of computational particles.
@@ -94,7 +93,7 @@ To illustrate the difference between an SDF and an implicit function, consider t
 
 Here, only :math:`d_1\left(\mathbf{x}\right)` is a signed distance function.    
 
-In ``chombo-discharge``, SDFs can be generated through analytic expressions, constructive solid geometry, or by supplying polygon tesselation.
+In ``chombo-discharge``, SDFs can be generated through analytic expressions, constructive solid geometry, or by supplying polygon tessellation.
 NURBS geometries are not supported.
 Fundamentally, all geometric objects are described using ``BaseIF`` objects from ``Chombo``, see :ref:`Chap:BaseIF`.
 
@@ -108,7 +107,7 @@ For example, to describe the union between two SDFs :math:`d_1\left(\mathbf{x}\r
 
    d\left(\mathbf{x}\right) = \textrm{min}\left(d_1\left(\mathbf{x}\right), d_2\left(\mathbf{x}\right)\right)
 
-Note that the resulting is an implicit function but is *not* an SDF.
+Note that the result is an implicit function but is *not* an SDF.
 However, the union typically approximates the signed distance field quite well near the surface.
 ``Chombo`` natively supports many ways of performing CSG.
 
@@ -118,7 +117,7 @@ EBGeometry
 ^^^^^^^^^^
 
 While functions like :math:`R - \left|\mathbf{x}\right|` are quick to compute, a polygon surface may consist of hundreds of thousands of primitives (e.g., triangles).
-Generating signed distance function from polygon tesselations is quite involved as it requires computing the signed distance to the closest feature, which can be a planar polygon (e.g., a triangle), edge, or a vertex. 
+Generating signed distance function from polygon tessellations is quite involved as it requires computing the signed distance to the closest feature, which can be a planar polygon (e.g., a triangle), edge, or a vertex. 
 ``chombo-discharge`` supports such functions through the `EBGeometry <https://github.com/rmrsk/EBGeometry>`_ package.
 
 .. warning::
@@ -135,7 +134,7 @@ Additional details are provided in the `EBGeometry documentation <https://rmrsk.
    :width: 50%
    :align: center
 
-   Example of an SDF reconstruction and cut-cell grid from a surface tesselation in ``chombo-discharge``.
+   Example of an SDF reconstruction and cut-cell grid from a surface tessellation in ``chombo-discharge``.
 
 .. _Chap:GeometryGeneration:
 
@@ -214,14 +213,14 @@ _______________
 Both algorithms work by taking a set of flagged cells on each grid level and generating new boxes that cover the flags.
 Only *properly nested* grids are generated, in which case two grid levels :math:`l-1` and :math:`l+1` are separated by a non-zero number of grid cells on level :math:`l`.
 This requirement is not fundamentally required for quadtree and octree grids, but is nevertheless usually imposed. 
-For patch based AMR, the rationale for this requirement is that stencils on level :math:`l+1` should should only reach into grid cells on levels :math:`l` and :math:`l+1`, which greatly simplifies the definition of numerical stencils on each level.
+For patch based AMR, the rationale for this requirement is that stencils on level :math:`l+1` should only reach into grid cells on levels :math:`l` and :math:`l+1`, which greatly simplifies the definition of numerical stencils on each level.
 For example, ghost cells on level :math:`l+1` can then be interpolated from data only on levels :math:`l` and :math:`l+1`.
 
 Berger-Rigoutsos algorithm
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The Berger-Rigoustous grid algorithm is implemented in ``Chombo`` and can be called by ``chombo-discharge``.
-The classical Berger-Rigoustous algorithm is inherently serial in the sense that is collects the flagged cells onto each MPI rank and then generates the boxes, see :cite:`Berger1991` for implementation details. 
+The Berger-Rigoutsos grid algorithm is implemented in ``Chombo`` and can be called by ``chombo-discharge``.
+The classical Berger-Rigoutsos algorithm is inherently serial in the sense that it collects the flagged cells onto each MPI rank and then generates the boxes, see :cite:`Berger1991` for implementation details. 
 Typically, it is not used at large scale in 3D due to its memory consumption. 
 
 .. _BRMeshRefine:
@@ -235,8 +234,17 @@ Tiled mesh refinement
 ^^^^^^^^^^^^^^^^^^^^^
 ``chombo-discharge`` also supports a tiled algorithm where the grid boxes on each block are generated according to a predefined tiled pattern.
 If a tile contains a single tag, the entire tile is flagged for refinement.
+The tile size is set by ``AmrMesh.min_block_size``.
 The tiled algorithm produces grids that are visually similar to octrees, but is slightly more general since it also supports refinement factors other than 2 and is not restricted to domain extensions that are an integer factor of 2 (e.g. :math:`2^{10}` cells in each direction).
-Moreover, the algorithm is extremely fast and has low memory consumption even at large scales. 
+Moreover, the algorithm is extremely fast and has low memory consumption even at large scales.
+
+When ``AmrMesh.max_block_size`` is larger than ``AmrMesh.min_block_size`` the flagged tiles are subsequently *merged* into fewer, larger, possibly anisotropic boxes, where no box exceeds ``AmrMesh.max_block_size`` in any direction.
+The merging is a recursive longest-axis bisection (a KD-tree, i.e. Berger-Rigoutsos applied to the tile grid), splitting at empty gaps in the tag pattern: it is a deterministic function of the (globally consistent) tiles and a fixed splitting rule, so every MPI rank produces the same boxes.
+Because every box remains a union of aligned ``min_block_size`` tiles, the point-to-box lookup used by the particle infrastructure stays :math:`\mathcal{O}(1)`.
+When ``AmrMesh.min_block_size`` equals ``AmrMesh.max_block_size`` no merging is performed and the result is one box per tile, which is the most common configuration.
+
+Grid generation is *top-down* over a grid of super-tiles (a super-tile being one ``AmrMesh.max_block_size`` block of tiles): a fully-tagged super-tile becomes a single box directly, and individual ``AmrMesh.min_block_size`` tiles are materialized only inside partially-tagged super-tiles, i.e. at the boundary of the refined region.
+The intermediate data that is gathered across MPI ranks therefore scales with the refined *surface* (plus the number of boxes), not the refined *volume*, which keeps the memory footprint low even when refining very large regions.
 
 .. _TiledMeshRefine:
 .. figure:: /_static/figures/TiledMeshRefine.png
@@ -266,6 +274,6 @@ Given two normal vectors :math:`\mathbf{n}` and :math:`\mathbf{n}^\prime`, the c
 
    \mathbf{n}\cdot\mathbf{n}^\prime \geq \cos\theta_c,
 
-where :math:`\theta_c` is a threshold angle for grid refinent. 
+where :math:`\theta_c` is a threshold angle for grid refinement.
 
 The other two cases are more complicated, and are covered by the :ref:`Chap:CellTagger` classes.

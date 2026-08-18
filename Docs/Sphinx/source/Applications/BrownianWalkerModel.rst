@@ -3,13 +3,13 @@
 Brownian walker
 ***************
 
-The Brownian walker model runs a single microscropic drift-diffusion using the :ref:`Chap:ItoSolver`, where the underlying transport kernel is
+The Brownian walker model runs a single microscopic drift-diffusion using the :ref:`Chap:ItoSolver`, where the underlying transport kernel is
 
 .. math::
    
    d\mathbf{X} = \mathbf{V}dt + \sqrt{2Ddt}\mathbf{W}
 
-where :math:`\mathbf{X}` is the spatial position of a particle :math:`\mathbf{V}` is the drift velocity and :math:`D` is the diffusion coefficient *in the continuum limit*.
+where :math:`\mathbf{X}` is the spatial position of a particle, :math:`\mathbf{V}` is the drift velocity and :math:`D` is the diffusion coefficient *in the continuum limit*.
 
 .. tip::
 
@@ -60,7 +60,7 @@ Superparticle handling
 ----------------------
 
 Superparticle handling in this module occurs via :ref:`Chap:ItoSolver`, so the user needs to specify the superparticle algorithm through the :ref:`Chap:ItoSolver` configuration options.
-However, the *number* of superparticles is adjusted through ``BrownianWalkerStepper``, and is set through ``BrownianWalker.ppc``.
+However, the *number* of superparticles is set on the solver, through ``ItoSolver.particles_per_cell``.
 Setting this value to anything less than 1 will turn off super-particle handling.
 
 .. _Chap:BrownianWalkerConfiguration:

@@ -1,20 +1,23 @@
-/* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
- * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
+/*
+ * SPDX-FileCopyrightText: 2021-2026 SINTEF Energy Research
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-/*!
-  @file   CD_RandomImplem.H
-  @brief  Implementation of CD_Random.H
-  @author Robert Marskar
-*/
+/**
+ * @file   CD_RandomImplem.H
+ * @brief  Implementation of CD_Random.H
+ * @author Robert Marskar
+ */
 
-#ifndef CD_RandomImplem_H
-#define CD_RandomImplem_H
+#ifndef CD_RANDOMIMPLEM_H
+#define CD_RANDOMIMPLEM_H
 
 // Std includes
 #include <chrono>
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 
 // Chombo includes
 #include <SPMD.H>
@@ -23,7 +26,6 @@
 
 // Our includes
 #include <CD_Random.H>
-#include <CD_Units.H>
 #include <CD_NamespaceHeader.H>
 
 inline void
@@ -87,7 +89,7 @@ Random::setSeed(const int a_seed)
 inline void
 Random::setRandomSeed()
 {
-  int seed = std::chrono::system_clock::now().time_since_epoch().count();
+  auto seed = static_cast<int>(std::chrono::system_clock::now().time_since_epoch().count());
 
   // Special hook for MPI -- master rank broadcasts the seed and everyone increments by their processor ID.
 #ifdef CH_MPI
@@ -101,11 +103,13 @@ template <typename T, typename>
 inline T
 Random::getPoisson(const Real a_mean)
 {
-  CH_TIME("Random::getPoisson");
-
   CH_assert(s_seeded);
 
   T ret = (T)0;
+
+  if (a_mean <= 0.0) {
+    return ret;
+  }
 
   if (a_mean < 250.0) {
     std::poisson_distribution<T> poisson(a_mean);
@@ -125,7 +129,6 @@ template <typename T, typename>
 inline T
 Random::getBinomial(const T a_N, const Real a_p) noexcept
 {
-  CH_TIME("Random::getBinomial");
 
   CH_assert(s_seeded);
 
@@ -152,8 +155,6 @@ Random::getBinomial(const T a_N, const Real a_p) noexcept
 inline Real
 Random::getUniformReal01()
 {
-  CH_TIME("Random::getUniformReal01");
-
   CH_assert(s_seeded);
 
   return s_uniform01(s_rng);
@@ -162,8 +163,6 @@ Random::getUniformReal01()
 inline Real
 Random::getUniformReal11()
 {
-  CH_TIME("Random::getUniformReal11");
-
   CH_assert(s_seeded);
 
   return s_uniform11(s_rng);
@@ -172,8 +171,6 @@ Random::getUniformReal11()
 inline Real
 Random::getNormal01()
 {
-  CH_TIME("Random::getNormal01");
-
   CH_assert(s_seeded);
 
   return s_normal01(s_rng);
@@ -182,8 +179,6 @@ Random::getNormal01()
 inline RealVect
 Random::getDirection()
 {
-  CH_TIME("Random::getDirection");
-
   CH_assert(s_seeded);
 
   constexpr Real safety = 1.E-12;
@@ -200,7 +195,6 @@ Random::getDirection()
 
   return RealVect(x1, x2) / sqrt(r);
 #elif CH_SPACEDIM == 3
-#if 1 // Original code
   Real x1 = 2.0;
   Real x2 = 2.0;
   Real r  = x1 * x1 + x2 * x2;
@@ -214,15 +208,6 @@ Random::getDirection()
   const Real y = 2 * x2 * sqrt(1 - r);
   const Real z = 1 - 2 * r;
 
-#else // Stupid sampling
-  const Real phi = 2.0 * Units::pi * Random::getUniformReal01();
-  const Real theta = Units::pi * Random::getUniformReal01();
-
-  const Real x = sin(theta) * cos(phi);
-  const Real z = sin(theta) * sin(phi);
-  const Real y = cos(theta);
-#endif
-
   return RealVect(x, y, z);
 #endif
 }
@@ -231,8 +216,6 @@ template <typename T>
 inline Real
 Random::get(T& a_distribution)
 {
-  CH_TIME("Random::get");
-
   CH_assert(s_seeded);
 
   return a_distribution(s_rng);
@@ -242,23 +225,20 @@ template <typename T>
 inline size_t
 Random::getDiscrete(T& a_distribution)
 {
-  CH_TIME("Random::getDiscrete");
-
   CH_assert(s_seeded);
 
   return a_distribution(s_rng);
 }
 
 inline RealVect
-Random::randomPosition(const RealVect a_cellPos,
-                       const RealVect a_lo,
-                       const RealVect a_hi,
-                       const RealVect a_bndryCentroid,
-                       const RealVect a_bndryNormal,
-                       const Real     a_dx,
-                       const Real     a_kappa) noexcept
+Random::randomPosition(const RealVect& a_cellPos,
+                       const RealVect& a_lo,
+                       const RealVect& a_hi,
+                       const RealVect& a_bndryCentroid,
+                       const RealVect& a_bndryNormal,
+                       const Real      a_dx,
+                       const Real      a_kappa) noexcept
 {
-  CH_TIME("Random::randomPosition(full)");
 
   RealVect pos;
 
@@ -276,30 +256,33 @@ Random::randomPosition(const RealVect a_cellPos,
 }
 
 inline RealVect
-Random::randomPosition(const RealVect a_lo,
-                       const RealVect a_hi,
-                       const RealVect a_bndryCentroid,
-                       const RealVect a_bndryNormal) noexcept
+Random::randomPosition(const RealVect& a_lo,
+                       const RealVect& a_hi,
+                       const RealVect& a_bndryCentroid,
+                       const RealVect& a_bndryNormal) noexcept
 {
-  CH_TIME("Random::randomPosition(partial)");
+  constexpr int maxIter = 100;
 
-  // Draw a position.
   RealVect pos   = Random::randomPosition(a_lo, a_hi);
   bool     valid = (pos - a_bndryCentroid).dotProduct(a_bndryNormal) >= 0.0;
 
-  // Rejectino sampling.
-  while (!valid) {
+  for (int iter = 0; !valid && iter < maxIter; ++iter) {
     pos   = Random::randomPosition(a_lo, a_hi);
     valid = (pos - a_bndryCentroid).dotProduct(a_bndryNormal) >= 0.0;
+  }
+
+  // Fall back to the boundary centroid for degenerate cut-cells where the
+  // valid half-space and the bounding box do not overlap.
+  if (!valid) {
+    pos = a_bndryCentroid;
   }
 
   return pos;
 }
 
 inline RealVect
-Random::randomPosition(const RealVect a_lo, const RealVect a_hi) noexcept
+Random::randomPosition(const RealVect& a_lo, const RealVect& a_hi) noexcept
 {
-  CH_TIME("Random::randomPosition(box)");
 
   RealVect pos = RealVect::Zero;
 

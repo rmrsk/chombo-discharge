@@ -1,13 +1,14 @@
-/* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
- * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
+/*
+ * SPDX-FileCopyrightText: 2021-2026 SINTEF Energy Research
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-/*!
-  @file   CD_ComputationalGeometry.cpp
-  @brief  Implementation of CD_ComputationalGeometry.H
-  @author Robert Marskar
-*/
+/**
+ * @file   CD_ComputationalGeometry.cpp
+ * @brief  Implementation of CD_ComputationalGeometry.H
+ * @author Robert Marskar
+ */
 
 // Chombo includes
 #include <MFIndexSpace.H>
@@ -26,18 +27,16 @@
 #include <CD_MemoryReport.H>
 #include <CD_NamespaceHeader.H>
 
-ComputationalGeometry::ComputationalGeometry()
+ComputationalGeometry::ComputationalGeometry() : m_eps0(1.0), m_useScanShop(false)
 {
   CH_TIME("ComputationalGeometry::ComputationalGeometry()");
 
   // Default parameters.
-  m_eps0 = 1.0;
 
   m_electrodes.resize(0);
   m_dielectrics.resize(0);
 
-  m_useScanShop = false;
-  m_scanDomain  = ProblemDomain();
+  m_scanDomain = ProblemDomain();
 
   m_multifluidIndexSpace = RefCountedPtr<MultiFluidIndexSpace>(new MultiFluidIndexSpace());
 }
@@ -48,7 +47,7 @@ ComputationalGeometry::~ComputationalGeometry()
 }
 
 void
-ComputationalGeometry::useScanShop(const ProblemDomain a_beginDomain)
+ComputationalGeometry::useScanShop(const ProblemDomain& a_beginDomain)
 {
   CH_TIME("ComputationalGeometry::useScanShop(ProblemDomain)");
 
@@ -63,7 +62,8 @@ ComputationalGeometry::useChomboShop()
 {
   CH_TIME("ComputationalGeometry::useChomboShop()");
 
-  // TLDR: If you called this function you signal that ComputationalGeometry will use Chombo's GeometryShop for geometry generation.
+  // TLDR: If you called this function you signal that ComputationalGeometry will use Chombo's GeometryShop for geometry
+  // generation.
   m_useScanShop = false;
   m_scanDomain  = ProblemDomain();
 }
@@ -149,12 +149,12 @@ ComputationalGeometry::setGasPermittivity(const Real a_eps0)
 }
 
 void
-ComputationalGeometry::buildGeometries(const ProblemDomain a_finestDomain,
-                                       const RealVect      a_probLo,
-                                       const Real          a_finestDx,
-                                       const int           a_nCellMax,
-                                       const int           a_maxGhostEB,
-                                       const int           a_maxCoarsen)
+ComputationalGeometry::buildGeometries(const ProblemDomain& a_finestDomain,
+                                       const RealVect&      a_probLo,
+                                       const Real           a_finestDx,
+                                       const int            a_nCellMax,
+                                       const int            a_maxGhostEB,
+                                       const int            a_maxCoarsen)
 {
   CH_TIME("ComputationalGeometry::buildGeometries(ProblemDomain, RealVect, Real, int, int, int)");
 
@@ -189,15 +189,15 @@ ComputationalGeometry::buildGeometries(const ProblemDomain a_finestDomain,
 }
 
 void
-ComputationalGeometry::buildGasGeometry(GeometryService*&   a_geoserver,
-                                        const ProblemDomain a_finestDomain,
-                                        const RealVect      a_probLo,
-                                        const Real          a_finestDx)
+ComputationalGeometry::buildGasGeometry(GeometryService*&    a_geoserver,
+                                        const ProblemDomain& a_finestDomain,
+                                        const RealVect&      a_probLo,
+                                        const Real           a_finestDx)
 {
   CH_TIME("ComputationalGeometry::buildGasGeometry(GeometryService, ProblemDomain, RealVect, Real)");
 
-  // The gas phase is the intersection of the region outside every object, so IntersectionIF is correct here. We build the
-  // various parts and then create the implicit function for the gas-phas using constructive solid geometry.
+  // The gas phase is the intersection of the region outside every object, so IntersectionIF is correct here. We build
+  // the various parts and then create the implicit function for the gas-phas using constructive solid geometry.
   Vector<BaseIF*> parts;
   for (int i = 0; i < m_dielectrics.size(); i++) {
     parts.push_back(&(*(m_dielectrics[i].getImplicitFunction())));
@@ -210,14 +210,14 @@ ComputationalGeometry::buildGasGeometry(GeometryService*&   a_geoserver,
 
   // Build the EBIS geometry. Use either ScanShop or Chombo here.
   if (m_useScanShop) {
-    ScanShop* scanShop = new ScanShop(*m_implicitFunctionGas,
-                                      0,
-                                      a_finestDx,
-                                      a_probLo,
-                                      a_finestDomain,
-                                      m_scanDomain,
-                                      m_maxGhostEB,
-                                      s_thresh);
+    auto* scanShop = new ScanShop(*m_implicitFunctionGas,
+                                  0,
+                                  a_finestDx,
+                                  a_probLo,
+                                  a_finestDomain,
+                                  m_scanDomain,
+                                  m_maxGhostEB,
+                                  s_thresh);
 
     scanShop->setProfileFileName("ScanShopReportGasPhase.dat");
 
@@ -230,10 +230,10 @@ ComputationalGeometry::buildGasGeometry(GeometryService*&   a_geoserver,
 }
 
 void
-ComputationalGeometry::buildSolidGeometry(GeometryService*&   a_geoserver,
-                                          const ProblemDomain a_finestDomain,
-                                          const RealVect      a_probLo,
-                                          const Real          a_finestDx)
+ComputationalGeometry::buildSolidGeometry(GeometryService*&    a_geoserver,
+                                          const ProblemDomain& a_finestDomain,
+                                          const RealVect&      a_probLo,
+                                          const Real           a_finestDx)
 {
   CH_TIME("ComputationalGeometry::buildSolidGeometry(GeometryService, ProblemDomain, RealVect, Real)");
 
@@ -266,8 +266,8 @@ ComputationalGeometry::buildSolidGeometry(GeometryService*&   a_geoserver,
     RefCountedPtr<BaseIF> dielCompIF = RefCountedPtr<BaseIF>(
       new ComplementIF(*dielBaseIF)); // This is the region inside the dielectrics.
 
-    // We want the function which is the region inside the dielectrics and outside the electrodes, i.e. the intersection of the region "inside"
-    // dielectrics and outside the electrods.
+    // We want the function which is the region inside the dielectrics and outside the electrodes, i.e. the intersection
+    // of the region "inside" dielectrics and outside the electrods.
     parts.push_back(&(*dielCompIF));
     parts.push_back(&(*elecBaseIF));
 
@@ -275,14 +275,14 @@ ComputationalGeometry::buildSolidGeometry(GeometryService*&   a_geoserver,
 
     // Build the EBIS geometry. Use either ScanShop or Chombo here.
     if (m_useScanShop) {
-      ScanShop* scanShop = new ScanShop(*m_implicitFunctionSolid,
-                                        0,
-                                        a_finestDx,
-                                        a_probLo,
-                                        a_finestDomain,
-                                        m_scanDomain,
-                                        m_maxGhostEB,
-                                        s_thresh);
+      auto* scanShop = new ScanShop(*m_implicitFunctionSolid,
+                                    0,
+                                    a_finestDx,
+                                    a_probLo,
+                                    a_finestDomain,
+                                    m_scanDomain,
+                                    m_maxGhostEB,
+                                    s_thresh);
 
       scanShop->setProfileFileName("ScanShopReportSolidPhase.dat");
 

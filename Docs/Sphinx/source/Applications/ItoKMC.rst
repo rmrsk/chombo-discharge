@@ -5,7 +5,7 @@
 
 .. warning::
 
-   This section is not very well documented. The following featurse are definitely missing:
+   This section is not very well documented. The following features are definitely missing:
 
    * Use of hybrid models (PPC-fluid specifications)
    * How the physics time step is restricted
@@ -69,7 +69,7 @@ These limits are given by the following input variables:
 
 .. literalinclude:: ../../../../Physics/ItoKMC/TimeSteppers/ItoKMCGodunovStepper/CD_ItoKMCGodunovStepper.options
    :language: text
-   :lines: 22-35
+   :lines: 19-31
 
 Particle placement
 ------------------
@@ -160,7 +160,7 @@ Species are defined either as input species for CDR solvers (see :ref:`Chap:CdrS
 It is sufficient to populate the ``ItoKMCPhysics`` species vectors ``m_cdrSpecies`` and ``m_itoSpecies`` if one only wants to initialize the solvers.
 See :ref:`Chap:ItoKMCPhysics` for their C++ definition.
 In addition to actually populating the vectors, users will typically also include initial conditions for the species.
-The interfaces permit initial particles and density functions for both both solver types.
+The interfaces permit initial particles and density functions for both solver types.
 Additionally, one must define all species associated with radiative transfer solvers.
 
 .. _Chap:ItoKMCPlasmaReaction:
@@ -200,7 +200,7 @@ Note that if the reaction was :math:`A + A\xrightarrow{c_2}\varnothing` then the
 since there are :math:`\frac{1}{2}X_A\left(X_A-1\right)` distinct pairs of particles of type :math:`A`.
 Likewise, the fluid rate coefficient would be :math:`k_2 = c_2\Delta V/2`.
 
-The distinction between KMC and fluid rates is an important one; the reaction representation used in the Îto-KMC model only operates with the KMC rates :math:`c_j`, and it is us to the user to ensure that these are consistent with the fluid limit.
+The distinction between KMC and fluid rates is an important one; the reaction representation used in the Îto-KMC model only operates with the KMC rates :math:`c_j`, and it is up to the user to ensure that these are consistent with the fluid limit.
 Internally, these reactions are implemented through the dual state KMC implementation, see :ref:`Chap:KineticMonteCarlo`.
 During the reaction advance the user only needs to update the :math:`c_j` coefficients (typically done via an interface implementation); the calculation of the propensity is automatic and follows the standard KMC rules (e.g., the KMC solver accounts for the number of distinct pairs of particles).
 This must be done in the routine ``updateReactionRates(...)``, see :ref:`Chap:ItoKMCPhysics` for the complete specification.
@@ -239,7 +239,7 @@ There are two ways of doing this:
    This can imply a large computational cost since one will have to track all photons that are generated.
 
 The former method is normally the preferred way as it can lead to reductions in computational complexity and particle noise, but for flexibility ``ItoKMCPhysics`` supports both of these.
-The latter method can be of relevance if users wants precise descriptions of photons that trigger both photoionizing reactions and surface reactions (e.g., secondary electron emission).
+The latter method can be of relevance if users want precise descriptions of photons that trigger both photoionizing reactions and surface reactions (e.g., secondary electron emission).
    
 An alternative is to split the photon type :math:`\gamma` into volumetrically absorbed and surface absorbed photon species :math:`\gamma_v` and :math:`\gamma_s`.
 In this case one may pre-scale the photon-generating reactions by the photo-reaction probabilities :math:`\xi` (for volume absorption) and :math:`\zeta` (for surface absorption) as follows:
@@ -296,7 +296,7 @@ Caveats
 
 There are some caveats with using the time step limitation given above.
 For example, if there are no electrons in the simulation region, the above method will (correctly) return a very large time step based on the behavior of the other species.
-But one may very have *detachment* of electrons enabled, and the combination of a detachment event and a large time step is quite unfortunate.
+But one may very well have *detachment* of electrons enabled, and the combination of a detachment event and a large time step is quite unfortunate.
 Because of this, the above constraint is also applied on proxy-states of :math:`\vec{X}` that have been completely exhausted through critical reactions, which provides a much more reasonable time step.
 
 A second factor involved in the time step calculation above is that one may have regions where :math:`X_i` is very small, but where :math:`\sum_r \nu_{ri} a_r` is very high.
@@ -475,7 +475,7 @@ In principle, the molar fraction can have a positional dependency.
 .. warning::
 
    There's no internal renormalization of the molar fractions input by the user.
-   Internal inconsitencies will occur if the user supplies inputs molar fractions that sum to a number different than one.
+   Internal inconsistencies will occur if the user supplies inputs molar fractions that sum to a number different than one.
 
    Various checks will be enabled if the user compiles in debug-mode (see :ref:`Chap:Installation`), but these checks are not guaranteed to catch all cases.
 
@@ -691,10 +691,10 @@ An example JSON specification that uses a BOLSIG+ output file for parsing the da
 	  "header" : "E/N (Td)\tTownsend ioniz. coef. alpha/N (m2)", // Optional argument. Contains line immediately preceding the data to be read.
 	  "E/N column" : 0,                                          // Optional specification of column containing E/N (defaults to 0)
 	  "alpha/N column" : 1,                                      // Optional specification of column containing alpha/N (defaults to 1)
-	  "min E/N" : 1.0,                                           // Optional truncation of minium E/N kept when resampling the table (occurs after scaling)
+	  "min E/N" : 1.0,                                           // Optional truncation of minimum E/N kept when resampling the table (occurs after scaling)
 	  "max E/N" : 1000.0,                                        // Optional truncation of maximum E/N kept when resampling the table (happens after scaling)
 	  "num points" : 1000,                                       // Optional number of points kept when resamplnig the table (defaults to 1000)
-	  "spacing" : "exponential",                                 // Optional spcification of table representation. Defaults to 'exponential' but can also be 'linear'
+	  "spacing" : "exponential",                                 // Optional specification of table representation. Defaults to 'exponential' but can also be 'linear'
 	  "scale E/N" : 1.0,                                         // Optional scaling of the column containing E/N
 	  "scale alpha/N" : 1.0                                      // Optional scaling       
        }
@@ -881,9 +881,9 @@ An example JSON specification that uses a BOLSIG+ output file for parsing the da
           "diffusive" : false,                             // Not diffusive
           "mobility" : {
 	     "type" : "table vs E/N",                      // Specification of tabulated mobility lookup method
-	     "file" : "bolsig_air.dat",                    // File containg the mobility data
+	     "file" : "bolsig_air.dat",                    // File containing the mobility data
 	     "dump" : "debug_mobility.dat",                // Optional argument for dumping table to disk (useful for debugging)		
-	     "header" : "E/N (Td)\tMobility *N (1/m/V/s)", // Line immediately preceding the colum data
+	     "header" : "E/N (Td)\tMobility *N (1/m/V/s)", // Line immediately preceding the column data
 	     "E/N column" : 0,                             // Column containing E/N
 	     "mu*N column" : 1,                            // Column containing mu*N
 	     "min E/N" : 1,                                // Minimum E/N kept when resampling table
@@ -904,7 +904,7 @@ Parallel diffusion
 ^^^^^^^^^^^^^^^^^^
 
 ``ItoKMCJSON`` can limit diffusion against the electric field (or strictly speaking, the particle drift direction).
-The species specification permits a flag ``diffusion model`` that defauls to isotropic diffusion.
+The species specification permits a flag ``diffusion model`` that defaults to isotropic diffusion.
 However, it is possible to set this to other types of diffusion models.
 Currently, the available options are
 
@@ -942,7 +942,7 @@ The temperature can be specified through the ``temperature`` field for each spec
 
 .. important::
    
-   If the specifies temperature is *not* specified by the user, it will be set equal to the background gas temperature.
+   If the specified temperature is *not* specified by the user, it will be set equal to the background gas temperature.
 
 Background gas
 ^^^^^^^^^^^^^^
@@ -1085,7 +1085,7 @@ For example, to add two particles with particle weights of 1, one may specify
        }
     ]
 
-The various supported ways of additional initial particles are discussed below.
+The various supported ways of adding initial particles are discussed below.
 
 .. important::
 
@@ -1325,7 +1325,7 @@ A basic definition of a single photon species is
 	    "id": "Y",              // Photon species id. Must be unique
 	    "kappa": {              // Specification of absorption coefficient. 
 		"type": "constant", // Specify constant absorption coefficient
-		"value": 1E4        // Value of the absorption coefficeint
+		"value": 1E4        // Value of the absorption coefficient
 	    }
 	}
     ]
@@ -1340,14 +1340,14 @@ Multiple photon species are added by appending with more entries, e.g.
 	    "id": "Y1",             // Photon species id. Must be unique
 	    "kappa": {              // Specification of absorption coefficient. 
 		"type": "constant", // Specify constant absorption coefficient
-		"value": 1E4        // Value of the absorption coefficeint
+		"value": 1E4        // Value of the absorption coefficient
 	    }
 	},
 	{
 	    "id": "Y2",             // Photon species id. Must be unique
 	    "kappa": {              // Specification of absorption coefficient. 
 		"type": "constant", // Specify constant absorption coefficient
-		"value": 1E4        // Value of the absorption coefficeint
+		"value": 1E4        // Value of the absorption coefficient
 	    }
 	}	
     ]
@@ -1416,7 +1416,7 @@ The ``stochastic B`` specifier computes a random absorption length from the expr
    \kappa = \left(\chi_{\textrm{min}}p_i\right)\left(\frac{\chi_{\textrm{max}}}{\chi_{\textrm{min}}}\right)^u,
 
 where :math:`p_i` is the partial pressure of some species :math:`i`, and :math:`p_i\chi_{\textrm{min}}` and :math:`p_i\chi_{\textrm{max}}` are minimum and maximum absorption lengths, and :math:`u` is a random number between 0 and 1.
-Note that that this is just a simpler way of using the ``stochastic A`` specifier above. 
+Note that this is just a simpler way of using the ``stochastic A`` specifier above. 
 The user must specify :math:`\chi_{\textrm{min}}`, :math:`\chi_{\textrm{max}}`, and the background species used when computing :math:`p_i`.
 This is done through fields ``chi min``, ``chi max``, and ``neutral``.
 For example:
@@ -1491,16 +1491,16 @@ For example:
    ]
 
 which is equivalent to the reaction :math:`\text{e} + \text{N}_2 \rightarrow \text{e} + \text{e} + \text{N}_2^+`.
-Each species must be separated by whitespace and a addition operator.
+Each species must be separated by whitespace and an addition operator.
 For example, the specification ``A + B + C`` will be interpreted as a reaction :math:`\text{A} + \text{B} + \text{C}` but the specification ``A+B + C`` will be interpreted as a reaction between one species ``A+B`` and another species ``C`` .
 
 Internally, both the left- and right-hand sides are checked against background and plasma species.
 The program will perform a run-time exit if the species are not defined in these lists.
-Note that the right-hand side can additonal contain photon species.
+Note that the right-hand side can additionally contain photon species.
 
 .. tip::
 
-   Products not not defined as a species can be enclosed by parenthesis ``(`` and ``)``.
+   Products not defined as a species can be enclosed by parenthesis ``(`` and ``)``.
 
 The reaction string generally expects all species on each side of the reaction to be defined.
 It is, however, occasionally useful to include products which are *not* defined.
@@ -1703,7 +1703,7 @@ An example JSON specification is
 Efficiency
 __________
 
-Reactions efficiencies can be modified in the same way as one do with the ``scale`` field, e.g. modify the rate constant as
+Reaction efficiencies can be modified in the same way as one does with the ``scale`` field, e.g. modify the rate constant as
 
 .. math::
 
@@ -1753,7 +1753,7 @@ An example file is e.g.
    500  0.8
    1000 1.0
    
-This data is then internally convered to a uniformly spaced lookup table (see :ref:`Chap:LookupTable`).
+This data is then internally converted to a uniformly spaced lookup table (see :ref:`Chap:LookupTable`).
 
 Efficiency vs E
 ^^^^^^^^^^^^^^^^^
@@ -1812,13 +1812,13 @@ Rate-based
 The reaction rate can be modified by a factor :math:`k_r/\left[k_r + k_p + k_q\right]`.
 The intention behind this scaling is that reaction :math:`r` occurs only if it is not predissociated (by rate :math:`k_p`) or quenched (by rate :math:`k_q`).
 Such processes can occur, for example, in excited molecules.
-This will modifiy the rate constant as
+This will modify the rate constant as
 
 .. math::
 
    k \rightarrow k\frac{k_r}{k_r + k_p + k_q},
 
-where the user will specifiy :math:`k_r`, :math:`k_p`, and :math:`k_q/N`.
+where the user will specify :math:`k_r`, :math:`k_p`, and :math:`k_q/N`.
 The JSON specification must contain ``quenching rates``, for example:
 
 .. code-block:: json
@@ -1990,7 +1990,7 @@ Specification of secondary particle placement is done through the JSON file by s
 Currently, new particles may be placed on the centroid, uniformly distributed in the grid cell, or placed randomly in the downstream region of some user-defined species.
 The method is specified through the ``method`` specifier, which must either be ``centroid``, ``random``, or ``downstream``.
 If specifying ``downstream``, one must also include a species specifier (which must correspond to one of the plasma species).
-The following three specifies are all valid:
+The following three specifiers are all valid:
 
 .. code-block:: json
 		
@@ -2106,7 +2106,7 @@ An example JSON specification that enables secondary electron emission due to ph
       }
    ]
 
-The ``reaction`` field specifies which reaction is triggered: The left hand side is the primary (outgoing) species and the left hand side must contain the secondary emissions.
+The ``reaction`` field specifies which reaction is triggered: The left hand side is the primary (outgoing) species and the right hand side must contain the secondary emissions.
 The left-hand side can consist of either photons (e.g., ``Y``) or particle (e.g., ``O2+``) species.
 The efficiency field specifies the efficiency of the reaction.
 When multiple reactions are specified, we randomly sample the reaction according to a discrete distribution with probabilities
@@ -2116,7 +2116,7 @@ When multiple reactions are specified, we randomly sample the reaction according
    p(i) = \frac{\nu_i}{\sum_i \nu_i},
 
 where :math:`\nu_i` are the efficiencies.
-Note that the efficiencies do not need to sum to one, and if only a single reaction is specified the efficiency specifier has not real effect.
+Note that the efficiencies do not need to sum to one, and if only a single reaction is specified the efficiency specifier has no real effect.
 The above reactions include the null reaction in order to ensure that the correct secondary emission probability is reached, where the ``(null)`` specifier implies that no secondary emission takes place.
 In the above example the probability of secondary electron emission is 0.1, while the probability of a null-reaction (outgoing particle is absorbed without any associated emission) is 0.9.
 The above example can be compressed by using a wildcard and an ``efficiencies`` array as follows:
@@ -2224,7 +2224,7 @@ For example, some care might be required when using the Townsend attachment coef
 
 .. warning::
 
-   The JSON interface *does not guard* against inconsitencies in the user-provided chemistry, and provision of inconsistent :math:`\eta/N` and attachment reaction rates are quite possible.
+   The JSON interface *does not guard* against inconsistencies in the user-provided chemistry, and provision of inconsistent :math:`\eta/N` and attachment reaction rates are quite possible.
 
 Tips and tricks
 ---------------

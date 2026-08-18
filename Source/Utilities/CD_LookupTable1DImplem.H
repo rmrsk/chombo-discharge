@@ -1,16 +1,17 @@
-/* chombo-discharge
- * Copyright © 2021 SINTEF Energy Research.
- * Please refer to Copyright.txt and LICENSE in the chombo-discharge root directory.
+/*
+ * SPDX-FileCopyrightText: 2021-2026 SINTEF Energy Research
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-/*!
-  @file   CD_LookupTable1D.H
-  @brief  Declaration of a lookup table in one independent variable.
-  @author Robert Marskar
-*/
+/**
+ * @file   CD_LookupTable1DImplem.H
+ * @brief  Declaration of a lookup table in one independent variable.
+ * @author Robert Marskar
+ */
 
-#ifndef CD_LookupTableImplem_H
-#define CD_LookupTableImplem_H
+#ifndef CD_LOOKUPTABLEIMPLEM_H
+#define CD_LOOKUPTABLEIMPLEM_H
 
 // Std includes
 #include <algorithm>
@@ -21,6 +22,7 @@
 
 // Our includes
 #include <CD_LookupTable1D.H>
+#include <CD_NamespaceHeader.H>
 
 template <typename T, size_t N, typename I>
 LookupTable1D<T, N, I>::LookupTable1D() noexcept
@@ -471,5 +473,7 @@ LookupTable1D<T, N, I>::slice(const Ts&... a_columns) const noexcept
 
   return ret;
 }
+
+#include <CD_NamespaceFooter.H>
 
 #endif
