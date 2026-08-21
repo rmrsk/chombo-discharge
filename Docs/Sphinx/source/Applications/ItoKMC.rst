@@ -87,6 +87,36 @@ Both these methods (``centroid`` and ``random``) are, however, sources of numeri
 The downstream method circumvents this source of numerical diffusion by only placing secondary particles in the downstream region of some user-defined species (typically the electrons).
 See :ref:`Chap:ItoKMCJSON` for instructions on how to assign the particle placement method.
 
+Reactive field centering
+------------------------
+
+The transport step is semi-implicit, so the electric field it ends on, :math:`\mathbf{E}^{k+1}`, is the field
+*after* the plasma has screened it.
+Evaluating the whole reactive substep at that field therefore biases the rate coefficients low wherever screening
+occurs, and because the Townsend coefficient is strongly field-dependent a modest field error turns into a much
+larger error in the ionization rate.
+The chemistry is therefore evaluated at
+
+.. math::
+
+   \mathbf{E} = \left(1-\theta\right)\mathbf{E}^k + \theta\mathbf{E}^{k+1},
+
+where :math:`\mathbf{E}^k` is the field at the start of the step and :math:`\theta` is set by
+
+.. code-block:: text
+
+   ItoKMCGodunovStepper.reactive_E_centering = 0.5  # Time-centering of E in the reactive step
+
+The default :math:`\theta = 0.5` is the time-centered field, which removes the leading-order bias.
+Setting :math:`\theta = 1` recovers the end-of-step field and :math:`\theta = 0` the field the step started from.
+Values outside :math:`\left[0,1\right]` extrapolate past fields that were never solved for, and are rejected at
+run time.
+
+.. note::
+
+   This centering applies to the reactions only.
+   The drift update keeps using :math:`\mathbf{E}^{k+1}` together with the lagged mobility, because that is the
+   pairing assumed by the semi-implicit Poisson operator.
 
 
 
@@ -1987,10 +2017,16 @@ Particle placement
 ------------------
 
 Specification of secondary particle placement is done through the JSON file by specifying the ``particle placement`` field.
-Currently, new particles may be placed on the centroid, uniformly distributed in the grid cell, or placed randomly in the downstream region of some user-defined species.
-The method is specified through the ``method`` specifier, which must either be ``centroid``, ``random``, or ``downstream``.
+Currently, new particles may be placed on the centroid, uniformly distributed in the grid cell, inherited from one of the particles that are already in the cell, or placed randomly in the downstream region of some user-defined species.
+The method is specified through the ``method`` specifier, which must either be ``centroid``, ``random``, ``parent``, or ``downstream``.
 If specifying ``downstream``, one must also include a species specifier (which must correspond to one of the plasma species).
-The following three specifiers are all valid:
+
+The ``parent`` method draws one of the particles that were already in the cell, with probability proportional to its weight, and puts the new particle on top of it.
+This is the placement that introduces no sub-grid transport of its own: unlike ``random`` it does not scatter the new weight across the cell, and unlike ``centroid`` it does not pull the new weight towards the cell centre.
+Both of those act as numerical transport terms whose magnitude is set by the grid resolution rather than by the physics.
+If the cell holds no particles of the species in question -- which happens for photoionization products -- ``parent`` falls back to ``random``.
+
+The following four specifiers are all valid:
 
 .. code-block:: json
 		
@@ -2002,6 +2038,11 @@ The following three specifiers are all valid:
     "particle placement":
     {
        "method": "random"
+    }
+
+    "particle placement":
+    {
+       "method": "parent"
     }
 
     "particle placement":
@@ -2291,6 +2332,8 @@ Example programs that use the Îto-KMC module are given in
 
 * :file:`$DISCHARGE_HOME/Exec/Examples/ItoKMC/AirBasic` for a basic streamer discharge in atmospheric air.
 * :file:`$DISCHARGE_HOME/Exec/Examples/ItoKMC/AirDBD` for a streamer discharge over a dielectric.
+* :file:`$DISCHARGE_HOME/Exec/Examples/ItoKMC/ComparisonCdrPlasma` for the same streamer discharge run with both the
+  Îto-KMC and the ``CdrPlasma`` model, using the same geometry, transport data, chemistry, and initial particles.
 
 Setting up a new problem
 ========================

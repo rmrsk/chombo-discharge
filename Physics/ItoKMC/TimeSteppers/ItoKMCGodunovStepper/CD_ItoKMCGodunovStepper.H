@@ -231,6 +231,15 @@ protected:
   Real m_maxFieldAbort;
 
   /**
+   * @brief Time-centering of the electric field that the chemistry is evaluated at.
+   * @details The reactive substep is evaluated at (1-theta)*E^k + theta*E^(k+1), where theta is this
+   * parameter and E^k/E^(k+1) are the fields from the start and end of the transport step. theta = 0.5
+   * removes the leading-order bias from the semi-implicit screening of the field, theta = 1 evaluates at
+   * the end-of-step field, and theta = 0 at the field the step started from. Restricted to [0,1].
+   */
+  Real m_reactiveFieldCentering;
+
+  /**
    * @brief Storage for simplified particles that gave us sigma^k
    * @note Needed for regrids
    */
@@ -279,6 +288,13 @@ protected:
   Vector<EBAMRCellData> m_cdrDivD;
 
   /**
+   * @brief Storage for the electric field that the chemistry is evaluated at.
+   * @details This holds E^k from the top of advance() until the transport step is done, and is then turned
+   * into the interpolant (1-theta)*E^k + theta*E^(k+1) that is handed to advanceReactionNetwork.
+   */
+  EBAMRCellData m_reactiveElectricField;
+
+  /**
    * @brief Allocate "internal" storage.
    */
   virtual void
@@ -307,6 +323,13 @@ protected:
    */
   virtual void
   parseSecondaryEmissionSpecification() noexcept;
+
+  /**
+   * @brief Parse the time-centering of the electric field used for the reactive substep.
+   * @note Aborts if the requested centering falls outside [0,1].
+   */
+  virtual void
+  parseReactiveFieldCentering() noexcept;
 
   /**
    * @brief Set the starting positions for the ItoSolver particles
@@ -353,23 +376,40 @@ protected:
                       const SpeciesSubset                                        a_subset) noexcept;
 
   /**
+   * @brief Compute the CDR contribution to the semi-implicit conductivity, i.e. sum(|Z| * phi * mu).
+   * @details The result is stored on m_semiImplicitConductivityCDR, which is carried across regrids. It is
+   * not scaled by Units::Qe -- that scaling is applied once to the total conductivity in
+   * computeCellConductivity -- nor by dt/eps0, which setupSemiImplicitPoisson applies.
+   * @note Reads m_cdrMobilities, so it may only be called when those hold the mobilities for the current
+   * grids. That is not the case inside regrid(), where allocateInternals() has just reallocated them.
+   */
+  virtual void
+  computeCdrConductivity() noexcept;
+
+  /**
    * @brief Compute all conductivities (cell, face, and EB) from the input point particles
    * @param[in] a_particles Particles to deposit. Particle weights must hold the mobility*weight
+   * @param[in] a_useStoredCdrConductivity If true, take the CDR contribution from
+   * m_semiImplicitConductivityCDR as it stands; if false, recompute it first through computeCdrConductivity.
    * @note This deposits the input particle weights onto m_conductivityCell, m_conductivityFace.
    * @note Also adds in the conductive contribution from the CDR solvers.
    */
   virtual void
-  computeConductivities(const Vector<RefCountedPtr<ParticleContainer<NoPayload>>>& a_particles) noexcept;
+  computeConductivities(const Vector<RefCountedPtr<ParticleContainer<NoPayload>>>& a_particles,
+                        const bool                                                 a_useStoredCdrConductivity) noexcept;
 
   /**
    * @brief Compute the cell-centered conductivity
    * @param[out] a_conductivityCell Cell-centered conductivity
    * @param[in]  a_particles        Particles to deposit. Particle weights must hold the mobility*weight
+   * @param[in]  a_useStoredCdrConductivity If true, take the CDR contribution from
+   * m_semiImplicitConductivityCDR as it stands; if false, recompute it first through computeCdrConductivity.
    * @note Also adds in the conductive contribution from the CDR solvers.
    */
   virtual void
   computeCellConductivity(EBAMRCellData&                                             a_conductivityCell,
-                          const Vector<RefCountedPtr<ParticleContainer<NoPayload>>>& a_particles) noexcept;
+                          const Vector<RefCountedPtr<ParticleContainer<NoPayload>>>& a_particles,
+                          const bool a_useStoredCdrConductivity) noexcept;
 
   /**
    * @brief Compute the cell-centered conductivity
