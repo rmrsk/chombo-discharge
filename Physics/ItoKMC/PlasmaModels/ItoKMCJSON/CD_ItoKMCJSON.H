@@ -193,10 +193,12 @@ public:
 
   /**
    * @brief Compute the Ito solver mobilities.
-   * @param[in] a_time Time.
-   * @param[in] a_pos  Physical position.
-   * @param[in] a_E    Electric field vector.
-   * @return Vector of non-negative mobility coefficients for all plasma species.
+   * @details Fills the caller's buffer; an immobile species carries a constant-zero function and so fills
+   * its own slot without a table lookup.
+   * @param[out] a_mobilities Non-negative mobility coefficient for every plasma species. Resized here.
+   * @param[in]  a_time       Time.
+   * @param[in]  a_pos        Physical position.
+   * @param[in]  a_E          Electric field vector.
    */
   virtual void
   computeMobilities(Vector<Real>&   a_mobilities,
@@ -206,10 +208,13 @@ public:
 
   /**
    * @brief Compute the Ito solver diffusion coefficients.
-   * @param[in] a_time Time.
-   * @param[in] a_pos  Physical position.
-   * @param[in] a_E    Electric field vector.
-   * @return Vector of non-negative diffusion coefficients for all plasma species.
+   * @details Fills the caller's buffer; a non-diffusive species carries a constant-zero function and so
+   * fills its own slot without a table lookup.
+   * @param[out] a_diffusionCoefficients Non-negative diffusion coefficient for every plasma species.
+   *                                     Resized here.
+   * @param[in]  a_time                  Time.
+   * @param[in]  a_pos                   Physical position.
+   * @param[in]  a_E                     Electric field vector.
    */
   virtual void
   computeDiffusionCoefficients(Vector<Real>&   a_diffusionCoefficients,

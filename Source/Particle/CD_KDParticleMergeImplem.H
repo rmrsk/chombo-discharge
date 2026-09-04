@@ -518,13 +518,13 @@ buildKDQuotaLeaves(std::vector<MergeParticle<Packed>>& a_particles,
     return;
   }
 
-  // LIVE PER-CELL POPULATION BUDGET, enforced as a hard constraint at split time rather than computed
+  // LIVE PER-CELL LEAF BUDGET, enforced as a hard constraint at split time rather than computed
   // per node and hoped for afterwards.
   //
-  // A leaf the caller can merge becomes exactly ONE super-particle at its own weighted centroid; one it
-  // cannot leaves every member behind. Track the resulting per-cell population live and refuse any split
-  // that would push a cell past a_ppc. The per-cell ceiling is a shared resource and cannot be expressed
-  // by any test a node applies to itself alone.
+  // Every leaf becomes exactly ONE super-particle at its own weighted centroid, so the number of
+  // leaves whose centroid falls in a cell is that cell's post-merge population. Track that count
+  // live and refuse any split that would push a cell past a_ppc. The per-cell ceiling is a shared
+  // resource and cannot be expressed by any test a node applies to itself alone.
   //
   // Splits are handed out heaviest-first: the quota is claimed first-come-first-served, so a
   // lighter ordering lets light leaves take a cell's slots before a heavy leaf is considered, and
@@ -558,24 +558,6 @@ buildKDQuotaLeaves(std::vector<MergeParticle<Packed>>& a_particles,
     std::size_t lo;
     std::size_t hi;
     IntVect     cell;
-    Real        charged; ///< What this node is currently charged to used(cell) -- see chargeOf().
-  };
-
-  // What a frontier node will actually contribute to its cell's post-merge population. A node narrow
-  // enough to merge collapses to ONE particle; a node wider than s_kdMaxLeafExtent is vetoed by the
-  // caller and leaves every member behind individually, so it contributes its full member count.
-  //
-  // Charging a flat 1 per node (which is what a leaf COUNT does) is what used to let a cell finish far
-  // above target. A wide node charged 1 both understates what it will really cost that cell and, worse,
-  // makes every wide split look like a net +1: parent -1, two children +1 each. In a clustered load,
-  // nodes stay wide for many levels, so a cell accrued one spurious unit per wide split long before any
-  // node was narrow enough for the quota test to bite -- by which time it was already past target and
-  // the refusals came too late to matter. Charging the true contribution makes a wide split
-  // population-neutral (count -> count_left + count_right), so the counter only starts to climb when
-  // nodes go narrow and the charge genuinely drops to 1 apiece. That is exactly when the quota should
-  // be deciding anything.
-  const auto chargeOf = [](const std::size_t a_count, const Real a_span) noexcept -> Real {
-    return (a_span <= s_kdMaxLeafExtent) ? 1.0 : static_cast<Real>(a_count);
   };
 
   // Hand out each cell's finite quota to its HEAVIEST candidate leaf first, not its most populous.
@@ -588,10 +570,9 @@ buildKDQuotaLeaves(std::vector<MergeParticle<Packed>>& a_particles,
     return a_lhs.weight < a_rhs.weight;
   };
 
-  // Live per-cell projected population: how many particles the frontier nodes centred in each cell will
-  // leave behind once the caller has merged what it can (see chargeOf()). Caller-owned mesh data, zeroed
-  // here; its ghost cell must cover every cell a leaf centroid can fall in, since gathered ghosts sit up
-  // to one cell outside this patch.
+  // Live per-cell leaf count: how many leaves are currently centred in each cell. Caller-owned mesh
+  // data, zeroed here; its ghost cell must cover every cell a leaf centroid can fall in, since
+  // gathered ghosts sit up to one cell outside this patch.
   FArrayBox& used = a_used;
   used.setVal(0.0);
 
@@ -612,13 +593,8 @@ buildKDQuotaLeaves(std::vector<MergeParticle<Packed>>& a_particles,
     // silently, which is exactly the class of bug a bounded holder is meant to surface.
     CH_assert(used.box().contains(rootCell));
 
-    // Charged as if wide, since its span is not known until it is popped and its box computed. The
-    // charge is an upper bound either way (a node contributes at most its member count), and pop
-    // reconciles it against the true span before any split decision is taken.
-    const Real rootCharge = static_cast<Real>(numMergeable);
-
-    used(rootCell, 0) += rootCharge;
-    heap.push_back(KDCand{rootWeight, numMergeable, 0, numMergeable, rootCell, rootCharge});
+    used(rootCell, 0)++;
+    heap.push_back(KDCand{rootWeight, numMergeable, 0, numMergeable, rootCell});
   }
 
   while (!heap.empty()) {
@@ -630,9 +606,6 @@ buildKDQuotaLeaves(std::vector<MergeParticle<Packed>>& a_particles,
     if (node.count < 2) {
       RealVect boxLo, boxHi;
       kdBBox(boxLo, boxHi, a_particles, node.lo, node.hi);
-
-      // A single member is one particle whether or not it merges, so its true charge is 1.
-      used(node.cell, 0) += 1.0 - node.charged;
 
       finalLeaves.push_back(KDLeaf{node.lo, node.hi, boxLo, boxHi});
 
@@ -649,12 +622,6 @@ buildKDQuotaLeaves(std::vector<MergeParticle<Packed>>& a_particles,
     const Real nodeSpan  = kdMaxAxisSpan(nodeBoxLo, nodeBoxHi, a_dx);
     const int  splitAxis = (nodeBoxHi - nodeBoxLo).maxDir(true);
 
-    // The node's box is known only now, so this is the first point at which its true charge can be
-    // settled against what its cell was provisionally charged when it was pushed.
-    const Real nodeCharge = chargeOf(node.count, nodeSpan);
-
-    used(node.cell, 0) += nodeCharge - node.charged;
-
     // While a node spans several cells a split apportions leaves BETWEEN cells, which is a question
     // of counts; once it is narrow the weight median is what drives the super-particles toward equal
     // weight. This is an extent test, not a "both corners in one cell" test, so a narrow node
@@ -669,37 +636,28 @@ buildKDQuotaLeaves(std::vector<MergeParticle<Packed>>& a_particles,
     CH_assert(used.box().contains(cellLeft));
     CH_assert(used.box().contains(cellRight));
 
-    // A child of a narrow node is narrow (its box is contained in its parent's), so its charge of 1 is
-    // exact. A child of a wide node may be either, and is charged as wide until its own box is built at
-    // pop -- an upper bound, so the quota is never relaxed on the strength of a guess.
-    const bool nodeIsNarrow = nodeSpan <= s_kdMaxLeafExtent;
+    used(node.cell, 0)--;
+    used(cellLeft, 0)++;
+    used(cellRight, 0)++;
 
-    const Real chargeLeft  = nodeIsNarrow ? 1.0 : static_cast<Real>(mid - node.lo);
-    const Real chargeRight = nodeIsNarrow ? 1.0 : static_cast<Real>(node.hi - mid);
-
-    used(node.cell, 0) -= nodeCharge;
-    used(cellLeft, 0) += chargeLeft;
-    used(cellRight, 0) += chargeRight;
-
-    // A node wider than s_kdMaxLeafExtent must still be split even where its children land in cells at
-    // quota: refusing strands its members as that many individual particles, which overshoots by more
-    // than the split ever could. The charge above is what makes this exemption harmless -- a wide split
-    // moves population between cells rather than inventing it, so the exempted splits no longer inflate
-    // the counter that the narrow splits below are tested against.
-    if (nodeIsNarrow && (used(cellLeft, 0) > a_ppc || used(cellRight, 0) > a_ppc)) {
-      used(cellLeft, 0) -= chargeLeft;
-      used(cellRight, 0) -= chargeRight;
-      used(node.cell, 0) += nodeCharge;
+    // The quota constrains only leaves that can actually merge. A node wider than
+    // s_kdMaxLeafExtent is vetoed by the caller and leaves every member behind
+    // individually, so it costs its cell its full member count rather than one particle; splitting
+    // it further lowers that cell's final population even though it raises the leaf count.
+    if (nodeSpan <= s_kdMaxLeafExtent && (used(cellLeft, 0) > a_ppc || used(cellRight, 0) > a_ppc)) {
+      used(cellLeft, 0)--;
+      used(cellRight, 0)--;
+      used(node.cell, 0)++;
 
       finalLeaves.push_back(KDLeaf{node.lo, node.hi, nodeBoxLo, nodeBoxHi});
 
       continue;
     }
 
-    heap.push_back(KDCand{weightLeft, mid - node.lo, node.lo, mid, cellLeft, chargeLeft});
+    heap.push_back(KDCand{weightLeft, mid - node.lo, node.lo, mid, cellLeft});
     std::push_heap(heap.begin(), heap.end(), byWeight);
 
-    heap.push_back(KDCand{weightRight, node.hi - mid, mid, node.hi, cellRight, chargeRight});
+    heap.push_back(KDCand{weightRight, node.hi - mid, mid, node.hi, cellRight});
     std::push_heap(heap.begin(), heap.end(), byWeight);
   }
 
