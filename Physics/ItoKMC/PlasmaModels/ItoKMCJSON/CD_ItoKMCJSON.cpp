@@ -3698,6 +3698,30 @@ ItoKMCJSON::needGradients() const noexcept
   return needGradient;
 }
 
+bool
+ItoKMCJSON::needGradient(const int a_plasmaIndex) const noexcept
+{
+  CH_TIME("ItoKMCJSON::needGradient");
+  if (m_verbose) {
+    pout() << m_className + "::needGradient" << endl;
+  }
+
+  // m_kmcReactionGradientCorrections holds (enabled, species name) per reaction, and m_plasmaIndexMap
+  // resolves that name to the same index the caller is asking about, so no reaction needs to be
+  // re-parsed here.
+  for (const auto& gradCorr : m_kmcReactionGradientCorrections) {
+    if (gradCorr.first) {
+      const auto& it = m_plasmaIndexMap.find(gradCorr.second);
+
+      if (it != m_plasmaIndexMap.end() && it->second == a_plasmaIndex) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 int
 ItoKMCJSON::getNumberOfPlotVariables() const noexcept
 {

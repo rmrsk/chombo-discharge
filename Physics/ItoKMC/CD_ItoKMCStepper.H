@@ -1613,6 +1613,26 @@ protected:
   coarsenCDRSolvers(const bool a_interpGhosts) noexcept;
 
   /**
+   * @brief Whether anything can be emitted from the EB this step, answered globally.
+   * @details Secondary emission is driven by three inputs: particles and photons that struck the boundary,
+   * and the advective flux a mobile CDR species delivers to it. When none of those exist anywhere, the
+   * emission routines still run their full fixed cost -- roughly twenty hierarchy-wide exchanges, per step,
+   * whether or not a single particle reached the EB.
+   *
+   * The test has to be global, because the work it guards is collective: every rank must reach the same
+   * verdict or the ones that skip leave the others waiting in an exchange that never completes. One
+   * Allreduce over the local counts answers it, and those counts are free (the containers track their own
+   * size). Mobility is a static property of the CDR solvers and needs no reduction.
+   *
+   * Skipping leaves the secondary containers holding whatever the last emitting step put there, which is
+   * harmless: nothing reads them unless the emission runs, and fillSecondaryEmissionEB() clears them on
+   * entry when it does.
+   * @return True if secondary emission must be resolved this step.
+   */
+  virtual bool
+  needSecondaryEmissionEB() const noexcept;
+
+  /**
    * @brief Resolve particle injection at EBs.
    * @param[in] a_dt Time step.
    * @note Calls the other version.

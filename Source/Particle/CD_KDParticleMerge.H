@@ -105,22 +105,24 @@ struct KDLeaf
  * narrower: above that scale a split apportions leaves between cells, which is a question of counts;
  * below it the weight median drives the resulting super-particles toward equal weight.
  *
- * The quota constrains only leaves that can actually merge. mergeKDCarve() and mergeKDPatch()
- * veto any leaf
- * wider than @c s_kdMaxLeafExtent and leaves its members behind individually, so such a leaf
- * costs its cell its full member count rather than one particle; the quota therefore does not block
- * splitting it further. As a result a cell can finish slightly above @a a_ppc when a leaf is both
- * too wide to merge and in a cell already at quota, since both available choices overshoot.
+ * mergeKDCarve() and mergeKDPatch() veto any leaf wider than @c s_kdMaxLeafExtent and leave its members
+ * behind individually, so such a leaf costs its cell its full member count rather than one particle. The
+ * quota is charged accordingly, and splitting a wide node is therefore exempt from it: the split merely
+ * moves that population between cells, and refusing it would strand every member as its own particle. A
+ * cell can still finish above @a a_ppc when a leaf is both too wide to merge and in a cell already at
+ * quota, since both available choices overshoot.
  *
  * Particles in cells at or below @a a_ppc are excluded from the partition and emitted as singleton
  * leaves. A singleton never merges (the merge threshold is two members), so an uncrowded cell cannot
  * be drained by a neighbour's merge.
  * @tparam Packed See MergeParticle.
  * @param[in,out] a_particles Particles to partition; reordered in place.
- * @param[in,out] a_used Live per-cell leaf quota for this patch, zeroed on entry. Its box must cover
- * every cell a leaf centroid can fall in, i.e. it needs at least one ghost cell.
+ * @param[in,out] a_used Live per-cell population quota for this patch, zeroed on entry. Its box must
+ * cover every cell a leaf centroid can fall in, i.e. it needs at least one ghost cell.
  * @param[out] a_leaves Every resulting leaf, in no particular order.
- * @param[in] a_ppc Target particles per cell, enforced here as a per-cell ceiling on leaf count.
+ * @param[in] a_ppc Target particles per cell, enforced here as a per-cell ceiling on the population the
+ * leaves will leave behind -- one particle per mergeable leaf, but a full member count for a leaf too
+ * wide to merge, which is what a leaf-count ceiling misses.
  * @param[in] a_weightMedianCellWidths Leaf size, in cell widths, at or below which the split plane
  * switches from the count median to the weight median. 0 disables the weight median.
  * @param[in] a_dx This patch's own cell spacing.

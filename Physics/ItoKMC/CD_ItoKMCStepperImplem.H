@@ -2089,11 +2089,28 @@ ItoKMCStepper<I, C, R, F>::computeDensityGradients() noexcept
     pout() << m_name + "::computeDensityGradients()" << endl;
   }
 
+  const int numItoSpecies = m_physics->getNumItoSpecies();
+
+  // Each gradient costs a cross-realm copy, a coarsening, a ghost interpolation and the gradient stencil
+  // itself, over the whole hierarchy. The reaction kernel reads a gradient slot for every species, but a
+  // chemistry typically corrects on one or two of them; the rest were computed and never looked at. Ask
+  // the physics which ones it actually reads, and zero the others so the unread slots hold a defined
+  // value rather than whatever the last grid left there.
+  //
+  // The plasma index is the Ito species first and then the CDR species, matching the density vector that
+  // updateReactionRates() is handed.
+
   // Do the same for the Ito species.
   for (auto it = m_ito->iterator(); it.ok(); ++it) {
     const RefCountedPtr<ItoSolver>& solver = it();
 
     const int idx = it.index();
+
+    if (!(m_physics->needGradient(idx))) {
+      DataOps::setValue(m_fluidGradPhiIto[idx], 0.0);
+
+      continue;
+    }
 
     // Update ghost cells and coarsenings. Then compute the gradient.
     m_amr->copyData(m_fluidPhiIto[idx], solver->getPhi());
@@ -2109,6 +2126,12 @@ ItoKMCStepper<I, C, R, F>::computeDensityGradients() noexcept
     const RefCountedPtr<CdrSolver>& solver = it();
 
     const int idx = it.index();
+
+    if (!(m_physics->needGradient(numItoSpecies + idx))) {
+      DataOps::setValue(m_fluidGradPhiCDR[idx], 0.0);
+
+      continue;
+    }
 
     // Update ghost cells and coarsenings. Then compute the gradient.
     m_amr->copyData(m_fluidScratch1, solver->getPhi());
@@ -4928,6 +4951,37 @@ ItoKMCStepper<I, C, R, F>::coarsenCDRSolvers(const bool a_interpGhosts) noexcept
     DataOps::setCoveredValue(phi, this->m_amr->getCoveredCells(phi.getRealm(), this->m_plasmaPhase), 0.0);
     DataOps::setCoveredValue(src, this->m_amr->getCoveredCells(src.getRealm(), this->m_plasmaPhase), 0.0);
   }
+}
+
+template <typename I, typename C, typename R, typename F>
+bool
+ItoKMCStepper<I, C, R, F>::needSecondaryEmissionEB() const noexcept
+{
+  CH_TIME("ItoKMCStepper::needSecondaryEmissionEB");
+  if (m_verbosity > 5) {
+    pout() << m_name + "::needSecondaryEmissionEB" << endl;
+  }
+
+  // A mobile CDR species can deliver flux to the boundary with no particles or photons involved at all, so
+  // its presence alone forces the emission to run. Static, hence no reduction.
+  for (auto solverIt = m_cdr->iterator(); solverIt.ok(); ++solverIt) {
+    if (solverIt()->isMobile()) {
+      return true;
+    }
+  }
+
+  long long numPrimaries = 0;
+
+  for (auto solverIt = m_ito->iterator(); solverIt.ok(); ++solverIt) {
+    numPrimaries += static_cast<long long>(
+      solverIt()->getParticles(ItoSolver::WhichContainer::EB).getNumberOfValidParticlesLocal());
+  }
+
+  for (auto solverIt = m_rte->iterator(); solverIt.ok(); ++solverIt) {
+    numPrimaries += static_cast<long long>(solverIt()->getEbPhotons().getNumberOfValidParticlesLocal());
+  }
+
+  return ParallelOps::sum(numPrimaries) > 0LL;
 }
 
 template <typename I, typename C, typename R, typename F>

@@ -182,6 +182,16 @@ public:
   needGradients() const noexcept override;
 
   /**
+   * @brief Return true if any reaction's gradient correction names this plasma species.
+   * @details The gradient corrections parsed out of the chemistry file already carry the species they
+   * apply to, so the answer is exact rather than the base class's blanket yes.
+   * @param[in] a_plasmaIndex Plasma species index (Ito species first, then CDR species).
+   * @return True if this species' gradient is read by at least one reaction.
+   */
+  virtual bool
+  needGradient(const int a_plasmaIndex) const noexcept override;
+
+  /**
    * @brief Compute the Ito solver mobilities.
    * @param[in] a_time Time.
    * @param[in] a_pos  Physical position.

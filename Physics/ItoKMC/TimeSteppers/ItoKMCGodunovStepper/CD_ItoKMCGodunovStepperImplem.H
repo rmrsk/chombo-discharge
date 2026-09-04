@@ -700,8 +700,10 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   if (m_emitSecondaryParticlesBeforeReactions) {
     this->barrier();
     m_timer.startEvent("EB particle injection");
-    this->fillSecondaryEmissionEB(a_dt);
-    this->resolveSecondaryEmissionEB(a_dt);
+    if (this->needSecondaryEmissionEB()) {
+      this->fillSecondaryEmissionEB(a_dt);
+      this->resolveSecondaryEmissionEB(a_dt);
+    }
     m_timer.stopEvent("EB particle injection");
   }
 
@@ -751,8 +753,10 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
   if (!m_emitSecondaryParticlesBeforeReactions) {
     this->barrier();
     m_timer.startEvent("EB particle injection");
-    this->fillSecondaryEmissionEB(a_dt);
-    this->resolveSecondaryEmissionEB(a_dt);
+    if (this->needSecondaryEmissionEB()) {
+      this->fillSecondaryEmissionEB(a_dt);
+      this->resolveSecondaryEmissionEB(a_dt);
+    }
     m_timer.stopEvent("EB particle injection");
   }
 
@@ -769,10 +773,22 @@ ItoKMCGodunovStepper<I, C, R, F>::advance(const Real a_dt)
     solverIt()->clear(ItoSolver::WhichContainer::Domain);
   }
 
-  // Prepare for the next time step
+  // Prepare for the next time step. This is computeDriftVelocities() minus setItoVelocityFunctions():
+  // that call rebuilds the mesh field sgn(Z)*E from m_electricFieldParticle, and no Poisson solve has run
+  // since "Step-compute v" built exactly the same field from exactly the same E. interpolateVelocities()
+  // only reads it, so it is still valid; the particles moved, not the field.
+  //
+  // setCdrVelocityFunctions() is NOT redundant in the same way and is kept:
+  // multiplyCdrVelocitiesByMobilities() scales the CDR velocity in place, so the field has to be reset to
+  // sgn(Z)*E before each scaling or the mobility compounds across steps.
   this->barrier();
   m_timer.startEvent("Post-compute v");
-  this->computeDriftVelocities();
+  this->setCdrVelocityFunctions();
+  this->computeMobilities();
+  for (auto solverIt = (this->m_ito)->iterator(); solverIt.ok(); ++solverIt) {
+    solverIt()->interpolateVelocities();
+  }
+  this->multiplyCdrVelocitiesByMobilities();
   m_timer.stopEvent("Post-compute v");
 
   this->barrier();
