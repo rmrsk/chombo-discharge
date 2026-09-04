@@ -1731,6 +1731,11 @@ ItoKMCGodunovStepper<I, C, R, F>::copyConductivityParticles(
           ParticleSoA<NoPayload>& pointParticles = (*a_conductivityParticles[idx])[lvl][din];
           ParticleSoA<NoPayload>& irregParticles = (*m_irregularParticles[idx])[lvl][din];
 
+          // One point particle per particle, plus whatever the catenate below brings. Reserved in one go
+          // because reserve() sizes the capacity exactly: reserving only the loop's own count would leave
+          // the container full, and the catenate would immediately reallocate it.
+          pointParticles.reserve(pointParticles.size() + leaf.size() + irregParticles.size());
+
           for (std::size_t i = 0; i < leaf.size(); i++) {
             const RealVect pos      = leaf.position(i);
             const Real     weight   = leaf.weight(i);
@@ -1943,6 +1948,14 @@ ItoKMCGodunovStepper<I, C, R, F>::diffuseParticlesEulerMaruyama(
 
         ParticleSoA<ItoParticle>& leaf           = particles[din];
         ParticleSoA<NoPayload>&   pointParticles = (*a_rhoDaggerParticles[idx])[lvl][din];
+
+        // A depositing species produces exactly one point particle per particle -- in the first pass if its
+        // displacement stayed in the fluid, otherwise in one of the two correction passes below, never both.
+        // The count is therefore known here, and reserving it keeps the appends from walking the doubling
+        // ladder: growing from 16 to a patch's population copies the arena roughly twice over, every step.
+        if (Z != 0) {
+          pointParticles.reserve(pointParticles.size() + leaf.size());
+        }
 
         // Puts (grad D)(X_p) on the scratch vector columns. Those columns are also where the total explicit
         // displacement ends up, so each particle's gradient is read into a local below before being

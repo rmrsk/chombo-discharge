@@ -3169,13 +3169,19 @@ ItoKMCStepper<I, C, R, F>::computeMobilities(Vector<EBCellFAB*>& a_itoMobilities
   // Physics interface mapping -- this maps a global index from the returned vector to an Ito or CDR solver
   const std::map<int, std::pair<SpeciesType, int>>& speciesMap = m_physics->getSpeciesMap();
 
+  // One buffer for the whole patch. The physics call fills it per cell; letting it return a vector instead
+  // meant an allocation and a free in every cell of the domain. Declared here rather than in the kernels so
+  // both share it -- they never run concurrently, and this function is already per-patch, so the buffer is
+  // private to the thread that owns this patch.
+  Vector<Real> mobilities;
+
   // Regular kernel
   auto regularKernel = [&](const IntVect& iv) -> void {
     const RealVect pos = m_amr->getProbLo() + dx * (RealVect(iv) + 0.5 * RealVect::Unit);
     const RealVect E   = RealVect(D_DECL(electricFieldReg(iv, 0), electricFieldReg(iv, 1), electricFieldReg(iv, 2)));
 
     // Call physics interface and compute mobilities for each species.
-    const Vector<Real> mobilities = m_physics->computeMobilities(a_time, pos, E);
+    m_physics->computeMobilities(mobilities, a_time, pos, E);
 
     CH_assert(mobilities.size() == numPlasmaSpecies);
 
@@ -3200,7 +3206,7 @@ ItoKMCStepper<I, C, R, F>::computeMobilities(Vector<EBCellFAB*>& a_itoMobilities
     const RealVect pos = probLo + Location::position(Location::Cell::Centroid, vof, ebisbox, dx);
 
     // Call physics interface and compute mobilities for each species.
-    const Vector<Real> mobilities = m_physics->computeMobilities(a_time, pos, e);
+    m_physics->computeMobilities(mobilities, a_time, pos, e);
 
     CH_assert(mobilities.size() == numPlasmaSpecies);
 
@@ -3221,7 +3227,7 @@ ItoKMCStepper<I, C, R, F>::computeMobilities(Vector<EBCellFAB*>& a_itoMobilities
 
   VoFIterator& vofit = (*m_amr->getVofIterator(m_fluidRealm, m_plasmaPhase)[a_level])[a_din];
 
-  // Run the kernels. Not vectorizable: m_physics->computeMobilities is a virtual call returning a Vector<Real>
+  // Run the kernels. Not vectorizable: m_physics->computeMobilities is an opaque virtual call
   // (heap allocation) per cell, then scattered to the per-species data holders.
   BoxLoops::loop<D_DECL(1, 1, 1)>(a_box, regularKernel);
   BoxLoops::loop(vofit, irregularKernel);
@@ -3442,13 +3448,16 @@ ItoKMCStepper<I, C, R, F>::computeDiffusionCoefficients(Vector<EBCellFAB*>& a_it
   // Physics interface mapping -- this maps a global index from the returned vector to an Ito or CDR solver
   const std::map<int, std::pair<SpeciesType, int>>& speciesMap = m_physics->getSpeciesMap();
 
+  // One buffer for the whole patch -- see computeMobilities() for why this is not left to the physics call.
+  Vector<Real> diffusionCoefficients;
+
   // Regular kernel definition.
   auto regularKernel = [&](const IntVect& iv) -> void {
     const RealVect pos = probLo + dx * (RealVect(iv) + 0.5 * RealVect::Unit);
     const RealVect E   = RealVect(D_DECL(electricFieldReg(iv, 0), electricFieldReg(iv, 1), electricFieldReg(iv, 2)));
 
     // Compute diffusion coefficients.
-    const Vector<Real> diffusionCoefficients = m_physics->computeDiffusionCoefficients(a_time, pos, E);
+    m_physics->computeDiffusionCoefficients(diffusionCoefficients, a_time, pos, E);
 
     CH_assert(diffusionCoefficients.size() == numPlasmaSpecies);
 
@@ -3478,7 +3487,7 @@ ItoKMCStepper<I, C, R, F>::computeDiffusionCoefficients(Vector<EBCellFAB*>& a_it
     const RealVect pos = probLo + Location::position(Location::Cell::Centroid, vof, ebisbox, dx);
 
     // Compute diffusion coefficients.
-    const Vector<Real> diffusionCoefficients = m_physics->computeDiffusionCoefficients(a_time, pos, E);
+    m_physics->computeDiffusionCoefficients(diffusionCoefficients, a_time, pos, E);
 
     // Put the diffusion coefficients in the correct solver storage.
     for (const auto& s : speciesMap) {

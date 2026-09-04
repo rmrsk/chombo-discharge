@@ -198,8 +198,11 @@ public:
    * @param[in] a_E    Electric field vector.
    * @return Vector of non-negative mobility coefficients for all plasma species.
    */
-  virtual Vector<Real>
-  computeMobilities(const Real a_time, const RealVect& a_pos, const RealVect& a_E) const noexcept override;
+  virtual void
+  computeMobilities(Vector<Real>&   a_mobilities,
+                    const Real      a_time,
+                    const RealVect& a_pos,
+                    const RealVect& a_E) const noexcept override;
 
   /**
    * @brief Compute the Ito solver diffusion coefficients.
@@ -208,8 +211,11 @@ public:
    * @param[in] a_E    Electric field vector.
    * @return Vector of non-negative diffusion coefficients for all plasma species.
    */
-  virtual Vector<Real>
-  computeDiffusionCoefficients(const Real a_time, const RealVect& a_pos, const RealVect& a_E) const noexcept override;
+  virtual void
+  computeDiffusionCoefficients(Vector<Real>&   a_diffusionCoefficients,
+                               const Real      a_time,
+                               const RealVect& a_pos,
+                               const RealVect& a_E) const noexcept override;
 
   /**
    * @brief Resolve secondary emission at the EB.

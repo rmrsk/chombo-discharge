@@ -377,12 +377,16 @@ LookupTable1D<T, N, I>::interpolate(const T& a_x) const
       const T diffDx   = m_structuredData[1][indVar] - m_structuredData[0][indVar];
       const T extrapDx = m_structuredData[0][indVar] - a_x;
 
+      // Scale by the ratio rather than dividing per column: diffDx does not depend on the column, but the
+      // division did, so an N-column table paid N divisions where one is enough. This is the hot path of
+      // every mobility, diffusion coefficient and reaction rate evaluated from a table -- once per species
+      // per grid cell -- and the compiler cannot hoist the reciprocal itself without -freciprocal-math.
+      const T frac = extrapDx / diffDx;
+
       ret = m_structuredData.front();
 
       for (size_t i = 0; i < N + 1; i++) {
-        const T slope = (m_structuredData[1][i] - m_structuredData[0][i]) / diffDx;
-
-        ret[i] -= slope * extrapDx;
+        ret[i] -= (m_structuredData[1][i] - m_structuredData[0][i]) * frac;
       }
 
       break;
@@ -407,12 +411,13 @@ LookupTable1D<T, N, I>::interpolate(const T& a_x) const
       const T diffDx   = m_structuredData[size - 1][indVar] - m_structuredData[size - 2][indVar];
       const T extrapDx = a_x - m_structuredData[size - 1][indVar];
 
+      // One division for the whole row -- see the low-end branch above.
+      const T frac = extrapDx / diffDx;
+
       ret = m_structuredData.back();
 
       for (size_t i = 0; i < N + 1; i++) {
-        const T slope = (m_structuredData[size - 1][i] - m_structuredData[size - 2][i]) / diffDx;
-
-        ret[i] += slope * extrapDx;
+        ret[i] += (m_structuredData[size - 1][i] - m_structuredData[size - 2][i]) * frac;
       }
 
       break;
@@ -430,12 +435,13 @@ LookupTable1D<T, N, I>::interpolate(const T& a_x) const
     const T diffDx   = m_structuredData[idx + 1][indVar] - m_structuredData[idx][indVar];
     const T interpDx = a_x - m_structuredData[idx][indVar];
 
+    // One division for the whole row -- see the low-end branch above.
+    const T frac = interpDx / diffDx;
+
     ret = m_structuredData[idx];
 
     for (size_t i = 0; i < N + 1; i++) {
-      const T slope = (m_structuredData[idx + 1][i] - m_structuredData[idx][i]) / diffDx;
-
-      ret[i] += slope * interpDx;
+      ret[i] += (m_structuredData[idx + 1][i] - m_structuredData[idx][i]) * frac;
     }
   }
 

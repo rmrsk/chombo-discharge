@@ -271,23 +271,37 @@ public:
 
   /**
    * @brief Compute the Ito solver mobilities.
-   * @param[in] a_time Time
-   * @param[in] a_pos  Position
-   * @param[in] a_E    Electric field
-   * @return Must return a vector of non-negative mobility coefficients for the plasma species
+   * @details Fills a caller-owned buffer rather than returning one. This is called once per grid cell, so a
+   * returned Vector<Real> was a heap allocation and a free per cell -- pure overhead, and (with Chombo memory
+   * tracking compiled in) a pair of counter updates on top. The caller hoists one buffer per patch instead.
+   *
+   * Implementations must size a_mobilities to the number of plasma species and fill every entry; a species
+   * that is not mobile should be given zero rather than skipped, so the indexing stays dense.
+   * @param[out] a_mobilities Non-negative mobility coefficient per plasma species. Resized by the callee.
+   * @param[in]  a_time       Time
+   * @param[in]  a_pos        Position
+   * @param[in]  a_E          Electric field
    */
-  virtual Vector<Real>
-  computeMobilities(const Real a_time, const RealVect& a_pos, const RealVect& a_E) const noexcept = 0;
+  virtual void
+  computeMobilities(Vector<Real>&   a_mobilities,
+                    const Real      a_time,
+                    const RealVect& a_pos,
+                    const RealVect& a_E) const noexcept = 0;
 
   /**
    * @brief Compute the Ito solver diffusion coefficients
-   * @param[in] a_time Time
-   * @param[in] a_pos  Position
-   * @param[in] a_E    Electric field
-   * @return Must return a vector of non-negative diffusion coefficients for the plasma species
+   * @details Fills a caller-owned buffer; see computeMobilities() for why.
+   * @param[out] a_diffusionCoefficients Non-negative diffusion coefficient per plasma species. Resized by
+   *                                     the callee.
+   * @param[in]  a_time                  Time
+   * @param[in]  a_pos                   Position
+   * @param[in]  a_E                     Electric field
    */
-  virtual Vector<Real>
-  computeDiffusionCoefficients(const Real a_time, const RealVect& a_pos, const RealVect& a_E) const noexcept = 0;
+  virtual void
+  computeDiffusionCoefficients(Vector<Real>&   a_diffusionCoefficients,
+                               const Real      a_time,
+                               const RealVect& a_pos,
+                               const RealVect& a_E) const noexcept = 0;
 
   /**
    * @brief Resolve secondary emission at the EB.
