@@ -480,6 +480,24 @@ ItoSolver::parseParticleMerger()
     MayDay::Abort("ItoSolver::parseParticleMerger - 'kd_hybrid_leaf_dx' must be >= 0");
   }
 
+  // kd_amr's boundary tier arbitrates contested particles by id, and it resolves a winner's weight and
+  // position by looking the id back up in a table built BEFORE the merge divides anything. The cap's
+  // pieces inherit their parent's id, so such a lookup would return the parent's original weight -- the
+  // full, pre-cap value -- for every piece, double-counting the parent's mass across the boundary and
+  // discarding whatever split_placement did to the piece's position. Refuse the combination rather than
+  // silently lose mass; capping is safe for kd_cell and kd_patch, neither of which resolves anything by
+  // id. Lifting this needs the pieces to carry fresh ids AND the id table to be built after the cap.
+  const auto capsWithAmr = [&](const ParticleManagement::ParticleMergeMethod a_method) -> bool {
+    return a_method == ParticleManagement::ParticleMergeMethod::KdAmr &&
+           m_kdPartition == ParticleManagement::KDPartition::WeightCapped;
+  };
+
+  if (capsWithAmr(m_mergeMethod) || (m_regridMergeMethod.has_value() && capsWithAmr(m_regridMergeMethod.value()))) {
+    MayDay::Abort("ItoSolver::parseParticleMerger - 'kd_partition = weight_capped' is not supported with "
+                  "'merge_method = kd_amr' (the boundary tier resolves particles by id, and the cap's "
+                  "pieces share their parent's id). Use kd_cell or kd_patch, or another kd_partition");
+  }
+
   if (m_particlesPerCell.size() < 1) {
     MayDay::Abort("ItoSolver::parseParticleMerger - 'particles_per_cell' must have at least one entry");
   }

@@ -276,6 +276,12 @@ kdFillCellHistogram(FArrayBox&                                a_counts,
  *
  * Ghosts are never capped. A ghost belongs to another patch, which is capping it too; splitting it here
  * as well would double-count its weight.
+ *
+ * A displaced piece is validated with the caller's own position predicate and falls back to the parent's
+ * position if it fails. Unlike the per-cell build this has no CellInfo to test the volume fraction with,
+ * and a piece that is never merged -- its leaf vetoed for width, or lost at a contested boundary -- keeps
+ * the position it was given, so a raw displacement in a cut cell could otherwise leave a particle inside
+ * the solid.
  * @tparam Packed See MergeParticle.
  * @param[in,out] a_particles Gathered particles for this patch; grown in place by the split pieces.
  * @param[in] a_cellCounts Per-cell true particle counts (see kdFillCellHistogram()).
@@ -284,8 +290,9 @@ kdFillCellHistogram(FArrayBox&                                a_counts,
  * @param[in] a_splitPlacement Where each piece goes -- see ParticleManagement::KDSplitPlacement.
  * @param[in] a_probLo Physical position of the domain's low corner.
  * @param[in] a_dx This patch's own cell spacing.
+ * @param[in] a_isPositionValid Predicate rejecting positions inside the embedded boundary.
  */
-template <typename Packed>
+template <typename Packed, typename PosValid>
 inline void
 kdCapCellWeights(std::vector<MergeParticle<Packed>>& a_particles,
                  const FArrayBox&                    a_cellCounts,
@@ -293,7 +300,8 @@ kdCapCellWeights(std::vector<MergeParticle<Packed>>& a_particles,
                  const int                           a_ppc,
                  const KDSplitPlacement              a_splitPlacement,
                  const RealVect&                     a_probLo,
-                 const RealVect&                     a_dx) noexcept
+                 const RealVect&                     a_dx,
+                 const PosValid&                     a_isPositionValid) noexcept
 {
   if (a_ppc < 1) {
     return;
@@ -342,12 +350,15 @@ kdCapCellWeights(std::vector<MergeParticle<Packed>>& a_particles,
     for (std::size_t k = 1; k < pieces.size(); k++) {
       MergeParticle<Packed> piece = parent;
 
-      piece.weight   = static_cast<Real>(pieces[k]);
-      piece.position = ParticleManagement::detail::kdSplitDisplace(a_splitPlacement,
-                                                                   parent.position,
-                                                                   cellLo,
-                                                                   a_dx,
-                                                                   spacing);
+      piece.weight = static_cast<Real>(pieces[k]);
+
+      const RealVect displaced = ParticleManagement::detail::kdSplitDisplace(a_splitPlacement,
+                                                                             parent.position,
+                                                                             cellLo,
+                                                                             a_dx,
+                                                                             spacing);
+
+      piece.position = a_isPositionValid(displaced) ? displaced : parent.position;
 
       a_particles.push_back(piece);
     }
@@ -1083,7 +1094,7 @@ mergeKDCarve(ParticleContainer<P, Traits>& a_particles,
           }
         }
 
-        kdCapCellWeights(combined, cellCounts, cellWeights, a_ppc, a_splitPlacement, probLo, dx);
+        kdCapCellWeights(combined, cellCounts, cellWeights, a_ppc, a_splitPlacement, probLo, dx, a_isPositionValid);
       }
 
       buildKDQuotaLeaves(combined, quota, leaves, a_ppc, a_weightMedianCellWidths, dx, probLo, cellCounts);
@@ -1930,7 +1941,7 @@ mergeKDInterior(ParticleContainer<P, Traits>& a_particles,
           }
         }
 
-        kdCapCellWeights(combined, cellCounts, cellWeights, a_ppc, a_splitPlacement, probLo, dx);
+        kdCapCellWeights(combined, cellCounts, cellWeights, a_ppc, a_splitPlacement, probLo, dx, a_isPositionValid);
       }
 
       buildKDQuotaLeaves(combined, quota, leaves, a_ppc, a_weightMedianCellWidths, dx, probLo, cellCounts);
