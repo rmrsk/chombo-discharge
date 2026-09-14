@@ -184,6 +184,11 @@ ComputationalGeometry::buildGeometries(const ProblemDomain& a_finestDomain,
 
   // Build the geoservers. This creates the composite implicit functions and the GeometryService* objects which
   // can be passed to Chombo. Note that the
+  // The index space borrows a raw pointer to each generator and keeps it, so the generators are
+  // held here rather than freed when this call returns: refining a cell the index space did not
+  // carry has to ask its generator long afterwards.
+  m_geoservers.resize(2);
+
   Vector<GeometryService*> geoServices(2, nullptr);
 
   // A level the generator only hands back part of cannot be coarsened into the level below it, so
@@ -199,8 +204,12 @@ ComputationalGeometry::buildGeometries(const ProblemDomain& a_finestDomain,
 
   m_generateEveryLevel = (m_generator == Generator::PolyhedralShop && haveFinerRegions);
 
-  this->buildGasGeometry(geoServices[phase::gas], a_finestDomain, a_probLo, a_finestDx);
-  this->buildSolidGeometry(geoServices[phase::solid], a_finestDomain, a_probLo, a_finestDx);
+  this->buildGasGeometry(m_geoservers[phase::gas], a_finestDomain, a_probLo, a_finestDx);
+  this->buildSolidGeometry(m_geoservers[phase::solid], a_finestDomain, a_probLo, a_finestDx);
+
+  for (int i = 0; i < 2; i++) {
+    geoServices[i] = m_geoservers[i].isNull() ? nullptr : &(*m_geoservers[i]);
+  }
 
   // Define the multifluid index space.
   const bool useDistributedData = (m_generator != Generator::GeometryShop);
@@ -214,13 +223,6 @@ ComputationalGeometry::buildGeometries(const ProblemDomain& a_finestDomain,
                                  useDistributedData,
                                  a_nCellMax,
                                  a_maxCoarsen);
-
-  // Delete temps.
-  for (int i = 0; i < 2; i++) {
-    if (geoServices[i] != nullptr) {
-      delete geoServices[i];
-    }
-  }
 }
 
 Real
@@ -663,10 +665,10 @@ ComputationalGeometry::getCurvatureTags(Vector<Vector<Box>>& a_regions,
 }
 
 void
-ComputationalGeometry::buildGasGeometry(GeometryService*&    a_geoserver,
-                                        const ProblemDomain& a_finestDomain,
-                                        const RealVect&      a_probLo,
-                                        const Real           a_finestDx)
+ComputationalGeometry::buildGasGeometry(RefCountedPtr<GeometryService>& a_geoserver,
+                                        const ProblemDomain&            a_finestDomain,
+                                        const RealVect&                 a_probLo,
+                                        const Real                      a_finestDx)
 {
   CH_TIME("ComputationalGeometry::buildGasGeometry(GeometryService, ProblemDomain, RealVect, Real)");
 
@@ -686,7 +688,7 @@ ComputationalGeometry::buildGasGeometry(GeometryService*&    a_geoserver,
     shop->setCoverage(m_coverageRegions, m_coverageDomain);
     shop->setProfileFileName("PolyhedralShopReportGasPhase.dat");
 
-    a_geoserver = static_cast<GeometryService*>(shop);
+    a_geoserver = RefCountedPtr<GeometryService>(static_cast<GeometryService*>(shop));
   }
   else if (m_generator == Generator::ScanShop) {
     auto* scanShop = new ScanShop(*m_implicitFunctionGas,
@@ -700,19 +702,19 @@ ComputationalGeometry::buildGasGeometry(GeometryService*&    a_geoserver,
 
     scanShop->setProfileFileName("ScanShopReportGasPhase.dat");
 
-    a_geoserver = static_cast<GeometryService*>(scanShop);
+    a_geoserver = RefCountedPtr<GeometryService>(static_cast<GeometryService*>(scanShop));
   }
   else { // Chombo geometry generation
-    a_geoserver = static_cast<GeometryService*>(
-      new GeometryShop(*m_implicitFunctionGas, 0, a_finestDx * RealVect::Unit, s_thresh));
+    a_geoserver = RefCountedPtr<GeometryService>(static_cast<GeometryService*>(
+      new GeometryShop(*m_implicitFunctionGas, 0, a_finestDx * RealVect::Unit, s_thresh)));
   }
 }
 
 void
-ComputationalGeometry::buildSolidGeometry(GeometryService*&    a_geoserver,
-                                          const ProblemDomain& a_finestDomain,
-                                          const RealVect&      a_probLo,
-                                          const Real           a_finestDx)
+ComputationalGeometry::buildSolidGeometry(RefCountedPtr<GeometryService>& a_geoserver,
+                                          const ProblemDomain&            a_finestDomain,
+                                          const RealVect&                 a_probLo,
+                                          const Real                      a_finestDx)
 {
   CH_TIME("ComputationalGeometry::buildSolidGeometry(GeometryService, ProblemDomain, RealVect, Real)");
 
@@ -721,7 +723,7 @@ ComputationalGeometry::buildSolidGeometry(GeometryService*&    a_geoserver,
 
   // Without dielectrics there is no solid phase to generate.
   if (m_implicitFunctionSolid.isNull()) {
-    a_geoserver = nullptr;
+    a_geoserver = RefCountedPtr<GeometryService>();
   }
   else {
 
@@ -741,7 +743,7 @@ ComputationalGeometry::buildSolidGeometry(GeometryService*&    a_geoserver,
       shop->setCoverage(m_coverageRegions, m_coverageDomain);
       shop->setProfileFileName("PolyhedralShopReportSolidPhase.dat");
 
-      a_geoserver = static_cast<GeometryService*>(shop);
+      a_geoserver = RefCountedPtr<GeometryService>(static_cast<GeometryService*>(shop));
     }
     else if (m_generator == Generator::ScanShop) {
       auto* scanShop = new ScanShop(*m_implicitFunctionSolid,
@@ -755,11 +757,11 @@ ComputationalGeometry::buildSolidGeometry(GeometryService*&    a_geoserver,
 
       scanShop->setProfileFileName("ScanShopReportSolidPhase.dat");
 
-      a_geoserver = static_cast<GeometryService*>(scanShop);
+      a_geoserver = RefCountedPtr<GeometryService>(static_cast<GeometryService*>(scanShop));
     }
     else { // Chombo geometry generation
-      a_geoserver = static_cast<GeometryService*>(
-        new GeometryShop(*m_implicitFunctionSolid, 0, a_finestDx * RealVect::Unit, s_thresh));
+      a_geoserver = RefCountedPtr<GeometryService>(static_cast<GeometryService*>(
+        new GeometryShop(*m_implicitFunctionSolid, 0, a_finestDx * RealVect::Unit, s_thresh)));
     }
   }
 }
