@@ -1389,14 +1389,62 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
   }
 #endif
 
+  // Every cut cell of every level, cut into the cells one refinement finer and checked that the pieces add
+  // back up. Nothing downstream reads the result yet; this says whether they would be right to.
+  long long numSubdivision = 0;
+  long long numCut         = 0;
+  long long numSplitParent = 0;
+
+  for (int lvl = 0; lvl < a_graphs.size(); lvl++) {
+    if (a_graphs[lvl].isNull() || !a_graphs[lvl]->isDefined()) {
+      continue;
+    }
+
+    const PolyhedralEBGraph& graph = *a_graphs[lvl];
+
+    const DisjointBoxLayout&                 grids    = graph.getGrids();
+    const LayoutData<IntVectSet>&            cutCells = graph.getCutCells();
+    const LevelData<IVSFAB<CutCellSurface>>& surfaces = graph.getSurfaces();
+
+    for (DataIterator dit(grids); dit.ok(); ++dit) {
+      const IntVectSet&             cut    = cutCells[dit()];
+      const IVSFAB<CutCellSurface>& stored = surfaces[dit()];
+
+      for (IVSIterator ivsIt(cut); ivsIt.ok(); ++ivsIt) {
+        CutCellBody body;
+
+        if (!body.define(stored(ivsIt(), 0))) {
+          continue;
+        }
+
+        CutCellBody children[1 << SpaceDim];
+
+        numCut++;
+
+        if (!body.isConnected()) {
+          numSplitParent++;
+        }
+
+        if (!body.subdivide(children)) {
+          numSubdivision++;
+        }
+      }
+    }
+  }
+
+  const long long totalSubdivision = ParallelOps::sum(numSubdivision);
+  const long long totalCut         = ParallelOps::sum(numCut);
+  const long long totalSplitParent = ParallelOps::sum(numSplitParent);
+
   const long long totalOpen     = ParallelOps::sum(numOpen);
   const long long totalOverused = ParallelOps::sum(numOverused);
   const long long totalTouching = ParallelOps::sum(numTouching);
 
   if (procID() == 0) {
     pout() << "PolyhedralGeometryShop::sanityCheck - " << totalOpen << " interior edges open, " << totalOverused
-           << " interior edges used more than twice, " << totalTouching << " regular cells against a covered one"
-           << endl;
+           << " interior edges used more than twice, " << totalTouching << " regular cells against a covered one, "
+           << totalSubdivision << " of " << totalCut << " cells that would not cut into the level above, "
+           << totalSplitParent << " holding fluid in more than one piece" << endl;
   }
 
   if (totalTouching > 0) {
