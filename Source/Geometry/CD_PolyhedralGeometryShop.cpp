@@ -270,6 +270,7 @@ PolyhedralGeometryShop::collectFacets(Vector<Real>& a_facets, const int a_level)
   const DisjointBoxLayout&                 grids    = graph.getGrids();
   const LayoutData<IntVectSet>&            cutCells = graph.getCutCells();
   const LevelData<IVSFAB<CutCellSurface>>& surfaces = graph.getSurfaces();
+  const LevelData<BaseFab<signed char>>&   states   = graph.getCellStates();
   const LevelData<BaseFab<signed char>>&   refined  = graph.getRefinedMask();
 
   // Every cut cell of this rank's tiles that the finer level does not carry.
@@ -277,6 +278,7 @@ PolyhedralGeometryShop::collectFacets(Vector<Real>& a_facets, const int a_level)
     const Box                     box        = grids[dit()];
     const IntVectSet&             cut        = cutCells[dit()];
     const IVSFAB<CutCellSurface>& stored     = surfaces[dit()];
+    const BaseFab<signed char>&   statesFab  = states[dit()];
     const BaseFab<signed char>&   refinedFab = refined[dit()];
 
     // in the order a BoxIterator meets the cells, so that the surface's order does not depend on how the set
@@ -290,7 +292,7 @@ PolyhedralGeometryShop::collectFacets(Vector<Real>& a_facets, const int a_level)
 
       CutCellBody body;
 
-      this->defineBody(body, graph, stored, refinedFab, iv);
+      this->defineBody(body, graph, stored, statesFab, refinedFab, iv);
 
       body.appendInterfaceFacets(a_facets, iv, m_probLo, dx);
     }
@@ -303,6 +305,7 @@ void
 PolyhedralGeometryShop::defineBody(PolyhedralEB::CutCellBody&                  a_body,
                                    const PolyhedralEBGraph&                    a_graph,
                                    const IVSFAB<PolyhedralEB::CutCellSurface>& a_surfaces,
+                                   const BaseFab<signed char>&                 a_states,
                                    const BaseFab<signed char>&                 a_refined,
                                    const IntVect&                              a_cell) const
 {
@@ -588,6 +591,26 @@ PolyhedralGeometryShop::defineBody(PolyhedralEB::CutCellBody&                  a
     a_body.printPolygons(pout());
 
     MayDay::Error("PolyhedralGeometryShop::defineBody - a restricted cell's interface did not close");
+  }
+
+  // A face onto a cell the graph filled leads nowhere. It is closed rather than left reading an aperture the
+  // neighbour no longer agrees with, and what it gives up becomes interface in the plane of that face, so the
+  // surface closes over the filled cell instead of ending against it.
+  for (int dir = 0; dir < SpaceDim; dir++) {
+    for (int side = 0; side < 2; side++) {
+      const IntVect other = a_cell + (2 * side - 1) * BASISV(dir);
+
+      if (!a_states.box().contains(other) || a_states(other, 0) != PolyhedralEBGraph::s_covered) {
+        continue;
+      }
+
+      if (!a_body.snapFace(dir, side, false)) {
+        pout() << "PolyhedralGeometryShop::defineBody - cell " << a_cell << " could not close face " << dir << "/"
+               << side << " onto a filled cell" << endl;
+
+        MayDay::Error("PolyhedralGeometryShop::defineBody - a face onto a filled cell could not be closed");
+      }
+    }
   }
 }
 #endif
@@ -1185,6 +1208,7 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
     const DisjointBoxLayout&                 grids      = graph.getGrids();
     const LayoutData<IntVectSet>&            cutCells   = graph.getCutCells();
     const LevelData<IVSFAB<CutCellSurface>>& surfaces   = graph.getSurfaces();
+    const LevelData<BaseFab<signed char>>&   states     = graph.getCellStates();
     const LevelData<BaseFab<signed char>>&   refined    = graph.getRefinedMask();
     const LevelData<BaseFab<signed char>>&   faceStates = graph.getFaceStates();
 
@@ -1200,6 +1224,7 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
       const Box                     grown      = grow(box, 1) & domain;
       const IntVectSet&             cut        = cutCells[dit()];
       const IVSFAB<CutCellSurface>& stored     = surfaces[dit()];
+      const BaseFab<signed char>&   statesFab  = states[dit()];
       const BaseFab<signed char>&   refinedFab = refined[dit()];
       const BaseFab<signed char>&   faces      = faceStates[dit()];
 
@@ -1220,7 +1245,7 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
 
         CutCellBody body;
 
-        this->defineBody(body, graph, stored, refinedFab, iv);
+        this->defineBody(body, graph, stored, statesFab, refinedFab, iv);
 
         table(iv, 0) = facets.size();
 
@@ -1351,7 +1376,15 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
             for (int side = 0; side < 2 && !exempt; side++) {
               const int state = faces(iv, 2 * dir + side);
 
-              if (state != PolyhedralEBGraph::s_faceBoundary && state != PolyhedralEBGraph::s_faceCoarser) {
+              const IntVect other = iv + (2 * side - 1) * BASISV(dir);
+
+              // A face onto a cell the graph filled is closed and holds nothing across it, so an edge in that
+              // plane has no partner to meet and is not this cell's to check -- as for a face on the domain
+              // boundary, or one the coarser level describes.
+              const bool filled = statesFab.box().contains(other) &&
+                                  statesFab(other, 0) == PolyhedralEBGraph::s_covered;
+
+              if (state != PolyhedralEBGraph::s_faceBoundary && state != PolyhedralEBGraph::s_faceCoarser && !filled) {
                 continue;
               }
 
@@ -1401,11 +1434,15 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
   }
 #endif
 
-  // Every cut cell of every level, cut into the cells one refinement finer and checked that the pieces add
-  // back up. Nothing downstream reads the result yet; this says whether they would be right to.
-  long long numSubdivision = 0;
-  long long numCut         = 0;
-  long long numSplitParent = 0;
+  // Every cut cell of every level that the level itself describes, cut for a refinement and checked that the
+  // pieces add back up and that none of them holds fluid in more than one piece. Nothing downstream reads the
+  // result yet; this says whether they would be right to.
+  long long numSubdivision  = 0;
+  long long numCut          = 0;
+  long long numSplitParent  = 0;
+  long long numPlanar       = 0;
+  long long numMulti[3]     = {0, 0, 0};
+  long long numMultiSeam[3] = {0, 0, 0};
 
   for (int lvl = 0; lvl < a_graphs.size(); lvl++) {
     if (a_graphs[lvl].isNull() || !a_graphs[lvl]->isDefined()) {
@@ -1417,15 +1454,44 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
     const DisjointBoxLayout&                 grids    = graph.getGrids();
     const LayoutData<IntVectSet>&            cutCells = graph.getCutCells();
     const LevelData<IVSFAB<CutCellSurface>>& surfaces = graph.getSurfaces();
+    const LevelData<BaseFab<signed char>>&   refinedM = graph.getRefinedMask();
+    const LevelData<BaseFab<signed char>>&   statesM  = graph.getCellStates();
 
     for (DataIterator dit(grids); dit.ok(); ++dit) {
       const IntVectSet&             cut    = cutCells[dit()];
       const IVSFAB<CutCellSurface>& stored = surfaces[dit()];
+      const BaseFab<signed char>&   refFab = refinedM[dit()];
+      const BaseFab<signed char>&   staFab = statesM[dit()];
 
       for (IVSIterator ivsIt(cut); ivsIt.ok(); ++ivsIt) {
+        const IntVect iv = ivsIt();
+
+        // A cell the finer level carries is described up there; this level's reading of it is not what gets
+        // used, and it is not this level's to check.
+        if (refFab(iv, 0) != 0) {
+          continue;
+        }
+
+        // The body the consumers build, which on a refinement boundary is the one whose faces have been taken
+        // from the finer level. Its interface loop is longer than the unstitched one, so it is the body the
+        // multi-valued question has to be asked of -- asking the raw surface would answer for a cell that is
+        // not the one anybody uses.
+        bool seam = false;
+
+        for (int dir = 0; dir < SpaceDim && !seam; dir++) {
+          for (int side = 0; side < 2 && !seam; side++) {
+            const IntVect jv = iv + (2 * side - 1) * BASISV(dir);
+
+            seam = refFab.box().contains(jv) && refFab(jv, 0) != 0;
+          }
+        }
+
         CutCellBody body;
 
-        if (!body.define(stored(ivsIt(), 0))) {
+        if (seam) {
+          this->defineBody(body, graph, stored, staFab, refFab, iv);
+        }
+        else if (!body.define(stored(iv, 0))) {
           continue;
         }
 
@@ -1440,9 +1506,34 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
         if (!body.subdivide(children)) {
           numSubdivision++;
         }
+
+        if (body.interfaceIsPlanar()) {
+          numPlanar++;
+        }
+        else {
+          // Asked at each ratio separately rather than once at the deepest, so the report says how far a cell
+          // can be refined before it stops being single valued, not merely that it cannot reach the deepest.
+          for (int k = 0; k < 3; k++) {
+            if (body.hasMultiValuedChildren(2 << k)) {
+              numMulti[k]++;
+
+              if (seam) {
+                numMultiSeam[k]++;
+              }
+            }
+          }
+        }
       }
     }
   }
+
+  const long long totalPlanar = ParallelOps::sum(numPlanar);
+  const long long totalMulti2 = ParallelOps::sum(numMulti[0]);
+  const long long totalMulti4 = ParallelOps::sum(numMulti[1]);
+  const long long totalMulti8 = ParallelOps::sum(numMulti[2]);
+  const long long seamMulti2  = ParallelOps::sum(numMultiSeam[0]);
+  const long long seamMulti4  = ParallelOps::sum(numMultiSeam[1]);
+  const long long seamMulti8  = ParallelOps::sum(numMultiSeam[2]);
 
   const long long totalSubdivision = ParallelOps::sum(numSubdivision);
   const long long totalCut         = ParallelOps::sum(numCut);
@@ -1457,6 +1548,12 @@ PolyhedralGeometryShop::sanityCheck(const Vector<RefCountedPtr<PolyhedralEBGraph
            << " interior edges used more than twice, " << totalTouching << " regular cells against a covered one, "
            << totalSubdivision << " of " << totalCut << " cells that would not cut into the level above, "
            << totalSplitParent << " holding fluid in more than one piece" << endl;
+
+    pout() << "PolyhedralGeometryShop::sanityCheck - " << totalPlanar << " of " << totalCut
+           << " cut cells have a planar interface and stay single valued at every refinement; of the rest, "
+           << totalMulti2 << " lose it at refinement 2, " << totalMulti4 << " by 4, " << totalMulti8
+           << " by 8 (of those, on a refinement boundary: " << seamMulti2 << "/" << seamMulti4 << "/" << seamMulti8
+           << ")" << endl;
   }
 
   if (totalTouching > 0) {
@@ -1990,9 +2087,12 @@ PolyhedralGeometryShop::fillGraph(BaseFab<int>&        a_regIrregCovered,
   PolyhedralGeometryShop::fillNodeValues(*m_baseIF, nodeValues, a_ghostRegion, a_probLo, a_dx);
 
   // The same reading the graph takes: a cell the surface enters as more than one sheet cannot be described by
-  // one body and one interface, so the fewest corners are read as solid to bring it back to one. Done before
-  // any cell is classified, so that every cell of the box sees the same nodes.
-  PolyhedralEBGraph::snapUnresolvedNodes(nodeValues, a_ghostRegion, Vector<Box>());
+  // one body and one interface, so it is filled rather than built. Decided for the whole region before any cell
+  // is classified. Nothing is carried above this level -- it is the finest the index space is generated on, the
+  // coarser ones being coarsened from it -- so no cell is spared for being resolved elsewhere.
+  BaseFab<bool> unresolved(a_ghostRegion, 1);
+
+  PolyhedralEBGraph::findUnresolvedCells(nodeValues, a_ghostRegion, Vector<Box>(), unresolved);
 
   IntVectSet irregularCells;
 
@@ -2001,6 +2101,12 @@ PolyhedralGeometryShop::fillGraph(BaseFab<int>&        a_regIrregCovered,
 
     PolyhedralEB::CutCellSurface surface;
     PolyhedralGeometryShop::fillCorners(surface, nodeValues, iv);
+
+    if (unresolved(iv, 0)) {
+      a_regIrregCovered(iv, 0) = -1;
+
+      continue;
+    }
 
     switch (PolyhedralEB::CutCellBody::classify(surface)) {
     case PolyhedralEB::CutCellBody::Kind::Covered: {

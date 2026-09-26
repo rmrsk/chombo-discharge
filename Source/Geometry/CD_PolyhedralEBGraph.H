@@ -162,23 +162,27 @@ public:
   link(PolyhedralEBGraph& a_coarse, const PolyhedralEBGraph& a_fine);
 
   /**
-   * @brief Read corners as solid until no cell of a region holds more than one sheet of interface.
+   * @brief Find the cells of a region that hold more than one sheet of interface.
    * @details Downstream holds one body and one interface to a cell, so a cell the surface enters as several
-   * sheets cannot be described at all. The fewest corners are read as solid to bring each such cell back to
-   * one -- see CutCellBody::minimalSnap -- which is the same thing as snapping those edges' crossings onto
-   * their nodes, since a node the surface passes through is solid by the fluid rule.
+   * sheets cannot be described at all. Such a cell is filled rather than built, which is the only reading that
+   * stays single valued and keeps a barrier thinner than a cell a barrier instead of letting the fluid run
+   * through it. Filling is a classification and changes no value another level reads, so the children a coarse
+   * cell restricts against still agree with it about where every edge is crossed -- which is what a snap of the
+   * nodes themselves cannot promise.
    *
-   * Every cell is asked before any node is moved, so that one cell's snap cannot change what another was
-   * asked, and the region reaches a cell past the box so that a node on the boundary is decided from all the
-   * cells around it. Two boxes sharing a node therefore reach the same verdict without being told.
-   * @param[in,out] a_nodeValues Node values of the region, snapped in place.
-   * @param[in]     a_region     Cells to ask, one wider than the box whose nodes are being decided.
-   * @param[in]     a_covered    Cells a finer level carries, which are left alone: the feature is resolved up
-   *                             there, and this level's reading of it is not the one that gets used.
-   * @return How many nodes were moved.
+   * A cell the finer level carries is left alone: the feature is resolved up there, and this level's reading of
+   * it is not the one that gets used. Only the combinatorics are read, so no root is solved for here.
+   * @param[in]  a_nodeValues Node values of the region.
+   * @param[in]  a_region     Cells to ask.
+   * @param[in]  a_covered    Cells a finer level carries.
+   * @param[out] a_unresolved True for each cell of the region that must be filled.
+   * @return How many cells must be filled.
    */
   static long long
-  snapUnresolvedNodes(BaseFab<Real>& a_nodeValues, const Box& a_region, const Vector<Box>& a_covered);
+  findUnresolvedCells(const BaseFab<Real>& a_nodeValues,
+                      const Box&           a_region,
+                      const Vector<Box>&   a_covered,
+                      BaseFab<bool>&       a_unresolved);
 
   /**
    * @brief Whether define has run.

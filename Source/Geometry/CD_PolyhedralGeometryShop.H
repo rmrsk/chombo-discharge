@@ -442,11 +442,14 @@ protected:
    * @details The body is defined from the cell's surface, and every face onto a refined neighbour is replaced by the
    * chords of the cell's own children, reconstructed from the implicit function at the finer spacing, after the
    * check that no coarse edge on that face is crossed twice at the finer spacing; the interface is closed again
-   * afterwards. A body that will not close, a face that cannot be restricted, or a doubly crossed edge stops the
-   * run.
+   * afterwards. A face onto a cell the graph filled is closed instead, through CutCellBody::snapFace, and the
+   * footprint it gives up becomes interface lying in the plane of that face, so the surface closes over the
+   * filled cell rather than ending against it. A body that will not close, a face that cannot be restricted or
+   * closed, or a doubly crossed edge stops the run.
    * @param[out] a_body     The body.
    * @param[in]  a_graph    Graph of the cell's level.
    * @param[in]  a_surfaces Surfaces of the cell's box, from the graph.
+   * @param[in]  a_states   Cell states of the cell's box, from the graph.
    * @param[in]  a_refined  Refined mask of the cell's box, from the graph.
    * @param[in]  a_cell     The cell.
    */
@@ -454,6 +457,7 @@ protected:
   defineBody(PolyhedralEB::CutCellBody&                  a_body,
              const PolyhedralEBGraph&                    a_graph,
              const IVSFAB<PolyhedralEB::CutCellSurface>& a_surfaces,
+             const BaseFab<signed char>&                 a_states,
              const BaseFab<signed char>&                 a_refined,
              const IntVect&                              a_cell) const;
 #endif

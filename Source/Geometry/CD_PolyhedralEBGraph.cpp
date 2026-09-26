@@ -118,23 +118,20 @@ PolyhedralEBGraph::defineData()
 }
 
 long long
-PolyhedralEBGraph::snapUnresolvedNodes(BaseFab<Real>& a_nodeValues, const Box& a_region, const Vector<Box>& a_covered)
+PolyhedralEBGraph::findUnresolvedCells(const BaseFab<Real>& a_nodeValues,
+                                       const Box&           a_region,
+                                       const Vector<Box>&   a_covered,
+                                       BaseFab<bool>&       a_unresolved)
 {
-  CH_TIME("PolyhedralEBGraph::snapUnresolvedNodes");
+  CH_TIME("PolyhedralEBGraph::findUnresolvedCells");
 
   using PolyhedralEB::CutCellBody;
   using PolyhedralEB::CutCellSurface;
 
-  constexpr int numCorners = CutCellSurface::s_numCorners;
-
-  const Box& nodeBox = a_nodeValues.box();
-
-  BaseFab<bool> snapped(nodeBox, 1);
-
-  snapped.setVal(false);
+  a_unresolved.setVal(false);
 
   // What the finer level carries here. Such a cell is described up there, so whatever this level makes of it is
-  // not what gets used, and snapping it would coarsen a feature the mesh has already resolved.
+  // not what gets used, and filling it would coarsen a feature the mesh has already resolved.
   BaseFab<bool> covered(a_region, 1);
 
   covered.setVal(false);
@@ -147,9 +144,11 @@ PolyhedralEBGraph::snapUnresolvedNodes(BaseFab<Real>& a_nodeValues, const Box& a
     }
   }
 
-  // Which corners each cell needs read as solid to hold one sheet. Only the combinatorics matter here, so the
-  // crossings are placed at the middle of the edges that carry one rather than being solved for: where an edge
-  // carries a crossing follows from its ends, and that is all the sheet count reads.
+  long long numFilled = 0;
+
+  // Only the combinatorics matter, so the crossings are placed at the middle of the edges that carry one rather
+  // than being solved for: where an edge carries a crossing follows from its ends, and that is all the sheet
+  // count reads.
   for (BoxIterator bit(a_region); bit.ok(); ++bit) {
     const IntVect iv = bit();
 
@@ -173,87 +172,14 @@ PolyhedralEBGraph::snapUnresolvedNodes(BaseFab<Real>& a_nodeValues, const Box& a
       surface.m_crossing[e] = crosses ? 0.5 : CutCellSurface::s_noCrossing;
     }
 
-    bool solid[numCorners];
+    if (CutCellBody::numSheets(surface) > 1) {
+      a_unresolved(iv, 0) = true;
 
-    if (CutCellBody::minimalSnap(surface, solid) == 0) {
-      continue;
-    }
-
-    for (int c = 0; c < numCorners; c++) {
-      if (!solid[c]) {
-        continue;
-      }
-
-      IntVect node = iv;
-
-      for (int d = 0; d < SpaceDim; d++) {
-        node[d] += (c >> d) & 1;
-      }
-
-      if (nodeBox.contains(node)) {
-        snapped(node, 0) = true;
-      }
+      numFilled++;
     }
   }
 
-  // A node the surface is snapped onto reads exactly zero, which the fluid rule calls solid. Applied after every
-  // cell has been asked, so that one cell's snap cannot change what another cell was asked.
-  long long numSnapped = 0;
-
-  for (BoxIterator bit(nodeBox); bit.ok(); ++bit) {
-    if (snapped(bit(), 0) && a_nodeValues(bit(), 0) != 0.0) {
-      a_nodeValues(bit(), 0) = 0.0;
-
-      numSnapped++;
-    }
-  }
-
-#ifndef NDEBUG
-  // Snapping a node changes every cell it is a corner of, so a cell that held one sheet can be left holding
-  // two. Nothing here iterates, so whether one pass settles it is a claim rather than a construction, and it is
-  // checked in a build that keeps its assertions rather than assumed. The cost is a second walk of the region,
-  // which is what the pass itself costs.
-  if (numSnapped > 0) {
-    for (BoxIterator bit(a_region); bit.ok(); ++bit) {
-      const IntVect iv = bit();
-
-      if (covered(iv, 0)) {
-        continue;
-      }
-
-      CutCellSurface surface;
-
-      PolyhedralGeometryShop::fillCorners(surface, a_nodeValues, iv);
-
-      for (int e = 0; e < CutCellSurface::s_numEdges; e++) {
-        int low  = 0;
-        int high = 0;
-
-        PolyhedralEB::detail::edgeCorners(e, low, high);
-
-        const bool crosses = PolyhedralEB::isFluid(surface.m_corner[low]) !=
-                             PolyhedralEB::isFluid(surface.m_corner[high]);
-
-        surface.m_crossing[e] = crosses ? 0.5 : CutCellSurface::s_noCrossing;
-      }
-
-      if (CutCellBody::numSheets(surface) > 1) {
-        pout() << std::setprecision(17) << "PolyhedralEBGraph::snapUnresolvedNodes - cell " << iv << " still holds "
-               << CutCellBody::numSheets(surface) << " sheets after the snap. Corner values:";
-
-        for (int c = 0; c < CutCellSurface::s_numCorners; c++) {
-          pout() << " " << surface.m_corner[c];
-        }
-
-        pout() << endl;
-
-        MayDay::Error("PolyhedralEBGraph::snapUnresolvedNodes - one pass did not bring every cell to one sheet");
-      }
-    }
-  }
-#endif
-
-  return numSnapped;
+  return numFilled;
 }
 
 void
@@ -268,7 +194,7 @@ PolyhedralEBGraph::defineCells(const BaseIF& a_function, const LevelData<BaseFab
   // level container once every box's cut-cell set is known; the container is defined over those sets.
   LayoutData<Vector<CutCellSurface>> kept(m_grids);
 
-  long long numSnapped = 0;
+  long long numFilled = 0;
 
   for (DataIterator dit(m_grids); dit.ok(); ++dit) {
     const Box box = m_grids[dit()];
@@ -300,7 +226,10 @@ PolyhedralEBGraph::defineCells(const BaseIF& a_function, const LevelData<BaseFab
     PolyhedralGeometryShop::fillNodeValues(a_function, nodeValues, grown, m_probLo, m_dx);
     PolyhedralGeometryShop::defineIntercepts(intercept, box);
 
-    numSnapped += PolyhedralEBGraph::snapUnresolvedNodes(nodeValues, grown, m_covered);
+    // Which cells cannot be described at all, decided before any of them is classified.
+    BaseFab<bool> unresolved(grown, 1);
+
+    numFilled += PolyhedralEBGraph::findUnresolvedCells(nodeValues, grown, m_covered, unresolved);
 
     for (BoxIterator bit(box); bit.ok(); ++bit) {
       const IntVect iv = bit();
@@ -309,7 +238,29 @@ PolyhedralEBGraph::defineCells(const BaseIF& a_function, const LevelData<BaseFab
 
       PolyhedralGeometryShop::buildSurface(a_function, intercept, surface, nodeValues, iv, m_probLo, m_dx);
 
-      const CutCellBody::Kind kind = CutCellBody::classify(surface);
+      // A cell the surface enters as more than one sheet holds a feature thinner than itself, and one body and
+      // one interface cannot describe it: read from the nodes, a plate through the middle comes out as two
+      // slivers hugging opposite edges, and the fluid runs straight through a barrier that should stop it. The
+      // cell is filled, which is the only reading that stays single valued and keeps the barrier a barrier, and
+      // it errs toward blocking rather than leaking. Unlike moving a node, this changes no value another level
+      // reads, so the children a coarse cell restricts against still agree with it about every edge.
+      const CutCellBody::Kind kind = unresolved(iv, 0) ? CutCellBody::Kind::Covered : CutCellBody::classify(surface);
+
+      // A cell filled next door leaves this one with a face onto nothing. A cell whose corners make it regular
+      // is then not regular at all: it is full, but that face is closed and the fluid it used to open onto is
+      // gone, so what closes the cell there is interface lying in the plane of that face. It is kept as a cut
+      // cell holding the whole of itself, which is what the index space does through
+      // GeometryShop::fixRegularCellsNextToCovered, and the closure check reads a regular cell against a covered
+      // one as a fault for exactly this reason.
+      bool nextToFilled = false;
+
+      for (int dir = 0; dir < SpaceDim && !nextToFilled; dir++) {
+        for (int side = 0; side < 2 && !nextToFilled; side++) {
+          const IntVect other = iv + (2 * side - 1) * BASISV(dir);
+
+          nextToFilled = unresolved.box().contains(other) && unresolved(other, 0);
+        }
+      }
 
       int state = s_regular;
 
@@ -318,7 +269,7 @@ PolyhedralEBGraph::defineCells(const BaseIF& a_function, const LevelData<BaseFab
       if (kind == CutCellBody::Kind::Covered) {
         state = s_covered;
       }
-      else if (kind == CutCellBody::Kind::Cut) {
+      else if (kind == CutCellBody::Kind::Cut || nextToFilled) {
         if (!body.define(surface)) {
           pout() << "PolyhedralEBGraph::defineCells - cell " << iv << " did not close" << endl;
 
@@ -330,7 +281,7 @@ PolyhedralEBGraph::defineCells(const BaseIF& a_function, const LevelData<BaseFab
         // exactly the size of what it held, and no repair on the neighbours' faces can put it back. The volume
         // threshold that keeps such cells out of the index space is applied where the index space is built,
         // which is where its reason -- a solver that would rather not see a cell of no volume -- applies.
-        if (PolyhedralGeometryShop::isDust(body)) {
+        if (PolyhedralGeometryShop::isDust(body) && !nextToFilled) {
           state = s_regular;
         }
         else {
@@ -345,7 +296,14 @@ PolyhedralEBGraph::defineCells(const BaseIF& a_function, const LevelData<BaseFab
         for (int side = 0; side < 2; side++) {
           bool open = false;
 
-          if (state == s_regular) {
+          const IntVect other = iv + (2 * side - 1) * BASISV(dir);
+
+          const bool ontoFilled = unresolved.box().contains(other) && unresolved(other, 0);
+
+          if (ontoFilled) {
+            open = false;
+          }
+          else if (state == s_regular) {
             open = true;
           }
           else if (state == s_cut) {
@@ -370,11 +328,11 @@ PolyhedralEBGraph::defineCells(const BaseIF& a_function, const LevelData<BaseFab
 
   this->defineGhostCells(a_function, a_carried);
 
-  const long long totalSnapped = ParallelOps::sum(numSnapped);
+  const long long totalFilled = ParallelOps::sum(numFilled);
 
-  if (totalSnapped > 0 && procID() == 0) {
-    pout() << "PolyhedralEBGraph::defineCells - snapped " << totalSnapped
-           << " nodes onto the surface so that no cell holds more than one sheet" << endl;
+  if (totalFilled > 0 && procID() == 0) {
+    pout() << "PolyhedralEBGraph::defineCells - filled " << totalFilled
+           << " cells holding a feature thinner than themselves" << endl;
   }
 
   m_surfaces.define(m_grids, 1, m_numGhost * IntVect::Unit, IVSFABFactory<CutCellSurface>(m_cutCells));

@@ -140,6 +140,20 @@ public:
   isConnected() const noexcept;
 
   /**
+   * @brief Whether every polygon of the interface lies in one plane.
+   * @details A planar interface leaves the fluid the cell intersected with a half-space, which is convex. A
+   * convex region meets every axis-aligned box in a convex, and therefore connected, set -- so a body that
+   * answers true here has single-valued children at every refinement ratio, and their children in turn, without
+   * any of them being built. It is the one property that settles the question for all ratios at once:
+   * everything else is an interpolant of the same crossings and carries no such guarantee. A body whose
+   * interface is a single triangle is planar by construction, which is most of the cut cells of a smooth
+   * surface.
+   * @return True if the interface polygons share a plane, or if the body has no interface at all.
+   */
+  bool
+  interfaceIsPlanar() const noexcept;
+
+  /**
    * @brief Cut this body into the bodies of the 2^SpaceDim cells one refinement finer that fill its cell.
    * @details A genuine subdivision of the polyhedron, not a reconstruction of it at the finer spacing: each
    * child is this body intersected with its own octant, so the children partition this body and their moments
@@ -160,6 +174,29 @@ public:
    */
   bool
   subdivide(CutCellBody* a_children) const noexcept;
+
+  /**
+   * @brief Whether cutting this body for a refinement asks for a child whose fluid is in more than one piece.
+   * @details The single-valued property is not inherited: a body whose eight children are all single valued can
+   * still have a grandchild that is not, so asking one level down says nothing about two. This asks to the ratio
+   * the mesh will actually use, and it is the test to put in front of any cell that a finer grid may subdivide,
+   * whether or not the cell sits on a refinement boundary.
+   *
+   * A planar interface is answered from interfaceIsPlanar without building anything, since convexity settles
+   * every ratio. Otherwise the body is cut in halves repeatedly, log2(a_refRat) times, and every body produced
+   * on the way down is asked -- not only those at the final ratio. That is deliberate: the intermediate bodies
+   * are what a recursive subdivision would actually build, so one of them being multi-valued is a failure even
+   * when the cells the mesh ends up with are not. A direct a_refRat-way clip of this body is not the same
+   * computation, because each round re-expresses its children in their own frames and closes their interfaces
+   * there; when subdivide learns to clip by a ratio in one step, this should follow it.
+   *
+   * A body that cannot be cut at all -- one whose children would need more polygons or vertices than they can
+   * hold -- is not reported here. That is a separate failure, and subdivide already returns it.
+   * @param[in] a_refRat Refinement ratio to test, a power of two and at least two.
+   * @return True if any body produced on the way to that ratio holds fluid in more than one piece.
+   */
+  bool
+  hasMultiValuedChildren(const int a_refRat) const noexcept;
 
   /**
    * @brief Volume fraction.
@@ -298,6 +335,44 @@ public:
    */
   bool
   closeBoundary(const int a_face) noexcept;
+
+  /**
+   * @brief Whether this body's polygon on one face covers the whole face.
+   * @details A face polygon whose vertices are all cell corners is the whole face, since a corner the interface
+   * cuts off would have put a crossing among them. Exact: no area is compared with anything.
+   * @param[in] a_dir  Direction of the face.
+   * @param[in] a_side Side of the cell the face is on.
+   * @return True if the face is entirely fluid.
+   */
+  bool
+  faceIsWhole(const int a_dir, const int a_side) const noexcept;
+
+  /**
+   * @brief Whether this body holds no fluid at all on one face.
+   * @param[in] a_dir  Direction of the face.
+   * @param[in] a_side Side of the cell the face is on.
+   * @return True if the face carries no fluid.
+   */
+  bool
+  faceIsEmpty(const int a_dir, const int a_side) const noexcept;
+
+  /**
+   * @brief Make one face agree with a neighbour that holds no solid, or none that holds no fluid, and let what the
+   *        face loses become interface.
+   * @details The volume threshold and the dust rule classify a cell from its own body, so a cell they turn into a
+   * regular or a covered one leaves its neighbours describing a face it no longer agrees with: the neighbour's
+   * chord on the shared face ends against nothing, and the two sides read different apertures for it. The face
+   * takes the neighbour's answer -- the whole face, or none of it -- and the footprint it gives up becomes part of
+   * the interface, which lies in the plane of that face. The identity sum(alpha_hi - alpha_lo) = a_B*n survives
+   * it exactly, since the aperture and the boundary's area vector gain the same vector. The moments are
+   * recomputed, unlike restrictFace, because this body is one a cell takes its moments from.
+   * @param[in] a_dir               Direction of the face.
+   * @param[in] a_side              Side of the cell the face is on.
+   * @param[in] a_neighbourIsFluid  True if the neighbour holds no solid, false if it holds no fluid.
+   * @return True if the body closed again and its volume stayed in range.
+   */
+  bool
+  snapFace(const int a_dir, const int a_side, const bool a_neighbourIsFluid) noexcept;
 
   /**
    * @brief Split every polygon edge at the vertices of other polygons that lie on it.

@@ -738,6 +738,100 @@ CutCellBody::restrictFace(const CutCellSurface* a_children, const int a_dir, con
 }
 
 bool
+CutCellBody::faceIsWhole(const int a_dir, const int a_side) const noexcept
+{
+  const int face = 2 * a_dir + a_side;
+
+  for (int ip = 0; ip < m_numPolygons; ip++) {
+    if (m_polygon[ip].m_face != face) {
+      continue;
+    }
+
+    for (int iv = 0; iv < m_polygon[ip].m_numVertices; iv++) {
+      if (m_polygon[ip].m_vertexEdge[iv] >= 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+bool
+CutCellBody::faceIsEmpty(const int a_dir, const int a_side) const noexcept
+{
+  const int face = 2 * a_dir + a_side;
+
+  for (int ip = 0; ip < m_numPolygons; ip++) {
+    if (m_polygon[ip].m_face == face) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool
+CutCellBody::snapFace(const int a_dir, const int a_side, const bool a_neighbourIsFluid) noexcept
+{
+  CH_assert(a_dir >= 0 && a_dir < SpaceDim);
+  CH_assert(a_side == 0 || a_side == 1);
+
+  const int face = 2 * a_dir + a_side;
+
+  // this face's polygon goes, and so does the interface, which was built to meet its chord
+  int kept = 0;
+
+  for (int ip = 0; ip < m_numPolygons; ip++) {
+    if (m_polygon[ip].m_face != face && m_polygon[ip].m_face >= 0) {
+      m_polygon[kept++] = m_polygon[ip];
+    }
+  }
+
+  m_numPolygons = kept;
+
+  // A neighbour that holds no solid says the whole face is open; one that holds no fluid leaves it closed, and
+  // then the face has no polygon at all.
+  if (a_neighbourIsFluid) {
+    if (m_numPolygons >= s_maxPolygons) {
+      return false;
+    }
+
+    int faceCorner[1 << (SpaceDim - 1)];
+
+    detail::faceCorners(a_dir, a_side, faceCorner);
+
+    Polygon& polygon = m_polygon[m_numPolygons];
+
+    polygon               = Polygon();
+    polygon.m_numVertices = 0;
+    polygon.m_face        = face;
+
+    for (int i = 0; i < (1 << (SpaceDim - 1)); i++) {
+      polygon.m_vertexEdge[polygon.m_numVertices] = -1;
+      polygon.m_vertex[polygon.m_numVertices++]   = detail::cornerPosition(faceCorner[i]);
+    }
+
+    this->orientOutward(polygon, a_dir, a_side);
+
+    m_numPolygons++;
+  }
+
+  if (!this->closeInterface()) {
+    return false;
+  }
+
+  this->accumulateMoments();
+
+  const bool closed  = this->closureResidual() <= 1.0E-9;
+  const bool inRange = m_volumeFraction >= -1.0E-12 && m_volumeFraction <= 1.0 + 1.0E-12;
+
+  return closed && inRange;
+}
+
+bool
 CutCellBody::weldTJunctions() noexcept
 {
   CH_assert(m_numPolygons >= 0 && m_numPolygons <= s_maxPolygons);
@@ -1835,6 +1929,96 @@ CutCellBody::isConnected() const noexcept
 }
 
 bool
+CutCellBody::interfaceIsPlanar() const noexcept
+{
+  CH_assert(m_numPolygons >= 0 && m_numPolygons <= s_maxPolygons);
+
+  int first = -1;
+
+  for (int ip = 0; ip < m_numPolygons && first < 0; ip++) {
+    if (m_polygon[ip].m_face < 0) {
+      first = ip;
+    }
+  }
+
+  // A body with no interface is one the surface does not enter, whose fluid is the whole cell.
+  if (first < 0) {
+    return true;
+  }
+
+  Real     area = 0.0;
+  RealVect vector;
+  RealVect centroid;
+
+  detail::polygonMoments(m_polygon[first].m_vertex, m_polygon[first].m_numVertices, area, vector, centroid);
+
+  // A first patch of no area gives no plane to measure the others against, so nothing is claimed.
+  if (area <= s_nullArea) {
+    return false;
+  }
+
+  const RealVect normal = vector / area;
+
+  for (int ip = first + 1; ip < m_numPolygons; ip++) {
+    const Polygon& p = m_polygon[ip];
+
+    if (p.m_face >= 0) {
+      continue;
+    }
+
+    for (int iv = 0; iv < p.m_numVertices; iv++) {
+      if (std::abs((p.m_vertex[iv] - centroid).dotProduct(normal)) > s_edgeTolerance) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool
+CutCellBody::hasMultiValuedChildren(const int a_refRat) const noexcept
+{
+  CH_assert(a_refRat >= 2);
+  CH_assert((a_refRat & (a_refRat - 1)) == 0);
+  CH_assert(m_numPolygons >= 0 && m_numPolygons <= s_maxPolygons);
+
+  constexpr int numChildren = 1 << SpaceDim;
+
+  if (this->interfaceIsPlanar()) {
+    return false;
+  }
+
+  CutCellBody children[numChildren];
+
+  // The children are built before the moments are checked, so they can be asked even when the cut is refused
+  // for a reason of its own. A child the cut never reached is left empty, which reads as connected.
+  const bool cut = this->subdivide(children);
+
+  for (int c = 0; c < numChildren; c++) {
+    if (!children[c].isConnected()) {
+      return true;
+    }
+  }
+
+  if (!cut || a_refRat == 2) {
+    return false;
+  }
+
+  for (int c = 0; c < numChildren; c++) {
+    if (children[c].volumeFraction() <= 0.0) {
+      continue;
+    }
+
+    if (children[c].hasMultiValuedChildren(a_refRat / 2)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool
 CutCellBody::partitions(const CutCellBody* a_children) const noexcept
 {
   CH_assert(a_children != nullptr);
@@ -1852,14 +2036,10 @@ CutCellBody::partitions(const CutCellBody* a_children) const noexcept
     // Refining a cell whose fluid is in one piece must not leave a child whose fluid is in two. If it does, the
     // child is a cell this generator cannot describe, and it was produced rather than encountered, so it is a
     // fault here rather than a geometry to be refused.
+    // A singly cut cell can genuinely refine into a multi-cut one: the fluid region is not convex once the
+    // interface has a crease, and a non-convex region can meet an octant in two pieces. It is reported rather
+    // than refused here, because hasMultiValuedChildren asks exactly this question and has to get an answer.
     if (!a_children[c].isConnected()) {
-      if (this->isConnected()) {
-        pout() << "CutCellBody::partitions - child " << c << " of a cell holding one piece of fluid holds "
-               << "more than one" << endl;
-
-        MayDay::Error("CutCellBody::partitions - refining a singly cut cell produced a multi-cut one");
-      }
-
       return false;
     }
 
