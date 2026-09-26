@@ -50,6 +50,32 @@ class PolyhedralGeometryShop : public ScanShop
 {
 public:
   /**
+   * @brief What to do with a cell this generator cannot describe at the refinement the mesh will ask for.
+   * @details A cell whose fluid falls into more than one piece when it is cut for a refinement cannot be
+   * carried single valued at that ratio, and there is no reformulation of the interior that avoids it: the
+   * only representation guaranteed to keep every descendant single valued is a planar interface, and a planar
+   * interface cannot meet the face chords a cell shares with its neighbours. So the cell is a choice rather
+   * than a bug, and the choice belongs to whoever set up the run.
+   */
+  enum class UnresolvedAction
+  {
+    /**
+     * @brief Report the cells and carry on, leaving it to the user to raise the geometric resolution.
+     */
+    Warn,
+
+    /**
+     * @brief Turn the cell solid, so that neither it nor anything cut from it is ever multi valued.
+     */
+    Cover,
+
+    /**
+     * @brief Keep the pieces in one body, taking the moments from their sum and the centroids from the largest.
+     */
+    Collapse
+  };
+
+  /**
    * @brief Disallowed default constructor.
    */
   PolyhedralGeometryShop() = delete;
@@ -171,6 +197,22 @@ public:
    */
   void
   sanityCheck() const;
+
+  /**
+   * @brief Report the cells that cannot be cut for a refinement without falling into more than one piece.
+   * @details Asked of every cut cell the level itself describes, at the ratio m_maxRefinement names, and of the
+   * body the consumers build -- which on a refinement boundary is the one whose faces were taken from the finer
+   * level, since stitching lengthens the interface loop and it is that loop the question is about. A cell whose
+   * interface is planar is exempt without being cut, because its fluid is then convex and convexity survives
+   * every ratio.
+   *
+   * What happens to a failing cell is m_unresolvedAction's to decide. Only Warn is wired: the cells are named
+   * and the run continues, leaving it to whoever set it up to raise the geometric resolution. Runs regardless
+   * of m_sanityCheck, since it reports on the geometry the run will actually use rather than on this
+   * generator's own consistency. Requires buildGraphs.
+   */
+  void
+  reportUnresolvedRefinement() const;
 
   /**
    * @brief Copy every graph onto a layout that splits each of its tiles into octants with the ranks shuffled, and then
@@ -405,6 +447,27 @@ protected:
    * @brief Whether verifySurface reports its timings. PolyhedralGeometryShop.profile, off by default.
    */
   bool m_profile;
+
+  /**
+   * @brief How far below the geometry's own grids a cell must stay single valued.
+   * PolyhedralGeometryShop.max_refinement, one -- that is, off -- by default.
+   * @details A power of two. One asks for nothing and skips the check entirely; two asks that the cells one
+   * refinement below the geometry grid are each a single piece of fluid, four that the cells two below are,
+   * and so on. The property is not inherited -- a cell whose children are all single valued can still have a
+   * grandchild that is not -- so this has to name the ratio the mesh will actually use rather than being
+   * derived from one level.
+   *
+   * Off by default because the test costs a subdivision of every cut cell whose interface is not planar, which
+   * is two to three times what building the geometry costs in the first place, and because nothing downstream
+   * reads a subdivided cell yet. It becomes worth its price once it does.
+   */
+  int m_maxRefinement;
+
+  /**
+   * @brief What becomes of a cell that fails that test. PolyhedralGeometryShop.unresolved_cells, warn by
+   * default.
+   */
+  UnresolvedAction m_unresolvedAction;
 
   /**
    * @brief Whether verifySurface runs testGraphCopy. PolyhedralGeometryShop.test_copy, off by default.

@@ -73,9 +73,11 @@ PolyhedralGeometryShop::PolyhedralGeometryShop(const BaseIF&        a_localGeom,
 #else
   m_sanityCheck = false;
 #endif
-  m_profile  = false;
-  m_testCopy = false;
-  m_verbose  = false;
+  m_profile          = false;
+  m_testCopy         = false;
+  m_verbose          = false;
+  m_maxRefinement    = 1;
+  m_unresolvedAction = UnresolvedAction::Warn;
 
   // Hidden options, as ScanShop keeps its own.
   ParmParse pp("PolyhedralGeometryShop");
@@ -85,6 +87,38 @@ PolyhedralGeometryShop::PolyhedralGeometryShop(const BaseIF&        a_localGeom,
   pp.query("profile", m_profile);
   pp.query("test_copy", m_testCopy);
   pp.query("verbose", m_verbose);
+  pp.query("max_refinement", m_maxRefinement);
+
+  if (m_maxRefinement < 1 || (m_maxRefinement & (m_maxRefinement - 1)) != 0) {
+    MayDay::Error("PolyhedralGeometryShop::PolyhedralGeometryShop - max_refinement must be a power of two");
+  }
+
+  std::string action = "warn";
+
+  pp.query("unresolved_cells", action);
+
+  if (action == "warn") {
+    m_unresolvedAction = UnresolvedAction::Warn;
+  }
+  else if (action == "cover") {
+    m_unresolvedAction = UnresolvedAction::Cover;
+
+    MayDay::Error("PolyhedralGeometryShop::PolyhedralGeometryShop - unresolved_cells = cover is not wired yet. "
+                  "Covering has to run before any body is built and has to settle -- filling a cell changes its "
+                  "neighbours' bodies, which can leave them unresolved in turn -- and that needs the refined mask "
+                  "to be known at define time. Use warn until then.");
+  }
+  else if (action == "collapse") {
+    m_unresolvedAction = UnresolvedAction::Collapse;
+
+    MayDay::Error("PolyhedralGeometryShop::PolyhedralGeometryShop - unresolved_cells = collapse is not wired yet. "
+                  "Collapsing acts on a child as it is cut, and nothing reads a child's moments so far. Use warn "
+                  "until then.");
+  }
+  else {
+    MayDay::Error("PolyhedralGeometryShop::PolyhedralGeometryShop - unresolved_cells must be warn, cover or "
+                  "collapse");
+  }
 
   if (m_verbose) {
     pout() << "PolyhedralGeometryShop::PolyhedralGeometryShop()" << endl;
@@ -168,6 +202,8 @@ PolyhedralGeometryShop::buildGraphs()
   if (m_profile) {
     timer.eventReport(pout(), false);
   }
+
+  this->reportUnresolvedRefinement();
 }
 
 const PolyhedralEBGraph&
@@ -993,6 +1029,99 @@ PolyhedralGeometryShop::writeSurface(const std::string& a_fileName, const Vector
 #else
   MayDay::Warning("PolyhedralGeometryShop::writeSurface - built without HDF5, nothing written");
 #endif
+}
+
+void
+PolyhedralGeometryShop::reportUnresolvedRefinement() const
+{
+  CH_TIME("PolyhedralGeometryShop::reportUnresolvedRefinement");
+
+  using PolyhedralEB::CutCellBody;
+  using PolyhedralEB::CutCellSurface;
+
+  if (m_verbose) {
+    pout() << "PolyhedralGeometryShop::reportUnresolvedRefinement" << endl;
+  }
+
+  if (m_maxRefinement < 2) {
+    return;
+  }
+
+  long long numUnresolved = 0;
+  long long numReported   = 0;
+
+  for (int lvl = 0; lvl < m_graphs.size(); lvl++) {
+    if (m_graphs[lvl].isNull() || !m_graphs[lvl]->isDefined()) {
+      continue;
+    }
+
+    const PolyhedralEBGraph& graph = *m_graphs[lvl];
+
+    const DisjointBoxLayout&                 grids    = graph.getGrids();
+    const LayoutData<IntVectSet>&            cutCells = graph.getCutCells();
+    const LevelData<IVSFAB<CutCellSurface>>& surfaces = graph.getSurfaces();
+    const LevelData<BaseFab<signed char>>&   refined  = graph.getRefinedMask();
+    const LevelData<BaseFab<signed char>>&   states   = graph.getCellStates();
+
+    for (DataIterator dit(grids); dit.ok(); ++dit) {
+      const IntVectSet&             cut        = cutCells[dit()];
+      const IVSFAB<CutCellSurface>& stored     = surfaces[dit()];
+      const BaseFab<signed char>&   refinedFab = refined[dit()];
+      const BaseFab<signed char>&   statesFab  = states[dit()];
+
+      for (IVSIterator ivsIt(cut); ivsIt.ok(); ++ivsIt) {
+        const IntVect iv = ivsIt();
+
+        // A cell the finer level carries is described up there, and refining it is that level's business.
+        if (refinedFab(iv, 0) != 0) {
+          continue;
+        }
+
+        bool seam = false;
+
+        for (int dir = 0; dir < SpaceDim && !seam; dir++) {
+          for (int side = 0; side < 2 && !seam; side++) {
+            const IntVect jv = iv + (2 * side - 1) * BASISV(dir);
+
+            seam = refinedFab.box().contains(jv) && refinedFab(jv, 0) != 0;
+          }
+        }
+
+        CutCellBody body;
+
+        if (seam) {
+          this->defineBody(body, graph, stored, statesFab, refinedFab, iv);
+        }
+        else if (!body.define(stored(iv, 0))) {
+          continue;
+        }
+
+        if (!body.hasMultiValuedChildren(m_maxRefinement)) {
+          continue;
+        }
+
+        numUnresolved++;
+
+        if (numReported < 10) {
+          pout() << "PolyhedralGeometryShop::reportUnresolvedRefinement - level " << lvl << " cell " << iv
+                 << " (volume fraction " << body.volumeFraction() << ")" << " falls into more than one piece when "
+                 << "cut for refinement " << m_maxRefinement << endl;
+
+          numReported++;
+        }
+      }
+    }
+  }
+
+  const long long total = ParallelOps::sum(numUnresolved);
+
+  if (total > 0 && procID() == 0) {
+    pout() << "PolyhedralGeometryShop::reportUnresolvedRefinement - " << total << " cells cannot be cut for refinement "
+           << m_maxRefinement
+           << " without falling into more than one piece. The geometry has features these cells cannot carry; "
+           << "raise the resolution the geometry is built at, or lower "
+           << "PolyhedralGeometryShop.max_refinement to the ratio the mesh will actually ask for." << endl;
+  }
 }
 
 void
