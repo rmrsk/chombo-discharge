@@ -138,7 +138,19 @@ PolyhedralGeometryShop::buildGraphs()
     // neighbours' surfaces; a consumer wanting a wider ring of cell states fills it from the geometry's
     // classification, which is the answer outside the tiles in any case.
     timer.startEvent("Define level " + std::to_string(lvl));
-    m_graphs[lvl]->define(*m_baseIF, tiles, m_compGeom->getDomain(lvl), m_probLo, m_compGeom->getDx(lvl), 1);
+    // What the level above will carry here, coarsened onto this level. Known before this level is built, since
+    // the tiles are the geometry's and not the graph's, so the snap can leave alone what will be resolved above.
+    Vector<Box> covered;
+
+    if (lvl + 1 < numLevels) {
+      const Vector<Box>& finer = m_compGeom->getCutTiles(lvl + 1);
+
+      for (int i = 0; i < finer.size(); i++) {
+        covered.push_back(coarsen(finer[i], 2));
+      }
+    }
+
+    m_graphs[lvl]->define(*m_baseIF, tiles, m_compGeom->getDomain(lvl), m_probLo, m_compGeom->getDx(lvl), 1, covered);
     timer.stopEvent("Define level " + std::to_string(lvl));
   }
 
@@ -1976,6 +1988,11 @@ PolyhedralGeometryShop::fillGraph(BaseFab<int>&        a_regIrregCovered,
 
   BaseFab<Real> nodeValues;
   PolyhedralGeometryShop::fillNodeValues(*m_baseIF, nodeValues, a_ghostRegion, a_probLo, a_dx);
+
+  // The same reading the graph takes: a cell the surface enters as more than one sheet cannot be described by
+  // one body and one interface, so the fewest corners are read as solid to bring it back to one. Done before
+  // any cell is classified, so that every cell of the box sees the same nodes.
+  PolyhedralEBGraph::snapUnresolvedNodes(nodeValues, a_ghostRegion, Vector<Box>());
 
   IntVectSet irregularCells;
 

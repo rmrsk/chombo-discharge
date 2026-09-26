@@ -112,6 +112,8 @@ public:
    * @param[in] a_probLo          Lower-left corner of the domain.
    * @param[in] a_dx              Grid spacing of the level.
    * @param[in] a_numGhost        Ghost cells the cell states are kept for.
+   * @param[in] a_covered         Cells of this level the finer level will carry, coarsened onto this level.
+   *                              A cell in them is described up there and is not snapped down here.
    */
   virtual void
   define(const BaseIF&        a_function,
@@ -119,7 +121,8 @@ public:
          const ProblemDomain& a_domain,
          const RealVect&      a_probLo,
          const Real           a_dx,
-         const int            a_numGhost);
+         const int            a_numGhost,
+         const Vector<Box>&   a_covered);
 
   /**
    * @brief Build the graph of a level over a given layout, from another graph of the same level.
@@ -157,6 +160,25 @@ public:
    */
   static void
   link(PolyhedralEBGraph& a_coarse, const PolyhedralEBGraph& a_fine);
+
+  /**
+   * @brief Read corners as solid until no cell of a region holds more than one sheet of interface.
+   * @details Downstream holds one body and one interface to a cell, so a cell the surface enters as several
+   * sheets cannot be described at all. The fewest corners are read as solid to bring each such cell back to
+   * one -- see CutCellBody::minimalSnap -- which is the same thing as snapping those edges' crossings onto
+   * their nodes, since a node the surface passes through is solid by the fluid rule.
+   *
+   * Every cell is asked before any node is moved, so that one cell's snap cannot change what another was
+   * asked, and the region reaches a cell past the box so that a node on the boundary is decided from all the
+   * cells around it. Two boxes sharing a node therefore reach the same verdict without being told.
+   * @param[in,out] a_nodeValues Node values of the region, snapped in place.
+   * @param[in]     a_region     Cells to ask, one wider than the box whose nodes are being decided.
+   * @param[in]     a_covered    Cells a finer level carries, which are left alone: the feature is resolved up
+   *                             there, and this level's reading of it is not the one that gets used.
+   * @return How many nodes were moved.
+   */
+  static long long
+  snapUnresolvedNodes(BaseFab<Real>& a_nodeValues, const Box& a_region, const Vector<Box>& a_covered);
 
   /**
    * @brief Whether define has run.
@@ -254,6 +276,11 @@ protected:
    * @brief Layout over the cut tiles.
    */
   DisjointBoxLayout m_grids;
+
+  /**
+   * @brief Cells of this level the finer level carries, coarsened onto this level.
+   */
+  Vector<Box> m_covered;
 
   /**
    * @brief Cut cells of every box.
