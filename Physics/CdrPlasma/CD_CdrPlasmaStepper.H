@@ -384,6 +384,9 @@ public:
    * @param[in] a_conductivityEB   EB-centered conductivities.
    * @param[in] a_factor Factor to multiply conductivities with (they could be pre-scaled by dt/eps0 in which case
    * a_factor = 1).
+   * @details The coefficients epsilonr + f*sigma on the faces and the EB are written into
+   * m_semiImplicitPermittivityFace and m_semiImplicitPermittivityEB, which the field solver keeps using until it is
+   * given other coefficients. The permittivities of the field solver are not changed.
    */
   virtual void
   setupSemiImplicitPoisson(const EBAMRFluxData& a_conductivityFace,
@@ -1324,6 +1327,19 @@ protected:
    * @brief Storage for the current
    */
   EBAMRCellData m_currentDensity;
+
+  /**
+   * @brief Face-centered coefficients epsilonr + f*sigma of the semi-implicit Poisson equation.
+   * @details Allocated by setupSemiImplicitPoisson on first use after allocateInternals. The field solver operators
+   * keep pointers to it, so it must outlive the solves.
+   */
+  MFAMRFluxData m_semiImplicitPermittivityFace;
+
+  /**
+   * @brief EB-centered coefficients epsilonr + f*sigma of the semi-implicit Poisson equation.
+   * @details Allocated with m_semiImplicitPermittivityFace.
+   */
+  MFAMRIVData m_semiImplicitPermittivityEB;
 
   /**
    * @brief Storage for physics-observables

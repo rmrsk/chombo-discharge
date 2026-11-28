@@ -281,7 +281,7 @@ FieldSolverAMG::solve(MFAMRCellData&       a_potential,
   }
 
   // Closures whose jump data is an output (saturation charge) compute it from the solution and keep it.
-  m_petscJumpBc->updateJumpData(x, m_permittivityEB);
+  m_petscJumpBc->updateJumpData(x, m_solverPermEB);
 
   petscGrid->putPetscInChombo(a_potential, x);
 
@@ -522,6 +522,7 @@ FieldSolverAMG::setupSolver()
     PetscCallAbort(Chombo_MPI::comm, KSPMonitorSet(m_ksp, FieldSolverAMG::monitorResidual, this, nullptr));
   }
 
+  m_solverPermEB  = m_permittivityEB;
   m_isSolverSetup = true;
 }
 
@@ -608,6 +609,8 @@ FieldSolverAMG::setSolverPermittivities(const MFAMRCellData& a_permittivityCell,
 
   m_petscOp->setCoefficients(a_permittivityCell, a_permittivityFace, a_permittivityEB);
   m_petscOp->fillMatrix();
+
+  m_solverPermEB = a_permittivityEB;
 
   PetscCallAbort(Chombo_MPI::comm, KSPSetOperators(m_ksp, m_petscOp->getMatrix(), m_petscOp->getMatrix()));
 }

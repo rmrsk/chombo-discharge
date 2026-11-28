@@ -271,6 +271,11 @@ MFHelmholtzOp::setAcoAndBco(const RefCountedPtr<LevelData<MFCellFAB>>&   a_Acoef
 {
   CH_TIME("MFHelmholtzOp::setAcoAndBco");
 
+  // The multiphase kernels read the coefficients through these.
+  m_Acoef      = a_Acoef;
+  m_Bcoef      = a_Bcoef;
+  m_BcoefIrreg = a_BcoefIrreg;
+
   // Make the operators on eachphase.
   for (int iphase = 0; iphase < m_numPhases; iphase++) {
 

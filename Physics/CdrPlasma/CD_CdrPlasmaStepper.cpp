@@ -336,15 +336,28 @@ CdrPlasmaStepper::setupSemiImplicitPoisson(const EBAMRFluxData& a_conductivityFa
   CH_assert(a_conductivityEB[0]->nComp() == 1);
   CH_assert(a_factor >= 0.0);
 
-  // First, the field solver must set the permittivities as usual. The "permittivities" that we are after are
-  // eps = epsr + dt*sigma/eps0 (but we only have plasma on the gas phase). Also note that FieldSolverGMG
-  // fills the ghost faces for the b-coefficient here.
-  m_fieldSolver->setPermittivities();
+  // The "permittivities" that we are after are eps = epsr + dt*sigma/eps0 (but we only have plasma on the gas phase).
+  // The field solver computes epsr, including the ghost faces, when the grids change. Copy its face and EB
+  // permittivities, including the ghost faces, into the stepper's storage; the cell permittivities are not changed.
+  const MFAMRFluxData& epsFace = m_fieldSolver->getPermittivityFace();
+  const MFAMRIVData&   epsEB   = m_fieldSolver->getPermittivityEB();
 
-  // Get the permittivities on the faces.
+  if (m_semiImplicitPermittivityFace.size() == 0) {
+    m_amr->allocate(m_semiImplicitPermittivityFace, m_realm, epsFace[0]->nComp(), epsFace[0]->ghostVect()[0]);
+    m_amr->allocate(m_semiImplicitPermittivityEB, m_realm, epsEB[0]->nComp(), epsEB[0]->ghostVect()[0]);
+  }
+
   MFAMRCellData& permCell = m_fieldSolver->getPermittivityCell();
-  MFAMRFluxData& permFace = m_fieldSolver->getPermittivityFace();
-  MFAMRIVData&   permEB   = m_fieldSolver->getPermittivityEB();
+  MFAMRFluxData& permFace = m_semiImplicitPermittivityFace;
+  MFAMRIVData&   permEB   = m_semiImplicitPermittivityEB;
+
+  for (int lvl = 0; lvl <= m_amr->getFinestLevel(); lvl++) {
+    CH_assert(epsFace[lvl]->ghostVect() == permFace[lvl]->ghostVect());
+    CH_assert(epsEB[lvl]->ghostVect() == permEB[lvl]->ghostVect());
+
+    epsFace[lvl]->localCopyTo(*permFace[lvl]);
+    epsEB[lvl]->localCopyTo(*permEB[lvl]);
+  }
 
   // Get handles to the gas-phase permittivities.
   EBAMRFluxData permFaceGas = m_amr->alias(phase::gas, permFace);
@@ -413,6 +426,10 @@ CdrPlasmaStepper::allocateInternals()
 
   m_amr->allocate(m_currentDensity, m_realm, phase::gas, SpaceDim);
   DataOps::setValue(m_currentDensity, 0.0);
+
+  // Allocated by setupSemiImplicitPoisson on first use on the new grids.
+  m_semiImplicitPermittivityFace.clear();
+  m_semiImplicitPermittivityEB.clear();
 
   const int numPhysPlotVars = m_physics->getNumberOfPlotVariables();
 

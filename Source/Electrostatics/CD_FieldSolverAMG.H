@@ -205,6 +205,13 @@ protected:
   bool m_isSolverSetup;
 
   /**
+   * @brief EB-centered permittivity that the operator uses: m_permittivityEB after setupSolver, or the one from the
+   * last setSolverPermittivities. Shares the caller's storage. Used for the jump data that is computed from the
+   * solution.
+   */
+  MFAMRIVData m_solverPermEB;
+
+  /**
    * @brief PETSc Krylov solver type, e.g. 'gmres', 'fgmres', 'bcgs' (also given as 'bicgstab') or 'cg'.
    */
   std::string m_kspType;

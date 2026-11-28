@@ -660,6 +660,12 @@ FieldSolverGMG::setSolverPermittivities(const MFAMRCellData& a_permittivityCell,
     op.setAcoAndBco(a_permittivityCell[lvl], a_permittivityFace[lvl], a_permittivityEB[lvl]);
   }
 
+  // The factory coarsens the multigrid coefficients from its AMR-level coefficients, so point those at the new
+  // permittivities.
+  m_helmholtzOpFactory->setAmrCoefficients(a_permittivityCell.getData(),
+                                           a_permittivityFace.getData(),
+                                           a_permittivityEB.getData());
+
   // Get the deeper multigrid levels and coarsen onto that data as well. Strictly speaking, we don't
   // have to do this but it facilitates multigrid convergence and is therefore good practice. The operator
   // factory has routines for the coefficients that belong to the multigrid levels. The factory does not

@@ -260,6 +260,18 @@ public:
   coarsenCoefficientsMG();
 
   /**
+   * @brief Replace the coefficients on the AMR levels.
+   * @details The factory and the multigrid levels then use the new coefficients. The first multigrid level of each AMR
+   * level shares the AMR-level coefficients, so coarsenCoefficientsMG coarsens from the new ones. The operators that
+   * are already defined are not updated; set their coefficients with MFHelmholtzOp::setAcoAndBco.
+   * @param[in] a_Acoef      A-coefficient on each AMR level.
+   * @param[in] a_Bcoef      B-coefficient on each AMR level.
+   * @param[in] a_BcoefIrreg B-coefficient on the EB, on each AMR level.
+   */
+  void
+  setAmrCoefficients(const AmrCellData& a_Acoef, const AmrFluxData& a_Bcoef, const AmrIrreData& a_BcoefIrreg);
+
+  /**
    * @brief Create multigrid operator
    * @param[in] a_fineDomain      Domain
    * @param[in] a_depth           Depth. This specifies that the operator will be created at depth coarsen(a_fineDomain,

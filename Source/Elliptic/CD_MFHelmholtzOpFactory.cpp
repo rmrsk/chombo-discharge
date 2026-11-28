@@ -364,6 +364,31 @@ MFHelmholtzOpFactory::defineMultigridLevels(const Vector<AmrLevelGrids>&        
 }
 
 void
+MFHelmholtzOpFactory::setAmrCoefficients(const AmrCellData& a_Acoef,
+                                         const AmrFluxData& a_Bcoef,
+                                         const AmrIrreData& a_BcoefIrreg)
+{
+  CH_TIME("MFHelmholtzOpFactory::setAmrCoefficients");
+
+  CH_assert(a_Acoef.size() >= m_numAmrLevels);
+  CH_assert(a_Bcoef.size() >= m_numAmrLevels);
+  CH_assert(a_BcoefIrreg.size() >= m_numAmrLevels);
+
+  for (int amrLevel = 0; amrLevel < m_numAmrLevels; amrLevel++) {
+    m_amrAcoef[amrLevel]      = a_Acoef[amrLevel];
+    m_amrBcoef[amrLevel]      = a_Bcoef[amrLevel];
+    m_amrBcoefIrreg[amrLevel] = a_BcoefIrreg[amrLevel];
+
+    // The first multigrid level is the AMR level.
+    if (m_hasMgLevels[amrLevel]) {
+      m_mgAcoef[amrLevel][0]      = m_amrAcoef[amrLevel];
+      m_mgBcoef[amrLevel][0]      = m_amrBcoef[amrLevel];
+      m_mgBcoefIrreg[amrLevel][0] = m_amrBcoefIrreg[amrLevel];
+    }
+  }
+}
+
+void
 MFHelmholtzOpFactory::coarsenCoefficientsMG()
 {
   CH_TIME("MFHelmholtzOpFactory::coarsenCoefficientsMG");
